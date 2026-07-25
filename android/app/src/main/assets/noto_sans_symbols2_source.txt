@@ -1,0 +1,7 @@
+Noto Sans Symbols 2 Regular
+Copyright 2022 The Noto Project Authors (https://github.com/notofonts/symbols)
+
+Source:
+https://github.com/google/fonts/blob/7ff85c87f93ea6cca5f41c69f2e4edcb90240f26/ofl/notosanssymbols2/NotoSansSymbols2-Regular.ttf
+
+Licensed under the SIL Open Font License 1.1. See noto_sans_symbols2_ofl.txt.
