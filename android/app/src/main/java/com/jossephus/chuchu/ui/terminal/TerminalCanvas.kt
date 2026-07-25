@@ -102,6 +102,12 @@ fun TerminalCanvas(
                 ?: Typeface.MONOSPACE
         }.getOrDefault(Typeface.MONOSPACE)
     }
+    val fallbackTypeface = remember(context) {
+        runCatching {
+            ResourcesCompat.getFont(context, R.font.noto_sans_symbols2_regular)
+                ?: Typeface.DEFAULT
+        }.getOrDefault(Typeface.DEFAULT)
+    }
     val primaryTextPaint = remember(primaryTypeface, fontSizePx) {
         Paint().apply {
             isAntiAlias = true
@@ -116,6 +122,14 @@ fun TerminalCanvas(
             textAlign = Paint.Align.LEFT
             textSize = fontSizePx
             typeface = symbolsTypeface
+        }
+    }
+    val fallbackTextPaint = remember(fallbackTypeface, fontSizePx) {
+        Paint().apply {
+            isAntiAlias = true
+            textAlign = Paint.Align.LEFT
+            textSize = fontSizePx
+            typeface = fallbackTypeface
         }
     }
     // System typeface paint used for color emoji + ZWJ/VS16 shaping. The
@@ -148,11 +162,14 @@ fun TerminalCanvas(
             for (cp in 33..126) this[cp] = cp.toChar().toString()
         }
     }
-    // Single-codepoint paint choice cache. 0 = primary (text font),
-    // 1 = symbols (Nerd Font icons / PUA), 2 = emoji (system default).
-    val singlePaintChoiceCache = remember(primaryTypeface, symbolsTypeface) { HashMap<Int, Int>(256) }
+    // Paint-choice caches depend on every typeface in the fallback chain.
+    val singlePaintChoiceCache = remember(primaryTypeface, symbolsTypeface, fallbackTypeface) {
+        HashMap<Int, Int>(256)
+    }
     // Multi-codepoint grapheme cluster paint choice cache.
-    val clusterPaintChoiceCache = remember(primaryTypeface, symbolsTypeface) { HashMap<String, Int>(64) }
+    val clusterPaintChoiceCache = remember(primaryTypeface, symbolsTypeface, fallbackTypeface) {
+        HashMap<String, Int>(64)
+    }
     val fontMetrics = primaryTextPaint.fontMetrics
     val measuredHeight = fontMetrics.descent - fontMetrics.ascent
     val cellHeightPx = if (measuredHeight > 1f) measuredHeight else 16f
@@ -594,6 +611,8 @@ fun TerminalCanvas(
                             cache = singlePaintChoiceCache,
                             primaryPaint = primaryTextPaint,
                             symbolsPaint = symbolsTextPaint,
+                            fallbackPaint = fallbackTextPaint,
+                            emojiPaint = emojiTextPaint,
                         )
                     } else {
                         pickPaintChoice(
@@ -601,6 +620,8 @@ fun TerminalCanvas(
                             cache = clusterPaintChoiceCache,
                             primaryPaint = primaryTextPaint,
                             symbolsPaint = symbolsTextPaint,
+                            fallbackPaint = fallbackTextPaint,
+                            emojiPaint = emojiTextPaint,
                         )
                     }
                     sb.setLength(0)
@@ -639,6 +660,8 @@ fun TerminalCanvas(
                                 cache = singlePaintChoiceCache,
                                 primaryPaint = primaryTextPaint,
                                 symbolsPaint = symbolsTextPaint,
+                                fallbackPaint = fallbackTextPaint,
+                                emojiPaint = emojiTextPaint,
                             )
                         } else {
                             pickPaintChoice(
@@ -646,6 +669,8 @@ fun TerminalCanvas(
                                 cache = clusterPaintChoiceCache,
                                 primaryPaint = primaryTextPaint,
                                 symbolsPaint = symbolsTextPaint,
+                                fallbackPaint = fallbackTextPaint,
+                                emojiPaint = emojiTextPaint,
                             )
                         }
                         if (nextPaintChoice != firstPaintChoice) break
@@ -658,6 +683,7 @@ fun TerminalCanvas(
                         choice = firstPaintChoice,
                         primaryPaint = primaryTextPaint,
                         symbolsPaint = symbolsTextPaint,
+                        fallbackPaint = fallbackTextPaint,
                         emojiPaint = emojiTextPaint,
                     )
                     paint.color = fg
@@ -717,6 +743,8 @@ fun TerminalCanvas(
                                 cache = singlePaintChoiceCache,
                                 primaryPaint = primaryTextPaint,
                                 symbolsPaint = symbolsTextPaint,
+                                fallbackPaint = fallbackTextPaint,
+                                emojiPaint = emojiTextPaint,
                             )
                         } else {
                             pickPaintChoice(
@@ -724,12 +752,15 @@ fun TerminalCanvas(
                                 cache = clusterPaintChoiceCache,
                                 primaryPaint = primaryTextPaint,
                                 symbolsPaint = symbolsTextPaint,
+                                fallbackPaint = fallbackTextPaint,
+                                emojiPaint = emojiTextPaint,
                             )
                         }
                         val paint = paintForChoice(
                             choice = cursorPaintChoice,
                             primaryPaint = primaryTextPaint,
                             symbolsPaint = symbolsTextPaint,
+                            fallbackPaint = fallbackTextPaint,
                             emojiPaint = emojiTextPaint,
                         )
                         paint.isFakeBoldText = false
@@ -832,7 +863,8 @@ private const val TEXT_STYLE_MASK: Int =
 
 private const val PAINT_PRIMARY: Int = 0
 private const val PAINT_SYMBOLS: Int = 1
-private const val PAINT_EMOJI: Int = 2
+private const val PAINT_FALLBACK: Int = 2
+private const val PAINT_EMOJI: Int = 3
 
 /**
  * Decide which paint should render a grapheme cluster.
@@ -842,7 +874,11 @@ private const val PAINT_EMOJI: Int = 2
  *     glyph metrics intact).
  *  2. Else, if the first codepoint lives in a Nerd Font private-use range
  *     and the symbols paint has the glyph, use the symbols (Nerd Font) paint.
- *  3. Else, use the emoji paint (system default Typeface), which routes
+ *  3. Else, use Android's system fallback when it covers the complete glyph.
+ *  4. Else, use bundled Noto Sans Symbols 2 as a deterministic symbol fallback.
+ *  5. Finally, use the system paint to render its missing-glyph marker.
+ *
+ * The system emoji paint routes
  *     through Android's NotoColorEmoji + font fallback chain and is the only
  *     paint that can shape emoji ZWJ sequences, regional-indicator flag
  *     pairs, and VS16-promoted color emoji.
@@ -852,6 +888,8 @@ private fun pickPaintChoice(
     cache: HashMap<String, Int>,
     primaryPaint: Paint,
     symbolsPaint: Paint,
+    fallbackPaint: Paint,
+    emojiPaint: Paint,
 ): Int {
     return cache.getOrPut(glyph) {
         if (primaryPaint.hasGlyph(glyph)) return@getOrPut PAINT_PRIMARY
@@ -859,6 +897,8 @@ private fun pickPaintChoice(
         if (isNerdFontPrivateUse(firstCp) && symbolsPaint.hasGlyph(glyph)) {
             return@getOrPut PAINT_SYMBOLS
         }
+        if (emojiPaint.hasGlyph(glyph)) return@getOrPut PAINT_EMOJI
+        if (fallbackPaint.hasGlyph(glyph)) return@getOrPut PAINT_FALLBACK
         PAINT_EMOJI
     }
 }
@@ -869,6 +909,8 @@ private fun pickPaintChoice(
     cache: HashMap<Int, Int>,
     primaryPaint: Paint,
     symbolsPaint: Paint,
+    fallbackPaint: Paint,
+    emojiPaint: Paint,
 ): Int {
     // Fast path for the overwhelmingly common command-output ASCII glyphs.
     if (codepoint in 0x21..0x7E) return PAINT_PRIMARY
@@ -879,6 +921,8 @@ private fun pickPaintChoice(
         if (isNerdFontPrivateUse(codepoint) && symbolsPaint.hasGlyph(glyph)) {
             return@getOrPut PAINT_SYMBOLS
         }
+        if (emojiPaint.hasGlyph(glyph)) return@getOrPut PAINT_EMOJI
+        if (fallbackPaint.hasGlyph(glyph)) return@getOrPut PAINT_FALLBACK
         PAINT_EMOJI
     }
 }
@@ -887,9 +931,11 @@ private fun paintForChoice(
     choice: Int,
     primaryPaint: Paint,
     symbolsPaint: Paint,
+    fallbackPaint: Paint,
     emojiPaint: Paint,
 ): Paint = when (choice) {
     PAINT_SYMBOLS -> symbolsPaint
+    PAINT_FALLBACK -> fallbackPaint
     PAINT_EMOJI -> emojiPaint
     else -> primaryPaint
 }
