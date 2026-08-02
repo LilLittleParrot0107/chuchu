@@ -2,12 +2,29 @@ const std = @import("std");
 const builtin = @import("builtin");
 const ndk = @import("src/ndk.zig");
 
-const build_targets: []const std.Target.Query = &.{
+const default_build_targets: []const std.Target.Query = &.{
     .{ .cpu_arch = .aarch64, .os_tag = .linux, .abi = .android, .android_api_level = 24 },
     .{ .cpu_arch = .arm, .os_tag = .linux, .abi = .androideabi, .android_api_level = 24 },
     .{ .cpu_arch = .x86, .os_tag = .linux, .abi = .android, .android_api_level = 24 },
     .{ .cpu_arch = .x86_64, .os_tag = .linux, .abi = .android, .android_api_level = 24 },
 };
+
+fn resolveBuildTargets(b: *std.Build) []const std.Target.Query {
+    const maybe_target = b.option(
+        []const u8,
+        "target",
+        "Android target triple (default: all supported ABIs)",
+    ) orelse return default_build_targets;
+
+    var query = std.Target.Query.parse(.{ .arch_os_abi = maybe_target }) catch |err| {
+        std.debug.panic("invalid -Dtarget '{s}': {s}", .{ maybe_target, @errorName(err) });
+    };
+    if (query.android_api_level == null) query.android_api_level = 24;
+
+    const targets = b.allocator.alloc(std.Target.Query, 1) catch @panic("OOM");
+    targets[0] = query;
+    return targets;
+}
 
 fn ndkPrebuiltTag() []const u8 {
     const os_part = switch (builtin.os.tag) {
@@ -158,6 +175,7 @@ fn buildNativeLibrary(
 
 pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
+    const build_targets = resolveBuildTargets(b);
     const has_android_ndk = b.graph.env_map.get("ANDROID_NDK_HOME") != null or b.graph.env_map.get("ANDROID_NDK_ROOT") != null;
 
     const native_step = b.step("native", "Build native JNI library");
