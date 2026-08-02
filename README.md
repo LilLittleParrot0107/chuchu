@@ -42,7 +42,10 @@ Chuchu is in active development. I am daily driving it and improving any issues 
 
 ### Getting Started
 
-Checkout our releases and download the apk from there. The latest release will have the latest changes.
+Checkout our [releases](https://github.com/jossephus/chuchu/releases) and download the APK from there.
+
+- **Stable:** the latest non-prerelease build
+- **Nightly:** every push to `main` publishes a rolling prerelease at the [`nightly`](https://github.com/jossephus/chuchu/releases/tag/nightly) tag
 
 I don't have a personal Play Store account right now (and I can't open one because of the payment limitation in my country, feel free to contact me if you want to publish it.)
 

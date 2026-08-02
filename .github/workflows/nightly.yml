@@ -1,0 +1,148 @@
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+name: Nightly
+
+concurrency:
+  group: nightly-main
+  cancel-in-progress: true
+
+jobs:
+  nightly:
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: nix shell
+        run: nix develop -L --verbose
+
+      - name: resolve nightly version
+        id: version
+        run: |
+          set -euo pipefail
+          SHORT_SHA="$(git rev-parse --short=7 HEAD)"
+          DATE_UTC="$(date -u +%Y%m%d)"
+
+          TAG="$(git tag -l 'v*.*.*' --sort=-v:refname | head -n1 || true)"
+          if [ -z "$TAG" ]; then
+            VERSION="0.0.0"
+            BASE=0
+            OFFSET="${GITHUB_RUN_NUMBER:-1}"
+          else
+            VERSION="${TAG#v}"
+            if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::Latest stable tag '$TAG' is not vMAJOR.MINOR.PATCH"
+              exit 1
+            fi
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+            BASE=$((MAJOR * 10000 + MINOR * 100 + PATCH))
+            OFFSET="$(git rev-list "${TAG}..HEAD" --count)"
+            if [ "$OFFSET" -lt 1 ]; then
+              OFFSET=1
+            fi
+          fi
+          if [ "$OFFSET" -gt 999 ]; then
+            echo "::warning::More than 999 commits since ${TAG:-start}; clamping nightly offset to 999"
+            OFFSET=999
+          fi
+
+          VERSION_CODE=$((BASE * 1000 + OFFSET))
+          VERSION_NAME="${VERSION}-nightly.${DATE_UTC}+${SHORT_SHA}"
+          {
+            echo "short_sha=${SHORT_SHA}"
+            echo "date_utc=${DATE_UTC}"
+            echo "base_version=${VERSION}"
+            echo "version_code=${VERSION_CODE}"
+            echo "version_name=${VERSION_NAME}"
+          } >> "$GITHUB_OUTPUT"
+          echo "Nightly version: ${VERSION_NAME} (code=${VERSION_CODE}, base=${VERSION}, offset=${OFFSET})"
+
+      - name: build chuchu_jni
+        run: |
+          nix develop -c bash -c '
+            set -e
+            cd zig-src
+            zig build -Doptimize=ReleaseSmall jni
+          '
+
+      - name: generate release key
+        run: |
+          cd android/app/ && echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > key.jks
+
+      - name: build android release APK
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          VERSION_CODE: ${{ steps.version.outputs.version_code }}
+          VERSION_NAME: ${{ steps.version.outputs.version_name }}
+        run: |
+          nix develop -c bash -c '
+            set -e
+            cd android
+            chmod +x ./gradlew
+            if [ -f local.properties ]; then chmod -w local.properties; fi
+            ./gradlew assembleRelease
+          '
+
+      - name: name APK artifact
+        id: apk
+        run: |
+          set -euo pipefail
+          SRC="$(ls ./android/app/build/outputs/apk/release/*.apk | head -n1)"
+          DEST="./android/app/build/outputs/apk/release/chuchu-nightly.apk"
+          cp "$SRC" "$DEST"
+          echo "path=${DEST}" >> "$GITHUB_OUTPUT"
+
+      - name: build release notes
+        id: notes
+        run: |
+          set -euo pipefail
+          NOTES="$(mktemp)"
+          {
+            echo "### Chuchu nightly"
+            echo
+            echo "Automated build from \`main\` (\`${{ steps.version.outputs.short_sha }}\`)."
+            echo
+            echo "- **versionName:** \`${{ steps.version.outputs.version_name }}\`"
+            echo "- **versionCode:** \`${{ steps.version.outputs.version_code }}\`"
+            echo "- **commit:** https://github.com/${{ github.repository }}/commit/${{ github.sha }}"
+            echo
+            echo "#### Recent commits"
+            echo
+            git log -n 15 --pretty=format:'- %s (%h)' --no-merges
+            echo
+          } > "$NOTES"
+          echo "path=${NOTES}" >> "$GITHUB_OUTPUT"
+
+      - name: retarget rolling nightly tag
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -f nightly "${{ github.sha }}"
+          git push origin refs/tags/nightly --force
+
+      - name: publish rolling nightly release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nightly
+          target_commitish: ${{ github.sha }}
+          name: Nightly ${{ steps.version.outputs.date_utc }} (${{ steps.version.outputs.short_sha }})
+          body_path: ${{ steps.notes.outputs.path }}
+          prerelease: true
+          make_latest: "false"
+          files: ${{ steps.apk.outputs.path }}
+          fail_on_unmatched_files: true
+          overwrite_files: true
