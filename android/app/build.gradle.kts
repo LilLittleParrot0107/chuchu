@@ -31,6 +31,17 @@ android {
         versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: (releaseBase * 1_000)
         versionName = System.getenv("VERSION_NAME") ?: "$major.$minor.$patch"
 
+        System.getenv("ANDROID_ABI_FILTERS")
+            ?.split(',')
+            ?.map { it.trim() }
+            ?.filter { it.isNotEmpty() }
+            ?.takeIf { it.isNotEmpty() }
+            ?.let { filters ->
+                ndk {
+                    abiFilters += filters
+                }
+            }
+
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
     }

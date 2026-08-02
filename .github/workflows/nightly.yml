@@ -73,7 +73,7 @@ jobs:
           nix develop -c bash -c '
             set -e
             cd zig-src
-            zig build -Doptimize=ReleaseSmall jni
+            zig build -Doptimize=ReleaseSmall -Dtarget=aarch64-linux-android.24 jni
           '
 
       - name: generate release key
@@ -87,6 +87,7 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           VERSION_CODE: ${{ steps.version.outputs.version_code }}
           VERSION_NAME: ${{ steps.version.outputs.version_name }}
+          ANDROID_ABI_FILTERS: arm64-v8a
         run: |
           nix develop -c bash -c '
             set -e
