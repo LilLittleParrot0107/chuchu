@@ -28,6 +28,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -90,6 +91,11 @@ fun AddServerScreen(
             label = "Host",
             placeholder = "192.168.1.10",
             singleLine = true,
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Uri,
+                capitalization = KeyboardCapitalization.None,
+                autoCorrectEnabled = false,
+            ),
             autoFocus = false,
             modifier = Modifier.fillMaxWidth(),
         )
@@ -99,7 +105,11 @@ fun AddServerScreen(
                 onValueChange = vm::updatePort,
                 label = "Port",
                 singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Number,
+                    capitalization = KeyboardCapitalization.None,
+                    autoCorrectEnabled = false,
+                ),
                 autoFocus = false,
                 modifier = Modifier.weight(0.3f),
             )
@@ -109,6 +119,11 @@ fun AddServerScreen(
                 label = "Username",
                 placeholder = "root",
                 singleLine = true,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Ascii,
+                    capitalization = KeyboardCapitalization.None,
+                    autoCorrectEnabled = false,
+                ),
                 autoFocus = false,
                 modifier = Modifier.weight(0.7f),
             )

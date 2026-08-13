@@ -89,7 +89,7 @@ class AddServerViewModel(
     }
 
     fun updateHost(host: String) {
-        _form.value = _form.value.copy(host = host)
+        _form.value = _form.value.copy(host = host.filterNot { it.isWhitespace() })
     }
 
     fun updatePort(port: String) {
@@ -207,7 +207,8 @@ class AddServerViewModel(
 
     fun testConnection() {
         val current = _form.value
-        if (current.host.isBlank()) return
+        val host = current.host.filterNot { it.isWhitespace() }
+        if (host.isBlank()) return
         val username = current.username.trim()
         if (username.isBlank()) return
         _testState.value = ConnectionTestState(status = ConnectionTestStatus.Running)
@@ -219,7 +220,7 @@ class AddServerViewModel(
                     val nativeSsh = NativeSshService(hostKeyPolicy = policy)
                     check(nativeSsh.isAvailable()) { "Native SSH unavailable" }
                     nativeSsh.connect(
-                        host = current.host.trim(),
+                        host = host,
                         port = port,
                         username = username,
                         authMethod = current.authMethod,
@@ -244,8 +245,9 @@ class AddServerViewModel(
 
     fun save(onComplete: () -> Unit) {
         val current = _form.value
+        val host = current.host.filterNot { it.isWhitespace() }
         val port = current.port.toIntOrNull() ?: 22
-        if (!current.canSave()) return
+        if (!current.canSave() || host.isBlank()) return
         val username = current.username.trim()
         if (username.isBlank()) return
 
@@ -253,7 +255,7 @@ class AddServerViewModel(
             val profile = HostProfile(
                 id = current.id ?: 0L,
                 name = current.name.trim(),
-                host = current.host.trim(),
+                host = host,
                 port = port,
                 username = username,
                 password = current.password,
