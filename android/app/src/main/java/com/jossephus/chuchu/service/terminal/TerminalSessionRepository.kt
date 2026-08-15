@@ -39,7 +39,7 @@ class TerminalSessionRepository private constructor(application: Application) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private val hostKeyStore =
-        HostKeyStore(appContext.getSharedPreferences("host_keys", Application.MODE_PRIVATE))
+        HostKeyStore(appContext.getSharedPreferences(HostKeyStore.PREFS_NAME, Application.MODE_PRIVATE))
     private val tailscaleStatusChecker = TailscaleStatusChecker(appContext)
     private val clipboard = appContext.getSystemService(ClipboardManager::class.java)
     private val osc52ClipboardPolicy = Osc52ClipboardPolicy.Deny
@@ -170,13 +170,17 @@ class TerminalSessionRepository private constructor(application: Application) {
         .filter { it.spec.multiplexer == multiplexer }
         .mapNotNull { it.spec.multiplexerSessionName }
 
-    suspend fun resolveMultiplexerSessionName(spec: TabSpec): String = withPreflightEngine { engine ->
+    suspend fun resolveMultiplexerSessionName(
+        spec: TabSpec,
+        reuseDetachedChuchuSession: Boolean = false,
+    ): String = withPreflightEngine { engine ->
         engine.resolveMultiplexerSessionName(
             spec = spec,
             localSessionNames = openMultiplexerSessionNamesForHost(
                 hostId = spec.hostId,
                 multiplexer = spec.multiplexer ?: MultiplexerRegistry.defaultType,
             ),
+            reuseDetachedChuchuSession = reuseDetachedChuchuSession,
         )
     }
 
