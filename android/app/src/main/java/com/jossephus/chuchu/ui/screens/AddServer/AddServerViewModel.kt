@@ -14,7 +14,9 @@ import com.jossephus.chuchu.model.MultiplexerType
 import com.jossephus.chuchu.model.SshKey
 import com.jossephus.chuchu.model.Transport
 import com.jossephus.chuchu.service.ssh.Ed25519KeyGenerator
+import com.jossephus.chuchu.service.ssh.HostKeyCheck
 import com.jossephus.chuchu.service.ssh.HostKeyPolicy
+import com.jossephus.chuchu.service.ssh.HostKeyStore
 import com.jossephus.chuchu.service.ssh.NativeSshService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -45,6 +47,13 @@ class AddServerViewModel(
     private val hostRepository = HostRepository(db.hostProfileDao())
     private val sshKeyRepository = SshKeyRepository(db.sshKeyDao())
     private val keyGenerator = Ed25519KeyGenerator()
+    private val hostKeyStore =
+        HostKeyStore(
+            application.applicationContext.getSharedPreferences(
+                HostKeyStore.PREFS_NAME,
+                Application.MODE_PRIVATE,
+            ),
+        )
 
     private val _form = MutableStateFlow(AddServerForm())
     val form: StateFlow<AddServerForm> = _form.asStateFlow()
@@ -212,23 +221,37 @@ class AddServerViewModel(
         if (username.isBlank()) return
         _testState.value = ConnectionTestState(status = ConnectionTestStatus.Running)
         viewModelScope.launch {
+            var hostKeyError: String? = null
             val result = withContext(Dispatchers.IO) {
                 runCatching {
                     val port = current.port.toIntOrNull() ?: 22
-                    val policy = HostKeyPolicy { _, _, _, _ -> true }
-                    val nativeSsh = NativeSshService(hostKeyPolicy = policy)
-                    check(nativeSsh.isAvailable()) { "Native SSH unavailable" }
-                    nativeSsh.connect(
-                        host = current.host.trim(),
-                        port = port,
-                        username = username,
-                        authMethod = current.authMethod,
-                        password = if (current.authMethod == AuthMethod.Password) current.password else "",
-                        publicKeyOpenSsh = current.publicKeyOpenSsh,
-                        privateKeyPem = current.privateKeyPem,
-                        keyPassphrase = current.keyPassphrase,
-                    )
-                    nativeSsh.close()
+                    val policy = HostKeyPolicy { host, port, algorithm, keyBytes ->
+                        when (val result = hostKeyStore.check(host, port, algorithm, keyBytes)) {
+                            is HostKeyCheck.Match -> true
+                            is HostKeyCheck.Unknown -> {
+                                hostKeyError = "host key not verified — connect once to verify this host"
+                                false
+                            }
+                            is HostKeyCheck.Changed -> {
+                                hostKeyError =
+                                    "host key CHANGED (${result.previousFingerprint} → ${result.fingerprint}) — connect once to verify this host"
+                                false
+                            }
+                        }
+                    }
+                    NativeSshService(hostKeyPolicy = policy).use { nativeSsh ->
+                        check(nativeSsh.isAvailable()) { "Native SSH unavailable" }
+                        nativeSsh.connect(
+                            host = current.host.trim(),
+                            port = port,
+                            username = username,
+                            authMethod = current.authMethod,
+                            password = if (current.authMethod == AuthMethod.Password) current.password else "",
+                            publicKeyOpenSsh = current.publicKeyOpenSsh,
+                            privateKeyPem = current.privateKeyPem,
+                            keyPassphrase = current.keyPassphrase,
+                        )
+                    }
                 }
             }
             _testState.value = if (result.isSuccess) {
@@ -236,7 +259,7 @@ class AddServerViewModel(
             } else {
                 ConnectionTestState(
                     status = ConnectionTestStatus.Error,
-                    message = result.exceptionOrNull()?.message ?: "Connection failed",
+                    message = hostKeyError ?: result.exceptionOrNull()?.message ?: "Connection failed",
                 )
             }
         }
