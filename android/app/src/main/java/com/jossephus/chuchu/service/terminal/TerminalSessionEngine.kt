@@ -13,6 +13,7 @@ import com.jossephus.chuchu.service.mosh.NativeMoshService
 import com.jossephus.chuchu.service.multiplexer.MultiplexerAvailability
 import com.jossephus.chuchu.service.multiplexer.MultiplexerCommandResult
 import com.jossephus.chuchu.service.multiplexer.MultiplexerRegistry
+import com.jossephus.chuchu.service.multiplexer.MultiplexerSessionAllocator
 import com.jossephus.chuchu.service.multiplexer.RemoteMultiplexerSession
 import com.jossephus.chuchu.service.ssh.HostKeyCheck
 import com.jossephus.chuchu.service.ssh.HostKeyStore
@@ -537,6 +538,7 @@ class TerminalSessionEngine(
     suspend fun resolveMultiplexerSessionName(
         spec: TabSpec,
         localSessionNames: Collection<String>,
+        reuseDetachedChuchuSession: Boolean = false,
     ): String = withContext(dispatcher) {
         val type = spec.multiplexer ?: MultiplexerRegistry.defaultType
         val multiplexer = MultiplexerRegistry.forType(type)
@@ -563,6 +565,12 @@ class TerminalSessionEngine(
         if (existingName != null) {
             if (remoteSessions.any { it.name == existingName }) return@withContext existingName
             throw IllegalStateException("${type.label} session \"$existingName\" is no longer available")
+        }
+        if (reuseDetachedChuchuSession) {
+            MultiplexerSessionAllocator.reusableDetachedChuchuSessionName(
+                remoteSessions = remoteSessions,
+                localSessionNames = localSessionNames,
+            )?.let { return@withContext it }
         }
         multiplexer.defaultSessionName(remoteSessions, localSessionNames)
     }
