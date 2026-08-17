@@ -58,6 +58,15 @@ android {
                 storePassword = keystorePassword
                 keyAlias = keyAliasEnv
                 keyPassword = keyPasswordEnv
+            } else {
+                // Personal-fork fallback: no release secrets on CI, so sign
+                // release builds with the committed fixed debug keystore —
+                // same signature as the debug builds, so either installs
+                // over the other.
+                storeFile = file("debug.keystore")
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
             }
         }
     }

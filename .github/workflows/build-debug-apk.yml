@@ -24,7 +24,10 @@ jobs:
             zig build -Doptimize=ReleaseSmall -Dtarget=aarch64-linux-android.24 jni
           '
 
-      - name: build android debug APK
+      # Release build (R8 minify + resource shrink — roughly the official
+      # nightly's size) signed with the committed fixed debug keystore via
+      # the build.gradle.kts fallback, so it installs over the debug builds.
+      - name: build android release APK
         env:
           ANDROID_ABI_FILTERS: arm64-v8a
         run: |
@@ -32,12 +35,12 @@ jobs:
             set -e
             cd android
             chmod +x ./gradlew
-            ./gradlew assembleDebug
+            ./gradlew assembleRelease
           '
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: chuchu-debug-apk
-          path: android/app/build/outputs/apk/debug/*.apk
+          path: android/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
