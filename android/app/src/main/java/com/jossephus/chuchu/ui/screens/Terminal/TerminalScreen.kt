@@ -872,16 +872,12 @@ fun TerminalScreen(
                     // focus and forwards the mouse click — full-screen TUIs
                     // (herdr tabs/sidebar) are tapped constantly to NAVIGATE,
                     // and popping the IME on every one of those taps was
-                    // unwanted. Two taps within 300ms summon the keyboard.
-                    val lastTerminalTapUptimeMs = remember { longArrayOf(0L) }
+                    // unwanted. The canvas detects the double tap itself (its
+                    // own detector used to swallow second taps for word
+                    // selection, so a screen-level timer never saw them) and
+                    // reports it via onDoubleTap.
                     val onTerminalTapped: () -> Unit = {
-                        val now = android.os.SystemClock.uptimeMillis()
-                        if (now - lastTerminalTapUptimeMs[0] <= 300L) {
-                            requestInputFocus()
-                        } else {
-                            inputViewRef.value?.takeFocusSilently(inputMethodManager)
-                        }
-                        lastTerminalTapUptimeMs[0] = now
+                        inputViewRef.value?.takeFocusSilently(inputMethodManager)
                     }
                     val hideSoftKeyboard: () -> Unit = {
                         val view = inputViewRef.value
@@ -1305,6 +1301,7 @@ fun TerminalScreen(
                                     modifier = Modifier.fillMaxSize(),
                                     onResize = vm::onCanvasSizeChanged,
                                     onTap = onTerminalTapped,
+                                    onDoubleTap = requestInputFocus,
                                     onPrimaryClick = vm::onPrimaryMouseClick,
                                     onAppSelectionDrag = vm::onAppSelectionDrag,
                                     onScroll = vm::onScroll,

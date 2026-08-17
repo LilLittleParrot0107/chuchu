@@ -69,6 +69,7 @@ fun TerminalCanvas(
     onResize: (cols: Int, rows: Int, cellWidth: Int, cellHeight: Int, widthPx: Int, heightPx: Int) -> Unit =
         { _, _, _, _, _, _ -> },
     onTap: () -> Unit = {},
+    onDoubleTap: () -> Unit = {},
     onPrimaryClick: (x: Float, y: Float) -> Unit = { _, _ -> },
     onAppSelectionDrag: (action: Int, x: Float, y: Float) -> Unit = { _, _, _ -> },
     onScroll: (delta: Int, x: Float, y: Float) -> Unit = { _, _, _ -> },
@@ -197,6 +198,7 @@ fun TerminalCanvas(
     val currentSelectionState = rememberUpdatedState(selection)
     val currentOnSelectionChange = rememberUpdatedState(onSelectionChange)
     val currentOnTap = rememberUpdatedState(onTap)
+    val currentOnDoubleTap = rememberUpdatedState(onDoubleTap)
     val currentOnPrimaryClick = rememberUpdatedState(onPrimaryClick)
     val currentOnAppSelectionDrag = rememberUpdatedState(onAppSelectionDrag)
     val currentOnScroll = rememberUpdatedState(onScroll)
@@ -406,21 +408,10 @@ fun TerminalCanvas(
                                         if (timeSinceLastTap < currentDoubleTapTimeoutMillis.value &&
                                             distSinceLastTap < currentDoubleTapSlopPx.value
                                         ) {
-                                            val cellIdx = s.cellAt(
-                                                tapPos.x,
-                                                tapPos.y,
-                                                currentCellWidth.value,
-                                                currentCellHeight.value,
-                                            )
-                                            if (cellIdx != null) {
-                                                val wordRange = s.wordAt(cellIdx)
-                                                if (wordRange != null) {
-                                                    currentOnSelectionChange.value(TerminalSelection(wordRange.first, wordRange.last))
-                                                    currentHaptics.value.performHapticFeedback(
-                                                        HapticFeedbackType.LongPress,
-                                                    )
-                                                }
-                                            }
+                                            // Double-tap summons the keyboard (word
+                                            // selection moved to long-press, which
+                                            // already starts a selection drag above).
+                                            currentOnDoubleTap.value()
                                         } else {
                                             if (currentSelectionState.value != null) {
                                                 currentOnSelectionChange.value(null)

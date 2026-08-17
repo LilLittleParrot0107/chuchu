@@ -219,7 +219,9 @@ class TerminalInputView(context: Context) : EditText(context) {
         post {
             logInput("showKeyboard.restartInput")
             imm.restartInput(this)
-            imm.showSoftInput(this, InputMethodManager.SHOW_IMPLICIT)
+            // Flag 0 = explicit user request. SHOW_IMPLICIT is advisory and
+            // OEM IMEs (Funtouch) ignore it once showSoftInputOnFocus=false.
+            imm.showSoftInput(this, 0)
         }
     }
 
