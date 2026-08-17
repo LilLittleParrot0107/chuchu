@@ -364,6 +364,10 @@ fun TerminalScreen(
     var pendingTabSpec by remember { mutableStateOf<TabSpec?>(null) }
     var passphraseFromPicker by remember { mutableStateOf(false) }
     var showTabSheet by remember { mutableStateOf(false) }
+    // Compose-box: type Vietnamese in a real text field, ship it to the
+    // terminal in one paste. Sidesteps terminal-IME composition entirely.
+    var showComposeBox by remember { mutableStateOf(false) }
+    var composeBoxText by remember { mutableStateOf("") }
     var showGlobalTabManager by remember { mutableStateOf(false) }
     var hasSeenTabsForHost by remember(hostId, openLocalShell) { mutableStateOf(false) }
     var focusedTabIndex by remember { mutableStateOf(0) }
@@ -1597,22 +1601,122 @@ fun TerminalScreen(
                                 // the keyboard an explicit, discoverable button.
                                 // Hidden while the IME is visible (it would be
                                 // redundant and cover the bottom rows).
-                                if (!WindowInsets.isImeVisible) {
-                                    ChuButton(
-                                        onClick = requestInputFocus,
-                                        variant = ChuButtonVariant.Outlined,
-                                        bracketed = true,
-                                        borderColor = colors.textMuted,
-                                        contentPadding =
-                                            PaddingValues(
-                                                horizontal = 10.dp,
-                                                vertical = 6.dp,
-                                            ),
+                                if (!WindowInsets.isImeVisible && !showComposeBox) {
+                                    Row(
                                         modifier =
                                             Modifier.align(Alignment.BottomEnd)
                                                 .padding(end = 14.dp, bottom = 64.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     ) {
-                                        ChuText("⌨", style = typography.label)
+                                        // Compose-box: type in a REAL text field
+                                        // (IMEs behave perfectly there), then ship
+                                        // the whole thing to the terminal at once.
+                                        ChuButton(
+                                            onClick = { showComposeBox = true },
+                                            variant = ChuButtonVariant.Outlined,
+                                            bracketed = true,
+                                            borderColor = colors.textMuted,
+                                            contentPadding =
+                                                PaddingValues(
+                                                    horizontal = 10.dp,
+                                                    vertical = 6.dp,
+                                                ),
+                                        ) {
+                                            ChuText("✎", style = typography.label)
+                                        }
+                                        ChuButton(
+                                            onClick = requestInputFocus,
+                                            variant = ChuButtonVariant.Outlined,
+                                            bracketed = true,
+                                            borderColor = colors.textMuted,
+                                            contentPadding =
+                                                PaddingValues(
+                                                    horizontal = 10.dp,
+                                                    vertical = 6.dp,
+                                                ),
+                                        ) {
+                                            ChuText("⌨", style = typography.label)
+                                        }
+                                    }
+                                }
+
+                                if (showComposeBox) {
+                                    Column(
+                                        modifier =
+                                            Modifier.align(Alignment.BottomCenter)
+                                                .fillMaxWidth()
+                                                .background(colors.background.copy(alpha = 0.96f))
+                                                .padding(10.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                                    ) {
+                                        ChuTextField(
+                                            value = composeBoxText,
+                                            onValueChange = { composeBoxText = it },
+                                            label = "",
+                                            showLabel = false,
+                                            placeholder = "Soạn ở đây rồi gửi vào terminal…",
+                                            autoFocus = true,
+                                        )
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        ) {
+                                            ChuButton(
+                                                onClick = {
+                                                    if (composeBoxText.isNotEmpty()) {
+                                                        vm.onPasteText(composeBoxText)
+                                                    }
+                                                    composeBoxText = ""
+                                                    showComposeBox = false
+                                                },
+                                                variant = ChuButtonVariant.Outlined,
+                                                bracketed = true,
+                                                contentPadding =
+                                                    PaddingValues(
+                                                        horizontal = 12.dp,
+                                                        vertical = 8.dp,
+                                                    ),
+                                            ) {
+                                                ChuText("Chèn", style = typography.label)
+                                            }
+                                            ChuButton(
+                                                onClick = {
+                                                    if (composeBoxText.isNotEmpty()) {
+                                                        vm.onPasteText(composeBoxText)
+                                                        vm.dispatchTextWithModifierState(
+                                                            "\n",
+                                                            ModifierState(),
+                                                        )
+                                                    }
+                                                    composeBoxText = ""
+                                                    showComposeBox = false
+                                                },
+                                                variant = ChuButtonVariant.Outlined,
+                                                bracketed = true,
+                                                borderColor = colors.accent,
+                                                contentPadding =
+                                                    PaddingValues(
+                                                        horizontal = 12.dp,
+                                                        vertical = 8.dp,
+                                                    ),
+                                            ) {
+                                                ChuText("Gửi ↵", style = typography.label)
+                                            }
+                                            ChuButton(
+                                                onClick = {
+                                                    showComposeBox = false
+                                                },
+                                                variant = ChuButtonVariant.Ghost,
+                                                bracketed = true,
+                                                borderColor = colors.textMuted,
+                                                contentPadding =
+                                                    PaddingValues(
+                                                        horizontal = 12.dp,
+                                                        vertical = 8.dp,
+                                                    ),
+                                            ) {
+                                                ChuText("Đóng", style = typography.label)
+                                            }
+                                        }
                                     }
                                 }
 
