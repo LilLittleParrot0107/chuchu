@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -1588,6 +1589,31 @@ fun TerminalScreen(
                                         filteredActions = fabFilteredActions,
                                         onClearFilter = { fabFilteredActions = null },
                                     )
+                                }
+
+                                // Always-available keyboard summon button (Termius
+                                // style): the accessory bar only exists while the
+                                // IME is up, and double-tap can be finicky, so give
+                                // the keyboard an explicit, discoverable button.
+                                // Hidden while the IME is visible (it would be
+                                // redundant and cover the bottom rows).
+                                if (!WindowInsets.isImeVisible) {
+                                    ChuButton(
+                                        onClick = requestInputFocus,
+                                        variant = ChuButtonVariant.Outlined,
+                                        bracketed = true,
+                                        borderColor = colors.textMuted,
+                                        contentPadding =
+                                            PaddingValues(
+                                                horizontal = 10.dp,
+                                                vertical = 6.dp,
+                                            ),
+                                        modifier =
+                                            Modifier.align(Alignment.BottomEnd)
+                                                .padding(end = 14.dp, bottom = 64.dp),
+                                    ) {
+                                        ChuText("⌨", style = typography.label)
+                                    }
                                 }
 
                                 androidx.compose.animation.AnimatedVisibility(
