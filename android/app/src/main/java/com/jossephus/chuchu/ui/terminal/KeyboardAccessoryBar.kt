@@ -63,6 +63,7 @@ fun KeyboardAccessoryBar(
     onChuchuKey: (() -> Unit)? = null,
     chuchuKeyActive: Boolean = false,
     onOpenFiles: (() -> Unit)? = null,
+    onComposeBox: (() -> Unit)? = null,
     useSingleRow: Boolean = false,
     horizontalPadding: Dp = 8.dp,
     verticalPadding: Dp = 6.dp,
@@ -121,6 +122,11 @@ fun KeyboardAccessoryBar(
                     buttonHeight = buttonHeight,
                     buttonPadding = buttonPadding,
                 )
+                ComposeBoxButton(
+                    onComposeBox = onComposeBox,
+                    buttonHeight = buttonHeight,
+                    buttonPadding = buttonPadding,
+                )
                 SettingsButton(
                     onSettings = onSettings,
                     buttonHeight = buttonHeight,
@@ -158,12 +164,35 @@ fun KeyboardAccessoryBar(
                 buttonHeight = buttonHeight,
                 buttonPadding = buttonPadding,
             )
+            ComposeBoxButton(
+                onComposeBox = onComposeBox,
+                buttonHeight = buttonHeight,
+                buttonPadding = buttonPadding,
+            )
             SettingsButton(
                 onSettings = onSettings,
                 buttonHeight = buttonHeight,
                 buttonPadding = buttonPadding,
             )
         }
+    }
+}
+
+@Composable
+private fun ComposeBoxButton(
+    onComposeBox: (() -> Unit)?,
+    buttonHeight: Dp,
+    buttonPadding: PaddingValues,
+) {
+    val typography = ChuTypography.current
+    if (onComposeBox == null) return
+    ChuButton(
+        onClick = onComposeBox,
+        variant = ChuButtonVariant.Outlined,
+        modifier = Modifier.height(buttonHeight),
+        contentPadding = buttonPadding,
+    ) {
+        ChuText("✎", style = typography.label)
     }
 }
 

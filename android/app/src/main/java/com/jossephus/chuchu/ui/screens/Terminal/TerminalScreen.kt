@@ -29,7 +29,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -1595,51 +1594,9 @@ fun TerminalScreen(
                                     )
                                 }
 
-                                // Always-available keyboard summon button (Termius
-                                // style): the accessory bar only exists while the
-                                // IME is up, and double-tap can be finicky, so give
-                                // the keyboard an explicit, discoverable button.
-                                // Hidden while the IME is visible (it would be
-                                // redundant and cover the bottom rows).
-                                if (!WindowInsets.isImeVisible && !showComposeBox) {
-                                    Row(
-                                        modifier =
-                                            Modifier.align(Alignment.BottomEnd)
-                                                .padding(end = 14.dp, bottom = 64.dp),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    ) {
-                                        // Compose-box: type in a REAL text field
-                                        // (IMEs behave perfectly there), then ship
-                                        // the whole thing to the terminal at once.
-                                        ChuButton(
-                                            onClick = { showComposeBox = true },
-                                            variant = ChuButtonVariant.Outlined,
-                                            bracketed = true,
-                                            borderColor = colors.textMuted,
-                                            contentPadding =
-                                                PaddingValues(
-                                                    horizontal = 10.dp,
-                                                    vertical = 6.dp,
-                                                ),
-                                        ) {
-                                            ChuText("✎", style = typography.label)
-                                        }
-                                        ChuButton(
-                                            onClick = requestInputFocus,
-                                            variant = ChuButtonVariant.Outlined,
-                                            bracketed = true,
-                                            borderColor = colors.textMuted,
-                                            contentPadding =
-                                                PaddingValues(
-                                                    horizontal = 10.dp,
-                                                    vertical = 6.dp,
-                                                ),
-                                        ) {
-                                            ChuText("⌨", style = typography.label)
-                                        }
-                                    }
-                                }
-
+                                // Compose-box trigger lives in the accessory bar
+                                // ([✎] next to Esc/Tab). Keyboard summon is
+                                // double-tap on the terminal (canvas onDoubleTap).
                                 if (showComposeBox) {
                                     Column(
                                         modifier =
@@ -1801,6 +1758,7 @@ fun TerminalScreen(
                                         showLocalShellFilesUnsupported()
                                     }
                                 },
+                                onComposeBox = { showComposeBox = true },
                                 useSingleRow = useSingleRowAccessoryBar,
                                 modifier = Modifier.padding(bottom = 2.dp),
                             )
