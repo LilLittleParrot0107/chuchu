@@ -103,6 +103,19 @@ fun KeyboardAccessoryBar(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                // ⌨/✎ lead the row: the row scrolls horizontally, and at the
+                // tail they were invisible until the user discovered the
+                // scroll. Front position keeps them always on screen.
+                KeyboardButton(
+                    onSummonKeyboard = onSummonKeyboard,
+                    buttonHeight = buttonHeight,
+                    buttonPadding = buttonPadding,
+                )
+                ComposeBoxButton(
+                    onComposeBox = onComposeBox,
+                    buttonHeight = buttonHeight,
+                    buttonPadding = buttonPadding,
+                )
                 entries.forEach { entry ->
                     AccessoryEntry(
                         entry = entry,
@@ -123,16 +136,6 @@ fun KeyboardAccessoryBar(
                     buttonHeight = buttonHeight,
                     buttonPadding = buttonPadding,
                 )
-                KeyboardButton(
-                    onSummonKeyboard = onSummonKeyboard,
-                    buttonHeight = buttonHeight,
-                    buttonPadding = buttonPadding,
-                )
-                ComposeBoxButton(
-                    onComposeBox = onComposeBox,
-                    buttonHeight = buttonHeight,
-                    buttonPadding = buttonPadding,
-                )
                 SettingsButton(
                     onSettings = onSettings,
                     buttonHeight = buttonHeight,
@@ -150,6 +153,16 @@ fun KeyboardAccessoryBar(
             verticalArrangement = Arrangement.spacedBy(6.dp),
             maxLines = 2,
         ) {
+            KeyboardButton(
+                onSummonKeyboard = onSummonKeyboard,
+                buttonHeight = buttonHeight,
+                buttonPadding = buttonPadding,
+            )
+            ComposeBoxButton(
+                onComposeBox = onComposeBox,
+                buttonHeight = buttonHeight,
+                buttonPadding = buttonPadding,
+            )
             entries.forEach { entry ->
                 AccessoryEntry(
                     entry = entry,
@@ -167,16 +180,6 @@ fun KeyboardAccessoryBar(
                 onChuchuKey = onChuchuKey,
                 chuchuKeyActive = chuchuKeyActive,
                 onOpenFiles = onOpenFiles,
-                buttonHeight = buttonHeight,
-                buttonPadding = buttonPadding,
-            )
-            KeyboardButton(
-                onSummonKeyboard = onSummonKeyboard,
-                buttonHeight = buttonHeight,
-                buttonPadding = buttonPadding,
-            )
-            ComposeBoxButton(
-                onComposeBox = onComposeBox,
                 buttonHeight = buttonHeight,
                 buttonPadding = buttonPadding,
             )

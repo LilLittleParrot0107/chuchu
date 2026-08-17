@@ -656,6 +656,32 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
     private var lastCellWidth = 0
     private var lastCellHeight = 0
 
+    // Viewport the screen predicted from imeAnimationTarget at keyboard-slide
+    // START. The PTY is resized to it immediately (repaint overlaps the
+    // slide); the per-frame canvas sizes that follow during the slide are
+    // ignored until the canvas settles at (or near) the prediction.
+    private var predictedViewport: Pair<Int, Int>? = null
+    private var predictedAtMs = 0L
+
+    /** Resize the PTY NOW to the keyboard-slide destination, before the
+     * animated layout gets there. Called from the imeAnimationTarget effect. */
+    fun onPredictedViewport(
+        cols: Int,
+        rows: Int,
+        cellWidth: Int,
+        cellHeight: Int,
+        screenWidth: Int,
+        screenHeight: Int,
+    ) {
+        predictedViewport = screenWidth to screenHeight
+        predictedAtMs = android.os.SystemClock.uptimeMillis()
+        resizeSettleJob?.cancel()
+        resizedOnce = true
+        lastCellWidth = cellWidth
+        lastCellHeight = cellHeight
+        sessionRepository.resize(cols, rows, cellWidth, cellHeight, screenWidth, screenHeight)
+    }
+
     fun onCanvasSizeChanged(
         cols: Int,
         rows: Int,
@@ -664,12 +690,30 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
         screenWidth: Int,
         screenHeight: Int,
     ) {
-        // Pure viewport changes (keyboard toggle via imeAnimationTarget,
-        // rotation) arrive as a SINGLE size change with unchanged cell
-        // metrics — forward them immediately so the PTY resize and the
-        // remote repaint overlap the keyboard slide. Only a change in cell
-        // size (pinch-zoom re-rasterizing per grid step) still settles for
-        // 120ms before reaching the engine.
+        val predicted = predictedViewport
+        if (predicted != null && cellWidth == lastCellWidth && cellHeight == lastCellHeight) {
+            val (pw, ph) = predicted
+            if (screenWidth == pw && kotlin.math.abs(screenHeight - ph) <= cellHeight) {
+                // Slide finished at (or within a row of) the prediction.
+                predictedViewport = null
+                if (screenHeight != ph) {
+                    sessionRepository.resize(cols, rows, cellWidth, cellHeight, screenWidth, screenHeight)
+                }
+                return
+            }
+            if (screenWidth == pw &&
+                android.os.SystemClock.uptimeMillis() - predictedAtMs < 700L
+            ) {
+                // Mid-slide frame; the PTY is already at the destination.
+                return
+            }
+            // Width changed (rotation) or prediction expired — fall through.
+            predictedViewport = null
+        }
+
+        // Pure viewport changes with unchanged cell metrics forward
+        // immediately; a change in cell size (pinch-zoom re-rasterizing per
+        // grid step) settles for 120ms before reaching the engine.
         val cellsChanged = cellWidth != lastCellWidth || cellHeight != lastCellHeight
         lastCellWidth = cellWidth
         lastCellHeight = cellHeight

@@ -34,6 +34,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imeAnimationTarget
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -367,6 +369,31 @@ fun TerminalScreen(
     // terminal in one paste. Sidesteps terminal-IME composition entirely.
     var showComposeBox by remember { mutableStateOf(false) }
     var composeBoxText by remember { mutableStateOf("") }
+
+    // Predictive PTY resize: the layout keeps the smooth imePadding slide,
+    // but the moment the IME animation's DESTINATION changes we compute the
+    // final viewport from the keyboard-hidden baseline and resize the PTY
+    // right away — the remote repaint overlaps the slide instead of waiting
+    // for it. [cols, rows, cellW, cellH, widthPx, heightPx]; heightPx == 0
+    // means no baseline captured yet.
+    val fullCanvasArgs = remember { IntArray(6) }
+    val imeVisibleNow = WindowInsets.isImeVisible
+    val imeTargetBottomPx = WindowInsets.imeAnimationTarget.getBottom(density)
+    LaunchedEffect(imeTargetBottomPx) {
+        val ch = fullCanvasArgs[3]
+        if (ch <= 0 || fullCanvasArgs[5] <= 0) return@LaunchedEffect
+        val predictedH = fullCanvasArgs[5] - imeTargetBottomPx
+        if (predictedH <= 0) return@LaunchedEffect
+        val predictedRows = maxOf(1, predictedH / ch)
+        vm.onPredictedViewport(
+            fullCanvasArgs[0],
+            predictedRows,
+            fullCanvasArgs[2],
+            ch,
+            fullCanvasArgs[4],
+            predictedH,
+        )
+    }
     var showGlobalTabManager by remember { mutableStateOf(false) }
     var hasSeenTabsForHost by remember(hostId, openLocalShell) { mutableStateOf(false) }
     var focusedTabIndex by remember { mutableStateOf(0) }
@@ -1106,17 +1133,13 @@ fun TerminalScreen(
                                     if (showTabSheet || showGlobalTabManager) 10.dp
                                     else 0.dp
                                 )
-                                // imeAnimationTarget (NOT imePadding): the
-                                // target inset snaps to its final value the
-                                // moment the IME animation STARTS. On keyboard
-                                // dismiss the terminal grows to full size
-                                // immediately, so the PTY resize + remote
-                                // repaint round-trip overlaps the ~250ms slide
-                                // instead of queueing after it — the revealed
-                                // area is already painted when the keyboard is
-                                // gone. Also removes the per-frame relayout of
-                                // the animated inset in both directions.
-                                .windowInsetsPadding(WindowInsets.imeAnimationTarget)
+                                // Smooth slide (v9's snap-to-target padding
+                                // read as jank). The EARLY PTY resize still
+                                // happens: a LaunchedEffect on
+                                // imeAnimationTarget below predicts the final
+                                // viewport at animation START and dispatches
+                                // the resize concurrently with the slide.
+                                .imePadding()
                     ) {
                         // Tab strip (strip mode only — always visible even with zero tabs)
                         if (tabMode == TerminalTabMode.Strip) {
@@ -1313,7 +1336,20 @@ fun TerminalScreen(
                                     onSelectionChange = { selection = it },
                                     terminalHandle = sessionState.handle,
                                     modifier = Modifier.fillMaxSize(),
-                                    onResize = vm::onCanvasSizeChanged,
+                                    onResize = { cols, rows, cw, ch, w, h ->
+                                        // Remember the keyboard-hidden canvas
+                                        // geometry — the prediction baseline
+                                        // for the imeAnimationTarget effect.
+                                        if (!imeVisibleNow) {
+                                            fullCanvasArgs[0] = cols
+                                            fullCanvasArgs[1] = rows
+                                            fullCanvasArgs[2] = cw
+                                            fullCanvasArgs[3] = ch
+                                            fullCanvasArgs[4] = w
+                                            fullCanvasArgs[5] = h
+                                        }
+                                        vm.onCanvasSizeChanged(cols, rows, cw, ch, w, h)
+                                    },
                                     onTap = onTerminalTapped,
                                     onDoubleTap = requestInputFocus,
                                     onTripleTap = { showComposeBox = true },
