@@ -651,6 +651,9 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
         _tailscaleActive.value = tailscaleStatusChecker.isActive()
     }
 
+    private var resizeSettleJob: Job? = null
+    private var resizedOnce = false
+
     fun onCanvasSizeChanged(
         cols: Int,
         rows: Int,
@@ -659,7 +662,22 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
         screenWidth: Int,
         screenHeight: Int,
     ) {
-        sessionRepository.resize(cols, rows, cellWidth, cellHeight, screenWidth, screenHeight)
+        // Settle-debounce: the IME slide animates the canvas height on every
+        // frame; forwarding each frame resized the PTY (a SIGWINCH storm the
+        // remote TUI answers with a full relayout per frame) — the visible
+        // keyboard-toggle jank. Only a size that stays stable for 120ms
+        // reaches the engine; the first measurement applies immediately so
+        // the initial paint isn't delayed.
+        if (!resizedOnce) {
+            resizedOnce = true
+            sessionRepository.resize(cols, rows, cellWidth, cellHeight, screenWidth, screenHeight)
+            return
+        }
+        resizeSettleJob?.cancel()
+        resizeSettleJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(120)
+            sessionRepository.resize(cols, rows, cellWidth, cellHeight, screenWidth, screenHeight)
+        }
     }
 
     fun onScroll(delta: Int, x: Float, y: Float) {

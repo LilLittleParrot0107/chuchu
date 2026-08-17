@@ -446,12 +446,18 @@ fn writeChannel(session: *NativeSshSession, bytes: []const u8) c.jint {
         const rc = c.libssh2_channel_write_ex(channel, 0, @ptrCast(chunk.ptr), @intCast(chunk.len));
         if (rc == c.LIBSSH2_ERROR_EAGAIN or rc == 0) {
             stalled_loops +%= 1;
-            if (stalled_loops > 64) {
-                break;
+            // Never silently drop the tail of a write: a burst of IME edits
+            // (delete + reinsert per keystroke, e.g. Vietnamese Telex) fills
+            // the channel window, EAGAIN fires, and the old 64-stall bail-out
+            // truncated the payload MID-CHARACTER — orphan UTF-8 lead bytes
+            // and vanished backspaces arrived on the remote side. Keep
+            // waiting (~5s worth); a stall that long means the connection is
+            // genuinely dead, so report an error instead of a fake success.
+            if (stalled_loops > 40) {
+                setError(session, "Write stalled, connection unresponsive", .{});
+                return -1;
             }
-            if (!waitSocket(session, io_wait_timeout_ms)) {
-                break;
-            }
+            _ = waitSocket(session, io_wait_timeout_ms);
             continue;
         }
         if (rc < 0) {

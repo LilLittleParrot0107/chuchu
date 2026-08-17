@@ -141,6 +141,11 @@ class TerminalInputView(context: Context) : EditText(context) {
         isCursorVisible = false
         isFocusableInTouchMode = true
         isFocusable = true
+        // Never let the framework auto-show the IME on focus: OEM keyboards
+        // (Funtouch/MIUI) treat focus gains — including tab switches — as an
+        // invitation to pop the keyboard. The IME is shown ONLY via the
+        // explicit showSoftInput in [showKeyboard] (terminal tap, accessory).
+        showSoftInputOnFocus = false
         setSingleLine(false)
         imeOptions =
             EditorInfo.IME_FLAG_NO_EXTRACT_UI or
@@ -198,8 +203,9 @@ class TerminalInputView(context: Context) : EditText(context) {
     fun takeFocusSilently(imm: InputMethodManager?) {
         if (imm != null) inputMethodManager = imm
         if (!hasFocus()) {
+            // Plain requestFocus only — requestFocusFromTouch simulates a tap
+            // and OEM IMEs (Funtouch) auto-show the keyboard for it.
             requestFocus()
-            requestFocusFromTouch()
         }
     }
 
@@ -292,11 +298,22 @@ class TerminalInputView(context: Context) : EditText(context) {
             logConn(
                 "emitDiff source=$source before=${view.describeText(before)} after=${view.describeText(after)} del=$deletes ins=${view.describeText(inserted)}",
             )
-            repeat(deletes) {
-                view.emitBackspaceText("$source.diffDelete")
+            // Emit the whole revision as ONE write. Per-piece writes (a
+            // backspace here, a fragment there) turned each IME keystroke
+            // into a burst of tiny channel writes; under Telex-style
+            // delete+reinsert bursts the write path stalled and payload
+            // tails were lost mid-character. One payload per IME event is
+            // atomic on the wire and collapses the burst.
+            val payload = buildString {
+                repeat(deletes) { append('\u007F') }
+                val parts = inserted.split('\n')
+                parts.forEachIndexed { index, part ->
+                    append(part)
+                    if (index < parts.lastIndex) append('\r')
+                }
             }
-            if (inserted.isNotEmpty()) {
-                emitTerminalTextWithNewlineMapping(source, inserted)
+            if (payload.isNotEmpty()) {
+                view.emitTerminalText(source, payload)
             }
         }
 
