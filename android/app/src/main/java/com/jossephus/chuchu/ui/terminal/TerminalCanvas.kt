@@ -71,6 +71,7 @@ fun TerminalCanvas(
     onTap: () -> Unit = {},
     onDoubleTap: () -> Unit = {},
     onTripleTap: () -> Unit = {},
+    onTapThenHold: () -> Unit = {},
     onPrimaryClick: (x: Float, y: Float) -> Unit = { _, _ -> },
     onAppSelectionDrag: (action: Int, x: Float, y: Float) -> Unit = { _, _, _ -> },
     onScroll: (delta: Int, x: Float, y: Float) -> Unit = { _, _, _ -> },
@@ -201,6 +202,7 @@ fun TerminalCanvas(
     val currentOnTap = rememberUpdatedState(onTap)
     val currentOnDoubleTap = rememberUpdatedState(onDoubleTap)
     val currentOnTripleTap = rememberUpdatedState(onTripleTap)
+    val currentOnTapThenHold = rememberUpdatedState(onTapThenHold)
     val currentOnPrimaryClick = rememberUpdatedState(onPrimaryClick)
     val currentOnAppSelectionDrag = rememberUpdatedState(onAppSelectionDrag)
     val currentOnScroll = rememberUpdatedState(onScroll)
@@ -314,6 +316,22 @@ fun TerminalCanvas(
                             val offsetY = ((canvasSize.height - (contentHeight * scale)) * 0.5f).coerceAtLeast(0f)
                             return Offset((position.x - offsetX) / scale, (position.y - offsetY) / scale)
                         }
+                        // Tap-then-hold: this press started within the
+                        // double-tap window and slop of the previous tap's
+                        // release — if it then HOLDS to the long-press timeout
+                        // (instead of releasing into a double-tap), it opens
+                        // the compose box rather than starting a selection.
+                        val tapThenHoldCandidate = run {
+                            if (doubleTapState.lastTime == 0L) return@run false
+                            val sinceLastTap = down.uptimeMillis - doubleTapState.lastTime
+                            if (sinceLastTap >= currentDoubleTapTimeoutMillis.value) return@run false
+                            val s0 = currentSnapshot.value
+                            val p0 = toSnapshotSpace(down.position, s0)
+                            hypot(
+                                (p0.x - doubleTapState.lastPos.x).toDouble(),
+                                (p0.y - doubleTapState.lastPos.y).toDouble(),
+                            ) < currentDoubleTapSlopPx.value
+                        }
                         var dragRemainder = 0f
                         var startPinchDistance: Float? = null
                         var anchorFontSp = 0f
@@ -342,6 +360,15 @@ fun TerminalCanvas(
                                 }
 
                                 if (event == null) {
+                                    if (dragMode == DragMode.None && tapThenHoldCandidate) {
+                                        // Tap + hold: quick compose-box. One
+                                        // finger, no triple-tap timing needed.
+                                        currentHaptics.value.performHapticFeedback(
+                                            HapticFeedbackType.LongPress,
+                                        )
+                                        currentOnTapThenHold.value()
+                                        break
+                                    }
                                     if (dragMode == DragMode.None) {
                                         val s = currentSnapshot.value
                                         val downPos = toSnapshotSpace(down.position, s)
