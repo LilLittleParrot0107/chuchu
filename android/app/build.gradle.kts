@@ -63,6 +63,19 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Fixed debug keystore committed to the repo: CI runners are
+            // ephemeral and would otherwise mint a fresh auto-generated
+            // debug key per run, making every sideloaded build a
+            // signature-mismatch reinstall. Standard Android debug
+            // credentials — this key signs nothing distributable.
+            signingConfig = signingConfigs.create("fixedDebug") {
+                storeFile = file("debug.keystore")
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
