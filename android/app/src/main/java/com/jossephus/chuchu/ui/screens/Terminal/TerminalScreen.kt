@@ -445,10 +445,18 @@ fun TerminalScreen(
                 customGroups = currentTerminalCustomKeyGroups,
                 onDispatchAction = { action ->
                     val decoded = decodeCustomActionValue(action.payload)
-                    val rawText = decoded.text +
+                    val unescaped = com.jossephus.chuchu.ui.terminal
+                        .unescapeCustomActionText(decoded.text)
+                    val rawText = unescaped +
                         if (CustomActionModifier.Enter in decoded.modifiers) "\n" else ""
-                    val actionModifierState = modifierStateForCustomAction(decoded.modifiers)
-                    vm.dispatchTextWithModifierState(rawText, actionModifierState)
+                    if (unescaped.any { it.code < 0x20 || it.code == 0x7F }) {
+                        // Escaped control bytes (\cb, \e, \xNN): ship the whole
+                        // sequence raw so prefix combos like Ctrl+B,A survive.
+                        vm.onTextInput(rawText.replace('\n', '\r'))
+                    } else {
+                        val actionModifierState = modifierStateForCustomAction(decoded.modifiers)
+                        vm.dispatchTextWithModifierState(rawText, actionModifierState)
+                    }
                 },
                 onSelectAmongActions = { actions -> fabFilteredActions = actions },
             )
@@ -1351,8 +1359,22 @@ fun TerminalScreen(
                                         vm.onCanvasSizeChanged(cols, rows, cw, ch, w, h)
                                     },
                                     onTap = onTerminalTapped,
-                                    onDoubleTap = requestInputFocus,
-                                    onTripleTap = { showComposeBox = true },
+                                    // Gesture map by usage frequency: double
+                                    // tap = compose box (Vietnamese input, the
+                                    // most-used action; its [×] hands off to
+                                    // the plain keyboard), triple tap = Enter.
+                                    // The 3rd tap arrives after the 2nd already
+                                    // opened the box, so triple closes it again
+                                    // before sending Enter (brief flash).
+                                    onDoubleTap = { showComposeBox = true },
+                                    onTripleTap = {
+                                        showComposeBox = false
+                                        composeBoxText = ""
+                                        vm.onSpecialKeyInput(TerminalSpecialKey.Enter, 0)
+                                    },
+                                    onArrowKey = { key ->
+                                        vm.onSpecialKeyInput(key, 0)
+                                    },
                                     onPrimaryClick = vm::onPrimaryMouseClick,
                                     onAppSelectionDrag = vm::onAppSelectionDrag,
                                     onScroll = vm::onScroll,
@@ -1617,20 +1639,30 @@ fun TerminalScreen(
                                         groups = currentTerminalCustomKeyGroups,
                                         onActionClick = { action ->
                                             val decoded = decodeCustomActionValue(action.payload)
+                                            val unescaped =
+                                                com.jossephus.chuchu.ui.terminal
+                                                    .unescapeCustomActionText(decoded.text)
                                             val rawText =
-                                                decoded.text +
+                                                unescaped +
                                                     if (
                                                         CustomActionModifier.Enter in
                                                             decoded.modifiers
                                                     )
                                                         "\n"
                                                     else ""
-                                            val actionModifierState =
-                                                modifierStateForCustomAction(decoded.modifiers)
-                                            vm.dispatchTextWithModifierState(
-                                                rawText,
-                                                actionModifierState,
-                                            )
+                                            if (unescaped.any { it.code < 0x20 || it.code == 0x7F }) {
+                                                // Escaped control bytes (\cb, \e,
+                                                // \xNN): ship raw so prefix combos
+                                                // like Ctrl+B,A survive.
+                                                vm.onTextInput(rawText.replace('\n', '\r'))
+                                            } else {
+                                                val actionModifierState =
+                                                    modifierStateForCustomAction(decoded.modifiers)
+                                                vm.dispatchTextWithModifierState(
+                                                    rawText,
+                                                    actionModifierState,
+                                                )
+                                            }
                                             requestInputFocus()
                                         },
                                         modifier =
@@ -1645,6 +1677,19 @@ fun TerminalScreen(
                                 // ([✎] next to Esc/Tab). Keyboard summon is
                                 // double-tap on the terminal (canvas onDoubleTap).
                                 if (showComposeBox) {
+                                    // Shared by the [Gửi ↵] button and the IME
+                                    // Send key: paste + Enter + close.
+                                    val sendComposeBox = {
+                                        if (composeBoxText.isNotEmpty()) {
+                                            vm.onPasteText(composeBoxText)
+                                            vm.dispatchTextWithModifierState(
+                                                "\n",
+                                                ModifierState(),
+                                            )
+                                        }
+                                        composeBoxText = ""
+                                        showComposeBox = false
+                                    }
                                     Column(
                                         modifier =
                                             Modifier.align(Alignment.BottomCenter)
@@ -1653,14 +1698,54 @@ fun TerminalScreen(
                                                 .padding(10.dp),
                                         verticalArrangement = Arrangement.spacedBy(8.dp),
                                     ) {
-                                        ChuTextField(
-                                            value = composeBoxText,
-                                            onValueChange = { composeBoxText = it },
-                                            label = "",
-                                            showLabel = false,
-                                            placeholder = "Soạn ở đây rồi gửi vào terminal…",
-                                            autoFocus = true,
-                                        )
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            ChuTextField(
+                                                value = composeBoxText,
+                                                onValueChange = { composeBoxText = it },
+                                                label = "",
+                                                showLabel = false,
+                                                placeholder = "Soạn ở đây rồi gửi vào terminal…",
+                                                autoFocus = true,
+                                                singleLine = true,
+                                                modifier = Modifier.weight(1f),
+                                                keyboardOptions =
+                                                    androidx.compose.foundation.text.KeyboardOptions(
+                                                        capitalization =
+                                                            androidx.compose.ui.text.input
+                                                                .KeyboardCapitalization.None,
+                                                        autoCorrectEnabled = false,
+                                                        imeAction =
+                                                            androidx.compose.ui.text.input
+                                                                .ImeAction.Send,
+                                                    ),
+                                                keyboardActions =
+                                                    androidx.compose.foundation.text.KeyboardActions(
+                                                        onSend = { sendComposeBox() },
+                                                    ),
+                                            )
+                                            // [×]: dismiss the compose box but
+                                            // KEEP the keyboard — refocused onto
+                                            // the terminal for direct typing.
+                                            ChuButton(
+                                                onClick = {
+                                                    showComposeBox = false
+                                                    requestInputFocus()
+                                                },
+                                                variant = ChuButtonVariant.Ghost,
+                                                bracketed = true,
+                                                borderColor = colors.textMuted,
+                                                contentPadding =
+                                                    PaddingValues(
+                                                        horizontal = 10.dp,
+                                                        vertical = 8.dp,
+                                                    ),
+                                            ) {
+                                                ChuText("×", style = typography.label)
+                                            }
+                                        }
                                         Row(
                                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                                         ) {
@@ -1683,17 +1768,7 @@ fun TerminalScreen(
                                                 ChuText("Chèn", style = typography.label)
                                             }
                                             ChuButton(
-                                                onClick = {
-                                                    if (composeBoxText.isNotEmpty()) {
-                                                        vm.onPasteText(composeBoxText)
-                                                        vm.dispatchTextWithModifierState(
-                                                            "\n",
-                                                            ModifierState(),
-                                                        )
-                                                    }
-                                                    composeBoxText = ""
-                                                    showComposeBox = false
-                                                },
+                                                onClick = sendComposeBox,
                                                 variant = ChuButtonVariant.Outlined,
                                                 bracketed = true,
                                                 borderColor = colors.accent,
@@ -1704,21 +1779,6 @@ fun TerminalScreen(
                                                     ),
                                             ) {
                                                 ChuText("Gửi ↵", style = typography.label)
-                                            }
-                                            ChuButton(
-                                                onClick = {
-                                                    showComposeBox = false
-                                                },
-                                                variant = ChuButtonVariant.Ghost,
-                                                bracketed = true,
-                                                borderColor = colors.textMuted,
-                                                contentPadding =
-                                                    PaddingValues(
-                                                        horizontal = 12.dp,
-                                                        vertical = 8.dp,
-                                                    ),
-                                            ) {
-                                                ChuText("Đóng", style = typography.label)
                                             }
                                         }
                                     }

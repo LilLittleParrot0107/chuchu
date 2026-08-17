@@ -71,6 +71,7 @@ fun TerminalCanvas(
     onTap: () -> Unit = {},
     onDoubleTap: () -> Unit = {},
     onTripleTap: () -> Unit = {},
+    onArrowKey: (key: TerminalSpecialKey) -> Unit = {},
     onPrimaryClick: (x: Float, y: Float) -> Unit = { _, _ -> },
     onAppSelectionDrag: (action: Int, x: Float, y: Float) -> Unit = { _, _, _ -> },
     onScroll: (delta: Int, x: Float, y: Float) -> Unit = { _, _, _ -> },
@@ -201,6 +202,7 @@ fun TerminalCanvas(
     val currentOnTap = rememberUpdatedState(onTap)
     val currentOnDoubleTap = rememberUpdatedState(onDoubleTap)
     val currentOnTripleTap = rememberUpdatedState(onTripleTap)
+    val currentOnArrowKey = rememberUpdatedState(onArrowKey)
     val currentOnPrimaryClick = rememberUpdatedState(onPrimaryClick)
     val currentOnAppSelectionDrag = rememberUpdatedState(onAppSelectionDrag)
     val currentOnScroll = rememberUpdatedState(onScroll)
@@ -315,6 +317,9 @@ fun TerminalCanvas(
                             return Offset((position.x - offsetX) / scale, (position.y - offsetY) / scale)
                         }
                         var dragRemainder = 0f
+                        var trackpadAccumX = 0f
+                        var trackpadAccumY = 0f
+                        var trackpadMoved = false
                         var startPinchDistance: Float? = null
                         var anchorFontSp = 0f
                         var lastSentSp = 0f
@@ -345,26 +350,24 @@ fun TerminalCanvas(
                                     if (dragMode == DragMode.None) {
                                         val s = currentSnapshot.value
                                         val downPos = toSnapshotSpace(down.position, s)
-                                        if (s.appHandlesSelectionDrag) {
-                                            currentOnAppSelectionDrag.value(TerminalMouseAction.Press, downPos.x, downPos.y)
-                                            currentHaptics.value.performHapticFeedback(
-                                                HapticFeedbackType.LongPress,
-                                            )
-                                            didDragGesture = true
-                                            dragMode = DragMode.AppMouseDrag
-                                        } else if (startSelection(
-                                                s,
-                                                downPos,
-                                                currentCellWidth.value,
-                                                currentCellHeight.value,
-                                                currentOnSelectionChange.value,
-                                            )
-                                        ) {
-                                            currentHaptics.value.performHapticFeedback(
-                                                HapticFeedbackType.LongPress,
-                                            )
-                                            dragMode = DragMode.ClientSelectionDrag
-                                        }
+                                        // Long-press arms the arrow trackpad
+                                        // (replaces drag-selection and the
+                                        // app-mouse drag): releasing in place
+                                        // keeps the selection made here —
+                                        // adjust it with the drag handles —
+                                        // while dragging clears it and moves
+                                        // the cursor with arrow keys.
+                                        startSelection(
+                                            s,
+                                            downPos,
+                                            currentCellWidth.value,
+                                            currentCellHeight.value,
+                                            currentOnSelectionChange.value,
+                                        )
+                                        currentHaptics.value.performHapticFeedback(
+                                            HapticFeedbackType.LongPress,
+                                        )
+                                        dragMode = DragMode.ArrowTrackpad
                                         continue
                                     }
                                     val pos = lastPointerPos
@@ -486,6 +489,61 @@ fun TerminalCanvas(
                                     currentCellWidth.value,
                                     currentCellHeight.value,
                                 )
+                                if (dragMode == DragMode.ArrowTrackpad) {
+                                    lastPointerPos = change.position
+                                    autoScrollDir = 0
+                                    autoScrollingSelection = false
+                                    if (!trackpadMoved) {
+                                        val fromDown = hypot(
+                                            (changePos.x - downPos.x).toDouble(),
+                                            (changePos.y - downPos.y).toDouble(),
+                                        ).toFloat()
+                                        if (fromDown > currentTouchSlopPx.value) {
+                                            // The hold is becoming a drag:
+                                            // drop the provisional selection
+                                            // and start steering the cursor.
+                                            trackpadMoved = true
+                                            currentOnSelectionChange.value(null)
+                                        }
+                                    }
+                                    if (trackpadMoved) {
+                                        trackpadAccumX += changePos.x - changePrevPos.x
+                                        trackpadAccumY += changePos.y - changePrevPos.y
+                                        val cw = currentCellWidth.value
+                                        val chp = currentCellHeight.value
+                                        while (true) {
+                                            // Dominant axis per step so diagonal
+                                            // wobble doesn't fire both axes.
+                                            val stepsX = abs(trackpadAccumX) / cw
+                                            val stepsY = abs(trackpadAccumY) / chp
+                                            if (stepsX < 1f && stepsY < 1f) break
+                                            if (stepsX >= stepsY) {
+                                                if (trackpadAccumX > 0) {
+                                                    trackpadAccumX -= cw
+                                                    currentOnArrowKey.value(TerminalSpecialKey.Right)
+                                                } else {
+                                                    trackpadAccumX += cw
+                                                    currentOnArrowKey.value(TerminalSpecialKey.Left)
+                                                }
+                                            } else {
+                                                if (trackpadAccumY > 0) {
+                                                    trackpadAccumY += -chp
+                                                    currentOnArrowKey.value(TerminalSpecialKey.Down)
+                                                } else {
+                                                    trackpadAccumY += chp
+                                                    currentOnArrowKey.value(TerminalSpecialKey.Up)
+                                                }
+                                            }
+                                            currentHaptics.value.performHapticFeedback(
+                                                HapticFeedbackType.TextHandleMove,
+                                            )
+                                        }
+                                    }
+                                    if (change.position != change.previousPosition) {
+                                        change.consume()
+                                    }
+                                    continue
+                                }
                                 if (dragMode == DragMode.AppMouseDrag) {
                                     lastPointerPos = change.position
                                     autoScrollDir = 0
@@ -1024,6 +1082,11 @@ private enum class DragMode {
     None,
     ClientSelectionDrag,
     AppMouseDrag,
+
+    /** Long-press armed: a stationary release keeps the word selection made
+     * at press time; dragging clears it and turns motion into arrow keys,
+     * one keypress per cell of travel (Termius-style cursor trackpad). */
+    ArrowTrackpad,
 }
 
 /** Tracks double-tap timing/position without triggering Compose recomposition. */

@@ -68,6 +68,57 @@ fun decodeCustomActionValue(payload: String): DecodedCustomActionValue {
     )
 }
 
+/**
+ * Escape sequences in a custom action's Value, so one action can send a
+ * multi-keystroke chord (e.g. a multiplexer prefix combo):
+ *
+ *   \cX  -> Ctrl+X as a raw control byte (\cb = 0x02, herdr/tmux prefix)
+ *   \e   -> ESC        \r -> CR        \n -> LF        \t -> TAB
+ *   \xNN -> byte from two hex digits   \\ -> literal backslash
+ *
+ * "\cba" therefore means Ctrl+B, then plain "a" — herdr's prefix+a.
+ * Unknown escapes are kept literally.
+ */
+fun unescapeCustomActionText(text: String): String = buildString(text.length) {
+    var i = 0
+    while (i < text.length) {
+        val ch = text[i]
+        if (ch != '\\' || i + 1 >= text.length) {
+            append(ch)
+            i += 1
+            continue
+        }
+        when (val next = text[i + 1]) {
+            '\\' -> { append('\\'); i += 2 }
+            'e' -> { append('\u001B'); i += 2 }
+            'r' -> { append('\r'); i += 2 }
+            'n' -> { append('\n'); i += 2 }
+            't' -> { append('\t'); i += 2 }
+            'c' -> {
+                val target = text.getOrNull(i + 2)?.uppercaseChar()
+                val code = target?.code?.let { c -> if (c in 0x40..0x5F) c - 0x40 else null }
+                if (code != null) {
+                    append(code.toChar())
+                    i += 3
+                } else {
+                    append(ch); i += 1
+                }
+            }
+            'x' -> {
+                val hex = text.substring(i + 2).take(2)
+                val value = if (hex.length == 2) hex.toIntOrNull(16) else null
+                if (value != null) {
+                    append(value.toChar())
+                    i += 4
+                } else {
+                    append(ch); i += 1
+                }
+            }
+            else -> { append(ch); append(next); i += 2 }
+        }
+    }
+}
+
 fun modifierStateForCustomAction(modifiers: Set<CustomActionModifier>): ModifierState {
     return ModifierState(
         ctrl = CustomActionModifier.Ctrl in modifiers,

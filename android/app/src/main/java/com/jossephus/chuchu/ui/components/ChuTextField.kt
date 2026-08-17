@@ -13,6 +13,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -43,6 +44,7 @@ fun ChuTextField(
         capitalization = KeyboardCapitalization.None,
         autoCorrectEnabled = false,
     ),
+    keyboardActions: KeyboardActions = KeyboardActions.Default,
     autoFocus: Boolean = true,
     textAlign: TextAlign = TextAlign.Start,
 ) {
@@ -84,6 +86,7 @@ fun ChuTextField(
             singleLine = singleLine,
             textStyle = typography.body.copy(color = colors.textPrimary, textAlign = textAlign),
             keyboardOptions = keyboardOptions,
+            keyboardActions = keyboardActions,
             visualTransformation = visualTransformation,
             interactionSource = interactionSource,
             cursorBrush = SolidColor(colors.accent),
