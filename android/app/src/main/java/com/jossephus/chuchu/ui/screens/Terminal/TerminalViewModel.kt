@@ -653,6 +653,8 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
 
     private var resizeSettleJob: Job? = null
     private var resizedOnce = false
+    private var lastCellWidth = 0
+    private var lastCellHeight = 0
 
     fun onCanvasSizeChanged(
         cols: Int,
@@ -662,14 +664,18 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
         screenWidth: Int,
         screenHeight: Int,
     ) {
-        // Settle-debounce: the IME slide animates the canvas height on every
-        // frame; forwarding each frame resized the PTY (a SIGWINCH storm the
-        // remote TUI answers with a full relayout per frame) — the visible
-        // keyboard-toggle jank. Only a size that stays stable for 120ms
-        // reaches the engine; the first measurement applies immediately so
-        // the initial paint isn't delayed.
-        if (!resizedOnce) {
+        // Pure viewport changes (keyboard toggle via imeAnimationTarget,
+        // rotation) arrive as a SINGLE size change with unchanged cell
+        // metrics — forward them immediately so the PTY resize and the
+        // remote repaint overlap the keyboard slide. Only a change in cell
+        // size (pinch-zoom re-rasterizing per grid step) still settles for
+        // 120ms before reaching the engine.
+        val cellsChanged = cellWidth != lastCellWidth || cellHeight != lastCellHeight
+        lastCellWidth = cellWidth
+        lastCellHeight = cellHeight
+        if (!resizedOnce || !cellsChanged) {
             resizedOnce = true
+            resizeSettleJob?.cancel()
             sessionRepository.resize(cols, rows, cellWidth, cellHeight, screenWidth, screenHeight)
             return
         }

@@ -33,7 +33,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.imeAnimationTarget
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -1106,7 +1106,17 @@ fun TerminalScreen(
                                     if (showTabSheet || showGlobalTabManager) 10.dp
                                     else 0.dp
                                 )
-                                .imePadding()
+                                // imeAnimationTarget (NOT imePadding): the
+                                // target inset snaps to its final value the
+                                // moment the IME animation STARTS. On keyboard
+                                // dismiss the terminal grows to full size
+                                // immediately, so the PTY resize + remote
+                                // repaint round-trip overlaps the ~250ms slide
+                                // instead of queueing after it — the revealed
+                                // area is already painted when the keyboard is
+                                // gone. Also removes the per-frame relayout of
+                                // the animated inset in both directions.
+                                .windowInsetsPadding(WindowInsets.imeAnimationTarget)
                     ) {
                         // Tab strip (strip mode only — always visible even with zero tabs)
                         if (tabMode == TerminalTabMode.Strip) {
@@ -1759,6 +1769,7 @@ fun TerminalScreen(
                                     }
                                 },
                                 onComposeBox = { showComposeBox = true },
+                                onSummonKeyboard = requestInputFocus,
                                 useSingleRow = useSingleRowAccessoryBar,
                                 modifier = Modifier.padding(bottom = 2.dp),
                             )

@@ -64,6 +64,7 @@ fun KeyboardAccessoryBar(
     chuchuKeyActive: Boolean = false,
     onOpenFiles: (() -> Unit)? = null,
     onComposeBox: (() -> Unit)? = null,
+    onSummonKeyboard: (() -> Unit)? = null,
     useSingleRow: Boolean = false,
     horizontalPadding: Dp = 8.dp,
     verticalPadding: Dp = 6.dp,
@@ -122,6 +123,11 @@ fun KeyboardAccessoryBar(
                     buttonHeight = buttonHeight,
                     buttonPadding = buttonPadding,
                 )
+                KeyboardButton(
+                    onSummonKeyboard = onSummonKeyboard,
+                    buttonHeight = buttonHeight,
+                    buttonPadding = buttonPadding,
+                )
                 ComposeBoxButton(
                     onComposeBox = onComposeBox,
                     buttonHeight = buttonHeight,
@@ -164,6 +170,11 @@ fun KeyboardAccessoryBar(
                 buttonHeight = buttonHeight,
                 buttonPadding = buttonPadding,
             )
+            KeyboardButton(
+                onSummonKeyboard = onSummonKeyboard,
+                buttonHeight = buttonHeight,
+                buttonPadding = buttonPadding,
+            )
             ComposeBoxButton(
                 onComposeBox = onComposeBox,
                 buttonHeight = buttonHeight,
@@ -175,6 +186,24 @@ fun KeyboardAccessoryBar(
                 buttonPadding = buttonPadding,
             )
         }
+    }
+}
+
+@Composable
+private fun KeyboardButton(
+    onSummonKeyboard: (() -> Unit)?,
+    buttonHeight: Dp,
+    buttonPadding: PaddingValues,
+) {
+    val typography = ChuTypography.current
+    if (onSummonKeyboard == null) return
+    ChuButton(
+        onClick = onSummonKeyboard,
+        variant = ChuButtonVariant.Outlined,
+        modifier = Modifier.height(buttonHeight),
+        contentPadding = buttonPadding,
+    ) {
+        ChuText("⌨", style = typography.label)
     }
 }
 
