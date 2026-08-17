@@ -70,6 +70,7 @@ fun TerminalCanvas(
         { _, _, _, _, _, _ -> },
     onTap: () -> Unit = {},
     onDoubleTap: () -> Unit = {},
+    onTripleTap: () -> Unit = {},
     onPrimaryClick: (x: Float, y: Float) -> Unit = { _, _ -> },
     onAppSelectionDrag: (action: Int, x: Float, y: Float) -> Unit = { _, _, _ -> },
     onScroll: (delta: Int, x: Float, y: Float) -> Unit = { _, _, _ -> },
@@ -199,6 +200,7 @@ fun TerminalCanvas(
     val currentOnSelectionChange = rememberUpdatedState(onSelectionChange)
     val currentOnTap = rememberUpdatedState(onTap)
     val currentOnDoubleTap = rememberUpdatedState(onDoubleTap)
+    val currentOnTripleTap = rememberUpdatedState(onTripleTap)
     val currentOnPrimaryClick = rememberUpdatedState(onPrimaryClick)
     val currentOnAppSelectionDrag = rememberUpdatedState(onAppSelectionDrag)
     val currentOnScroll = rememberUpdatedState(onScroll)
@@ -408,11 +410,24 @@ fun TerminalCanvas(
                                         if (timeSinceLastTap < currentDoubleTapTimeoutMillis.value &&
                                             distSinceLastTap < currentDoubleTapSlopPx.value
                                         ) {
-                                            // Double-tap summons the keyboard (word
-                                            // selection moved to long-press, which
-                                            // already starts a selection drag above).
-                                            currentOnDoubleTap.value()
+                                            doubleTapState.streak += 1
+                                            if (doubleTapState.streak >= 3) {
+                                                // Triple-tap: quick compose-box.
+                                                // Fires after the double-tap
+                                                // already summoned the keyboard —
+                                                // which is what the compose box
+                                                // wants open anyway.
+                                                doubleTapState.streak = 0
+                                                currentOnTripleTap.value()
+                                            } else {
+                                                // Double-tap summons the keyboard
+                                                // (word selection moved to
+                                                // long-press, which already starts
+                                                // a selection drag above).
+                                                currentOnDoubleTap.value()
+                                            }
                                         } else {
+                                            doubleTapState.streak = 1
                                             if (currentSelectionState.value != null) {
                                                 currentOnSelectionChange.value(null)
                                             } else {
@@ -1015,4 +1030,8 @@ private enum class DragMode {
 private class DoubleTapState {
     var lastTime: Long = 0L
     var lastPos: Offset = Offset.Zero
+
+    /** Consecutive taps within the double-tap window/slop, counting the
+     * current one: 1 = single, 2 = double, 3 = triple. */
+    var streak: Int = 0
 }

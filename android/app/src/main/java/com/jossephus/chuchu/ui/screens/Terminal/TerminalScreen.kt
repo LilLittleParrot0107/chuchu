@@ -1316,6 +1316,7 @@ fun TerminalScreen(
                                     onResize = vm::onCanvasSizeChanged,
                                     onTap = onTerminalTapped,
                                     onDoubleTap = requestInputFocus,
+                                    onTripleTap = { showComposeBox = true },
                                     onPrimaryClick = vm::onPrimaryMouseClick,
                                     onAppSelectionDrag = vm::onAppSelectionDrag,
                                     onScroll = vm::onScroll,
