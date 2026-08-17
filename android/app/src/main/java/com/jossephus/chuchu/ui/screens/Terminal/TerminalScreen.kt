@@ -1076,7 +1076,12 @@ fun TerminalScreen(
                         }
 
                     LaunchedEffect(Unit) {
-                        requestInputFocus()
+                        // Take focus so keys route here, but do NOT summon the
+                        // soft keyboard: this effect re-fires on every tab
+                        // switch, and auto-popping the IME on each switch was
+                        // unwanted. The keyboard still appears when the user
+                        // taps the terminal (onTap -> requestInputFocus).
+                        inputViewRef.value?.takeFocusSilently(inputMethodManager)
                         vm.onFocusChanged(true)
                     }
                     Column(
@@ -1527,9 +1532,10 @@ fun TerminalScreen(
                                                 }
                                                 setOnFocusChangeListener { _, hasFocus ->
                                                     vm.onFocusChanged(hasFocus)
-                                                    if (hasFocus) {
-                                                        showKeyboard(inputMethodManager)
-                                                    }
+                                                    // No showKeyboard on focus gain: tab
+                                                    // switches grant focus silently. Explicit
+                                                    // taps go through requestInputFocus ->
+                                                    // showKeyboard instead.
                                                 }
                                             }
                                             .also { view -> inputViewRef.value = view }

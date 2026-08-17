@@ -189,6 +189,20 @@ class TerminalInputView(context: Context) : EditText(context) {
         return super.onKeyUp(keyCode, event)
     }
 
+    /**
+     * Take input focus (so hardware keys and the IME target this view)
+     * WITHOUT summoning the soft keyboard. Used on automatic focus paths
+     * like tab switches, where popping the IME uninvited is unwanted —
+     * the keyboard still appears on an explicit tap via [showKeyboard].
+     */
+    fun takeFocusSilently(imm: InputMethodManager?) {
+        if (imm != null) inputMethodManager = imm
+        if (!hasFocus()) {
+            requestFocus()
+            requestFocusFromTouch()
+        }
+    }
+
     fun showKeyboard(imm: InputMethodManager?) {
         if (imm == null) return
         inputMethodManager = imm
@@ -342,13 +356,31 @@ class TerminalInputView(context: Context) : EditText(context) {
 
             reconcileAndEmitMutation(source, before, after)
 
-            // Drop committed text from the mirror immediately; a long-lived
-            // buffer let one backspace diff into many deletes. Keep only an
-            // active composing region, until it's committed or finished.
-            if (!composing && getEditable().isNotEmpty()) {
-                clearMirrorSilently()
+            // Keep committed text in the mirror as IME context instead of
+            // dropping it: Vietnamese/CJK IMEs revise already-committed
+            // characters via setComposingRegion (Telex: commit "a", then on
+            // "s" compose the region into "á"). With an empty mirror that
+            // revision arrived as a plain insert — "aá" on the terminal.
+            // Control keys and newlines still invalidate the mirror
+            // (shouldInvalidateImeMirrorForKey / reconcileAndEmitMutation),
+            // which is what actually guards against stale-buffer
+            // over-backspacing; the cap keeps the buffer bounded.
+            if (!composing) {
+                trimMirrorToCap()
             }
             return ok
+        }
+
+        // Bound the retained IME context. Trimming from the front keeps the
+        // recent text (what an IME would revise) while the editable stays the
+        // IME's consistent source of truth via getTextBeforeCursor.
+        private fun trimMirrorToCap() {
+            val editable = getEditable()
+            if (editable.length > maxImeBufferChars) {
+                editable.delete(0, editable.length - maxImeBufferChars)
+                Selection.setSelection(editable, editable.length)
+                logConn("trimMirrorToCap len=${editable.length}")
+            }
         }
 
         // Clear the mirror and composing spans without emitting bytes, keeping
@@ -385,9 +417,10 @@ class TerminalInputView(context: Context) : EditText(context) {
         override fun finishComposingText(): Boolean {
             logConn("finishComposingText")
             val ok = super.finishComposingText()
-            // Composing region is committed; drop the mirror copy so a later
-            // backspace can't mass-delete it.
-            if (getEditable().isNotEmpty()) clearMirrorSilently()
+            // Keep the (now committed) text as revisable IME context — see
+            // trimMirrorToCap. Dropping it here broke Vietnamese tone marks
+            // applied to a just-finished word.
+            trimMirrorToCap()
             return ok
         }
 
