@@ -148,6 +148,13 @@ fun ServerListScreen(
                 }
 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ChuButton(
+                        onClick = onOpenWeb,
+                        variant = ChuButtonVariant.Outlined,
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                    ) {
+                        ChuText("❏", style = typography.label, color = colors.textSecondary)
+                    }
                     if (!isSearchVisible && hosts.isNotEmpty()) {
                         ChuButton(
                             onClick = { isSearchVisible = true },
@@ -157,13 +164,6 @@ fun ServerListScreen(
                         ) {
                             ChuText("filter", style = typography.label, color = colors.textSecondary)
                         }
-                    }
-                    ChuButton(
-                        onClick = onOpenWeb,
-                        variant = ChuButtonVariant.Outlined,
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                    ) {
-                        ChuText("❏", style = typography.label, color = colors.textSecondary)
                     }
                     ChuButton(
                         onClick = onOpenSettings,

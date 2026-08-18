@@ -1836,7 +1836,9 @@ fun TerminalScreen(
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(6.dp))
+                        // No spacer here: the accessory bar sits on a distinct
+                        // surface tone now, and any gap between it and the
+                        // canvas/compose-box shows as a background-colored slit.
                         if (selectedTab == ConnectionTab.Terminal) {
                             if (activeHostCount > 1 && currentHostName != null) {
                                 Row(
@@ -1881,7 +1883,6 @@ fun TerminalScreen(
                                 onComposeBox = { showComposeBox = true },
                                 onSummonKeyboard = requestInputFocus,
                                 useSingleRow = useSingleRowAccessoryBar,
-                                modifier = Modifier.padding(bottom = 2.dp),
                             )
                         }
                     }
