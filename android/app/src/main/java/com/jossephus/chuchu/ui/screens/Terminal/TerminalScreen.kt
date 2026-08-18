@@ -1706,8 +1706,8 @@ fun TerminalScreen(
                                             Modifier.align(Alignment.BottomCenter)
                                                 .fillMaxWidth()
                                                 .background(colors.background.copy(alpha = 0.96f))
-                                                .padding(10.dp),
-                                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                                                .padding(8.dp),
+                                        verticalArrangement = Arrangement.spacedBy(6.dp),
                                     ) {
                                         Row(
                                             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1735,6 +1735,7 @@ fun TerminalScreen(
                                                     androidx.compose.foundation.text.KeyboardActions(
                                                         onSend = { sendComposeBox() },
                                                     ),
+                                                verticalPadding = 7.dp,
                                             )
                                             // [×]: dismiss the compose box and
                                             // leave the keyboard AS IT IS.
@@ -1760,8 +1761,8 @@ fun TerminalScreen(
                                                 borderColor = colors.textMuted,
                                                 contentPadding =
                                                     PaddingValues(
-                                                        horizontal = 10.dp,
-                                                        vertical = 8.dp,
+                                                        horizontal = 9.dp,
+                                                        vertical = 6.dp,
                                                     ),
                                             ) {
                                                 ChuText("×", style = typography.label)
@@ -1782,8 +1783,8 @@ fun TerminalScreen(
                                                 bracketed = true,
                                                 contentPadding =
                                                     PaddingValues(
-                                                        horizontal = 12.dp,
-                                                        vertical = 8.dp,
+                                                        horizontal = 10.dp,
+                                                        vertical = 6.dp,
                                                     ),
                                             ) {
                                                 ChuText("insert", style = typography.label)
@@ -1795,8 +1796,8 @@ fun TerminalScreen(
                                                 borderColor = colors.accent,
                                                 contentPadding =
                                                     PaddingValues(
-                                                        horizontal = 12.dp,
-                                                        vertical = 8.dp,
+                                                        horizontal = 10.dp,
+                                                        vertical = 6.dp,
                                                     ),
                                             ) {
                                                 ChuText("send ↵", style = typography.label)

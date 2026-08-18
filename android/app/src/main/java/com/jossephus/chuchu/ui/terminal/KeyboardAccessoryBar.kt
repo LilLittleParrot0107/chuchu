@@ -67,16 +67,17 @@ fun KeyboardAccessoryBar(
     onSummonKeyboard: (() -> Unit)? = null,
     useSingleRow: Boolean = false,
     horizontalPadding: Dp = 8.dp,
-    verticalPadding: Dp = 6.dp,
+    verticalPadding: Dp = 5.dp,
     modifier: Modifier = Modifier,
 ) {
     // Single-row mode gets roomier buttons: it is the phone-first layout and
-    // the 30dp keys were fiddly to hit there.
-    val buttonHeight = if (useSingleRow) 38.dp else 30.dp
+    // the 30dp keys were fiddly to hit there. (Whole bar trimmed ~15% on
+    // user request, 18/8.)
+    val buttonHeight = if (useSingleRow) 32.dp else 26.dp
     val buttonPadding = if (useSingleRow) {
-        PaddingValues(start = 12.dp, end = 12.dp, top = 5.dp, bottom = 5.dp)
+        PaddingValues(start = 11.dp, end = 11.dp, top = 4.dp, bottom = 4.dp)
     } else {
-        PaddingValues(start = 10.dp, end = 10.dp, top = 3.dp, bottom = 3.dp)
+        PaddingValues(start = 9.dp, end = 9.dp, top = 2.dp, bottom = 2.dp)
     }
     var expandedGroupId by remember { mutableStateOf<String?>(null) }
     val onChildAction: (AccessoryAction) -> Unit = { action ->
