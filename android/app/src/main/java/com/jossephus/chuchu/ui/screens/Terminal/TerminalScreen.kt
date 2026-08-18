@@ -386,7 +386,15 @@ fun TerminalScreen(
         if (ch <= 0 || fullCanvasArgs[5] <= 0) return@LaunchedEffect
         val predictedH = fullCanvasArgs[5] - imeTargetBottomPx
         if (predictedH <= 0) return@LaunchedEffect
-        val predictedRows = maxOf(1, predictedH / ch)
+        // DISMISS returns to exactly the keyboard-hidden baseline, so reuse
+        // its recorded row count. Deriving it from predictedH / ch was off by
+        // one whenever the true cell height wasn't a whole px (the canvas
+        // divides by the fractional height, ch here is ceiled) — the early
+        // resize then sent the wrong grid and the settle resize corrected it:
+        // a one-row jump-and-back right after the keyboard finished hiding.
+        val predictedRows =
+            if (imeTargetBottomPx == 0) fullCanvasArgs[1]
+            else maxOf(1, predictedH / ch)
         vm.onPredictedViewport(
             fullCanvasArgs[0],
             predictedRows,
