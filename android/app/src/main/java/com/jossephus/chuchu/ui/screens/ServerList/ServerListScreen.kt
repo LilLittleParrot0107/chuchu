@@ -9,6 +9,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -142,19 +143,17 @@ fun ServerListScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                // The title doubles as the portal entry: tapping "kohi" opens
+                // the dufs browser (the separate ❏ button was dropped).
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.clickable(onClick = onOpenWeb),
+                ) {
                     ChuText("$ ", style = typography.headline, color = colors.textMuted)
                     ChuText("kohi", style = typography.headline)
                 }
 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ChuButton(
-                        onClick = onOpenWeb,
-                        variant = ChuButtonVariant.Outlined,
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                    ) {
-                        ChuText("❏", style = typography.label, color = colors.textSecondary)
-                    }
                     if (!isSearchVisible && hosts.isNotEmpty()) {
                         ChuButton(
                             onClick = { isSearchVisible = true },

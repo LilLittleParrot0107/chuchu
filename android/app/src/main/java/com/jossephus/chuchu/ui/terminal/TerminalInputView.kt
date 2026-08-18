@@ -213,8 +213,12 @@ class TerminalInputView(context: Context) : EditText(context) {
         if (imm == null) return
         inputMethodManager = imm
         if (!hasFocus()) {
+            // Plain requestFocus, same as takeFocusSilently:
+            // requestFocusFromTouch simulates a tap (OEM IMEs auto-show for
+            // it) AND asks ancestors to scroll the focused view into sight —
+            // the accessory-bar [⌨] button visibly dragged the whole
+            // terminal up because of it.
             requestFocus()
-            requestFocusFromTouch()
         }
         post {
             logInput("showKeyboard.restartInput")
