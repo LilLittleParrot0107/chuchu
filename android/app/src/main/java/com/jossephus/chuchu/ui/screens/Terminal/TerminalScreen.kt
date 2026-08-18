@@ -300,6 +300,21 @@ fun TerminalScreen(
     openLocalShell: Boolean = false,
 ) {
     val sessionState by vm.sessionState.collectAsStateWithLifecycle()
+
+    // Telegram deep-link pane jump: once the session is Connected (herdr
+    // auto-attaches via .bashrc), drive herdr's goto (prefix+g, id, Enter)
+    // to land on the pane the notification came from. Delays let ssh +
+    // herdr attach settle; the goto prompt needs a beat to open.
+    val pendingDeepLinkPane by com.jossephus.chuchu.DeepLinkBus.pendingPane.collectAsStateWithLifecycle()
+    LaunchedEffect(sessionState.status, pendingDeepLinkPane) {
+        val pane = pendingDeepLinkPane ?: return@LaunchedEffect
+        if (sessionState.status != SessionStatus.Connected) return@LaunchedEffect
+        kotlinx.coroutines.delay(2500)
+        com.jossephus.chuchu.DeepLinkBus.pendingPane.value = null
+        vm.onTextInput("\u0002g")
+        kotlinx.coroutines.delay(300)
+        vm.onTextInput(pane + "\r")
+    }
     val tabs by vm.tabs.collectAsStateWithLifecycle()
     val activeTabId by vm.activeTabId.collectAsStateWithLifecycle()
     val activeTab by vm.activeTab.collectAsStateWithLifecycle()

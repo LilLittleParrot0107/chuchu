@@ -33,6 +33,9 @@ import kotlinx.coroutines.launch
  */
 object DeepLinkBus {
     val pendingHostName = MutableStateFlow<String?>(null)
+
+    /** herdr pane id (e.g. "w4:p1") to jump to once the terminal attaches. */
+    val pendingPane = MutableStateFlow<String?>(null)
 }
 
 class MainActivity : FragmentActivity() {
@@ -42,6 +45,7 @@ class MainActivity : FragmentActivity() {
         val isKohiScheme = data.scheme == "kohi"
         val isHttpsPath = data.path?.startsWith("/kohi-open") == true
         if (!isKohiScheme && !isHttpsPath) return
+        DeepLinkBus.pendingPane.value = data.getQueryParameter("pane")?.trim()?.ifEmpty { null }
         DeepLinkBus.pendingHostName.value = data.getQueryParameter("host")?.trim()?.ifEmpty { null }
     }
 
