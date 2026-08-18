@@ -661,6 +661,7 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
     // slide); the per-frame canvas sizes that follow during the slide are
     // ignored until the canvas settles at (or near) the prediction.
     private var predictedViewport: Pair<Int, Int>? = null
+    private var predictedGrid: Pair<Int, Int>? = null // cols to rows
     private var predictedAtMs = 0L
 
     private var predictionResized = false
@@ -681,6 +682,7 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
         resizeNow: Boolean,
     ) {
         predictedViewport = screenWidth to screenHeight
+        predictedGrid = cols to rows
         predictedAtMs = android.os.SystemClock.uptimeMillis()
         predictionResized = resizeNow
         resizeSettleJob?.cancel()
@@ -705,8 +707,15 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
             val (pw, ph) = predicted
             if (screenWidth == pw && kotlin.math.abs(screenHeight - ph) <= cellHeight) {
                 // Slide finished at (or within a row of) the prediction.
+                val pg = predictedGrid
                 predictedViewport = null
-                if (!predictionResized || screenHeight != ph) {
+                predictedGrid = null
+                // Re-resize only when the GRID actually differs from what the
+                // early resize already sent. A pixel-only mismatch (inset
+                // rounding) still fires SIGWINCH, so the remote repainted the
+                // whole frame a second time right after the keyboard settled —
+                // the post-slide hitch.
+                if (!predictionResized || pg == null || cols != pg.first || rows != pg.second) {
                     sessionRepository.resize(cols, rows, cellWidth, cellHeight, screenWidth, screenHeight)
                 }
                 return
@@ -719,6 +728,7 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
             }
             // Width changed (rotation) or prediction expired — fall through.
             predictedViewport = null
+            predictedGrid = null
         }
 
         // Pure viewport changes with unchanged cell metrics forward
