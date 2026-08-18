@@ -408,6 +408,9 @@ fun TerminalScreen(
             ch,
             fullCanvasArgs[4],
             predictedH,
+            // Early resize only on DISMISS (grow): the remote repaint then
+            // overlaps the slide. On OPEN it caused a visible flash.
+            resizeNow = imeTargetBottomPx == 0,
         )
     }
     var showGlobalTabManager by remember { mutableStateOf(false) }

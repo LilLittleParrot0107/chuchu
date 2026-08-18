@@ -663,8 +663,14 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
     private var predictedViewport: Pair<Int, Int>? = null
     private var predictedAtMs = 0L
 
-    /** Resize the PTY NOW to the keyboard-slide destination, before the
-     * animated layout gets there. Called from the imeAnimationTarget effect. */
+    private var predictionResized = false
+
+    /** Arm the keyboard-slide destination. [resizeNow]=true (keyboard
+     * DISMISS, viewport grows) resizes the PTY immediately so the remote
+     * repaint overlaps the slide. [resizeNow]=false (keyboard OPEN, viewport
+     * shrinks) only swallows the mid-slide frames and resizes ONCE when the
+     * final frame lands — resizing early on open made the content jump to
+     * its final size while the viewport was still large (visible flash). */
     fun onPredictedViewport(
         cols: Int,
         rows: Int,
@@ -672,14 +678,18 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
         cellHeight: Int,
         screenWidth: Int,
         screenHeight: Int,
+        resizeNow: Boolean,
     ) {
         predictedViewport = screenWidth to screenHeight
         predictedAtMs = android.os.SystemClock.uptimeMillis()
+        predictionResized = resizeNow
         resizeSettleJob?.cancel()
         resizedOnce = true
         lastCellWidth = cellWidth
         lastCellHeight = cellHeight
-        sessionRepository.resize(cols, rows, cellWidth, cellHeight, screenWidth, screenHeight)
+        if (resizeNow) {
+            sessionRepository.resize(cols, rows, cellWidth, cellHeight, screenWidth, screenHeight)
+        }
     }
 
     fun onCanvasSizeChanged(
@@ -696,7 +706,7 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
             if (screenWidth == pw && kotlin.math.abs(screenHeight - ph) <= cellHeight) {
                 // Slide finished at (or within a row of) the prediction.
                 predictedViewport = null
-                if (screenHeight != ph) {
+                if (!predictionResized || screenHeight != ph) {
                     sessionRepository.resize(cols, rows, cellWidth, cellHeight, screenWidth, screenHeight)
                 }
                 return
