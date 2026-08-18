@@ -26,13 +26,12 @@ android {
 
         // kohi versioning: keep in step with the delivered APK name
         // (kohi-v<major>.<minor>.<patch>.apk).
-        val major = (System.getenv("VERSION_MAJOR")?.toIntOrNull() ?: 0)
+        val major = (System.getenv("VERSION_MAJOR")?.toIntOrNull() ?: 1)
         val minor = (System.getenv("VERSION_MINOR")?.toIntOrNull() ?: 23)
         val patch = (System.getenv("VERSION_PATCH")?.toIntOrNull() ?: 9)
-        // The visible major dropped 1 → 0, but versionCode must never go
-        // backwards (Android refuses downgrades over the installed 1.x
-        // builds), so the code keeps the old 1.x base.
-        val releaseBase = (major + 1) * 10_000 + minor * 100 + patch
+        // versionCode must never go backwards: Android refuses to install a
+        // lower code over an existing build.
+        val releaseBase = major * 10_000 + minor * 100 + patch
         versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: (releaseBase * 1_000)
         versionName = System.getenv("VERSION_NAME") ?: "$major.$minor.$patch"
 
