@@ -1726,16 +1726,23 @@ fun TerminalScreen(
                                                         onSend = { sendComposeBox() },
                                                     ),
                                             )
-                                            // [×]: dismiss the compose box but
-                                            // KEEP the keyboard. Order matters:
-                                            // move the IME target onto the
-                                            // terminal FIRST, then remove the
-                                            // box — closing first left the IME
-                                            // ownerless for a frame, so it
-                                            // dipped down and popped back up.
+                                            // [×]: dismiss the compose box and
+                                            // leave the keyboard AS IT IS.
+                                            // Keyboard up: retarget it onto the
+                                            // terminal BEFORE the box closes
+                                            // (closing first made it dip and
+                                            // re-raise). Keyboard already down
+                                            // (e.g. user swiped back): only move
+                                            // focus silently — summoning it
+                                            // here was unwanted.
                                             ChuButton(
                                                 onClick = {
-                                                    requestInputFocus()
+                                                    if (imeVisibleNow) {
+                                                        requestInputFocus()
+                                                    } else {
+                                                        inputViewRef.value
+                                                            ?.takeFocusSilently(inputMethodManager)
+                                                    }
                                                     showComposeBox = false
                                                 },
                                                 variant = ChuButtonVariant.Ghost,
