@@ -1359,19 +1359,14 @@ fun TerminalScreen(
                                         vm.onCanvasSizeChanged(cols, rows, cw, ch, w, h)
                                     },
                                     onTap = onTerminalTapped,
-                                    // Gesture map by usage frequency: double
-                                    // tap = compose box (Vietnamese input, the
-                                    // most-used action; its [×] hands off to
-                                    // the plain keyboard), triple tap = Enter.
-                                    // The 3rd tap arrives after the 2nd already
-                                    // opened the box, so triple closes it again
-                                    // before sending Enter (brief flash).
+                                    // Double tap = compose box (Vietnamese
+                                    // input, the most-used action; its [×]
+                                    // hands off to the plain keyboard).
+                                    // Triple tap deliberately does nothing —
+                                    // the triple-tap-Enter experiment was
+                                    // removed at the user's request.
                                     onDoubleTap = { showComposeBox = true },
-                                    onTripleTap = {
-                                        showComposeBox = false
-                                        composeBoxText = ""
-                                        vm.onSpecialKeyInput(TerminalSpecialKey.Enter, 0)
-                                    },
+                                    onTripleTap = {},
                                     onArrowKey = { key ->
                                         vm.onSpecialKeyInput(key, 0)
                                     },
