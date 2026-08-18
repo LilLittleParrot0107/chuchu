@@ -381,23 +381,8 @@ fun TerminalScreen(
     // means no baseline captured yet.
     val fullCanvasArgs = remember { IntArray(6) }
     val imeVisibleNow = WindowInsets.isImeVisible
-    // And when the keyboard is already down, back closes just the box.
-    BackHandler(enabled = showComposeBox) {
-        showComposeBox = false
-    }
     val imeTargetBottomPx = WindowInsets.imeAnimationTarget.getBottom(density)
     val imeNowBottomPx = WindowInsets.ime.getBottom(density)
-    // The compose box lives and dies with the keyboard. Watch the IME's
-    // animation TARGET, not its visibility: the target drops to 0 the moment
-    // a dismissal STARTS, so the box vanishes in step with the keyboard
-    // instead of lagging until the slide finishes.
-    var prevImeTargetForComposeBox by remember { mutableStateOf(0) }
-    LaunchedEffect(imeTargetBottomPx) {
-        if (prevImeTargetForComposeBox > 0 && imeTargetBottomPx == 0 && showComposeBox) {
-            showComposeBox = false
-        }
-        prevImeTargetForComposeBox = imeTargetBottomPx
-    }
     LaunchedEffect(imeTargetBottomPx) {
         val ch = fullCanvasArgs[3]
         if (ch <= 0 || fullCanvasArgs[5] <= 0) return@LaunchedEffect
@@ -1173,6 +1158,10 @@ fun TerminalScreen(
                                 // keeps content glued to the keyboard edge.
                                 // No per-frame relayout, no end-of-slide jolt,
                                 // both directions.
+                                // Painted BEFORE the translation layer: the
+                                // strip the sliding content vacates must show
+                                // solid app background, not a see-through hole.
+                                .background(colors.background)
                                 .graphicsLayer {
                                     translationY =
                                         (imeTargetBottomPx - imeNowBottomPx).toFloat()
