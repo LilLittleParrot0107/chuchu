@@ -88,6 +88,9 @@ fun TerminalCanvas(
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
     var lastResizedGrid by remember { mutableStateOf(Pair(0, 0)) }
     val doubleTapState = remember { DoubleTapState() }
+    // Finger position while the arrow-trackpad is armed; null when inactive.
+    // Read by the Canvas draw pass to render the trackpad indicator overlay.
+    var trackpadIndicator by remember { mutableStateOf<Offset?>(null) }
     val androidViewConfiguration = remember(context) { ViewConfiguration.get(context) }
     val touchSlopPx = remember(androidViewConfiguration) { androidViewConfiguration.scaledTouchSlop.toFloat() }
     val longPressSlopPx = remember(touchSlopPx) { touchSlopPx * 1.5f }
@@ -348,22 +351,13 @@ fun TerminalCanvas(
 
                                 if (event == null) {
                                     if (dragMode == DragMode.None) {
-                                        val s = currentSnapshot.value
-                                        val downPos = toSnapshotSpace(down.position, s)
-                                        // Long-press arms the arrow trackpad
-                                        // (replaces drag-selection and the
-                                        // app-mouse drag): releasing in place
-                                        // keeps the selection made here —
-                                        // adjust it with the drag handles —
-                                        // while dragging clears it and moves
-                                        // the cursor with arrow keys.
-                                        startSelection(
-                                            s,
-                                            downPos,
-                                            currentCellWidth.value,
-                                            currentCellHeight.value,
-                                            currentOnSelectionChange.value,
-                                        )
+                                        // Long-press arms the arrow trackpad.
+                                        // NO selection yet: selecting here made
+                                        // the copy/paste menu pop up mid-swipe
+                                        // (stray paste taps). Word selection
+                                        // happens on a stationary RELEASE
+                                        // instead; dragging steers the cursor.
+                                        trackpadIndicator = down.position
                                         currentHaptics.value.performHapticFeedback(
                                             HapticFeedbackType.LongPress,
                                         )
@@ -394,6 +388,24 @@ fun TerminalCanvas(
                                         val s = currentSnapshot.value
                                         val releasePos = toSnapshotSpace(lastPointerPos, s)
                                         currentOnAppSelectionDrag.value(TerminalMouseAction.Release, releasePos.x, releasePos.y)
+                                    }
+                                    if (releasedDragMode == DragMode.ArrowTrackpad) {
+                                        trackpadIndicator = null
+                                        if (!trackpadMoved) {
+                                            // Stationary hold + release: this is
+                                            // the deliberate word-select gesture
+                                            // (the copy/paste menu appears NOW,
+                                            // when it can't collide with a swipe).
+                                            val s = currentSnapshot.value
+                                            startSelection(
+                                                s,
+                                                toSnapshotSpace(down.position, s),
+                                                currentCellWidth.value,
+                                                currentCellHeight.value,
+                                                currentOnSelectionChange.value,
+                                            )
+                                        }
+                                        break
                                     }
                                     if (releasedDragMode != DragMode.None) {
                                         break
@@ -491,6 +503,7 @@ fun TerminalCanvas(
                                 )
                                 if (dragMode == DragMode.ArrowTrackpad) {
                                     lastPointerPos = change.position
+                                    trackpadIndicator = change.position
                                     autoScrollDir = 0
                                     autoScrollingSelection = false
                                     if (!trackpadMoved) {
@@ -612,6 +625,7 @@ fun TerminalCanvas(
                                 }
                             }
                         } finally {
+                            trackpadIndicator = null
                             autoScrollingSelection = false
                             if (dragMode == DragMode.AppMouseDrag) {
                                 val s = currentSnapshot.value
@@ -905,6 +919,35 @@ fun TerminalCanvas(
                 }
             }
             nCanvas.restore()
+        }
+
+        // Arrow-trackpad indicator: a soft ring with four chevrons riding the
+        // finger, so it's obvious cursor-steering mode is active.
+        trackpadIndicator?.let { pos ->
+            val ring = Color.White.copy(alpha = 0.55f)
+            val r = 26.dp.toPx()
+            drawCircle(color = Color.White.copy(alpha = 0.15f), radius = r, center = pos)
+            drawCircle(
+                color = ring,
+                radius = r,
+                center = pos,
+                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx()),
+            )
+            val a = 6.dp.toPx()
+            val g = r + 9.dp.toPx()
+            val tri = androidx.compose.ui.graphics.Path()
+            fun chevron(cx: Float, cy: Float, dx: Float, dy: Float) {
+                tri.reset()
+                tri.moveTo(cx + dx * a, cy + dy * a)
+                tri.lineTo(cx - dy * a, cy + dx * a)
+                tri.lineTo(cx + dy * a, cy - dx * a)
+                tri.close()
+                drawPath(tri, ring)
+            }
+            chevron(pos.x - g, pos.y, -1f, 0f)
+            chevron(pos.x + g, pos.y, 1f, 0f)
+            chevron(pos.x, pos.y - g, 0f, -1f)
+            chevron(pos.x, pos.y + g, 0f, 1f)
         }
     }
 }
