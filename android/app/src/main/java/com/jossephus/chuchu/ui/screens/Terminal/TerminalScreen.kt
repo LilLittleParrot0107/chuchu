@@ -1727,12 +1727,16 @@ fun TerminalScreen(
                                                     ),
                                             )
                                             // [×]: dismiss the compose box but
-                                            // KEEP the keyboard — refocused onto
-                                            // the terminal for direct typing.
+                                            // KEEP the keyboard. Order matters:
+                                            // move the IME target onto the
+                                            // terminal FIRST, then remove the
+                                            // box — closing first left the IME
+                                            // ownerless for a frame, so it
+                                            // dipped down and popped back up.
                                             ChuButton(
                                                 onClick = {
-                                                    showComposeBox = false
                                                     requestInputFocus()
+                                                    showComposeBox = false
                                                 },
                                                 variant = ChuButtonVariant.Ghost,
                                                 bracketed = true,
