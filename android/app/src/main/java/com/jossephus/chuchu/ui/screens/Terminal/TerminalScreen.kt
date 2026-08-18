@@ -1702,7 +1702,6 @@ fun TerminalScreen(
                                                 onValueChange = { composeBoxText = it },
                                                 label = "",
                                                 showLabel = false,
-                                                placeholder = "compose here, then send to the terminal…",
                                                 autoFocus = true,
                                                 singleLine = true,
                                                 modifier = Modifier.weight(1f),
