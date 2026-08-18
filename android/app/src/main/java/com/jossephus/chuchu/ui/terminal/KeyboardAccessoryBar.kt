@@ -83,7 +83,10 @@ fun KeyboardAccessoryBar(
         onAction(action)
     }
 
-    Column(modifier = modifier) {
+    val colors = ChuColors.current
+    // Solid panel background: without it the bar inherited whatever showed
+    // behind it (translucent terminal / wallpaper) and read as see-through.
+    Column(modifier = modifier.background(colors.background)) {
         expandedGroupId?.let { groupId ->
             val expandedGroup =
                 entries.firstOrNull { it is ResolvedAccessoryEntry.Group && it.group.id == groupId }

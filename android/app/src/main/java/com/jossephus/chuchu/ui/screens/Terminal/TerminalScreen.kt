@@ -380,21 +380,22 @@ fun TerminalScreen(
     // means no baseline captured yet.
     val fullCanvasArgs = remember { IntArray(6) }
     val imeVisibleNow = WindowInsets.isImeVisible
-    // The compose box lives and dies with the keyboard: when the IME goes
-    // away while the box is open (back gesture / swipe-down), dismiss the
-    // box too instead of leaving a dead input strip behind.
-    var imeWasVisibleForComposeBox by remember { mutableStateOf(false) }
-    LaunchedEffect(imeVisibleNow, showComposeBox) {
-        if (imeWasVisibleForComposeBox && !imeVisibleNow && showComposeBox) {
-            showComposeBox = false
-        }
-        imeWasVisibleForComposeBox = imeVisibleNow
-    }
     // And when the keyboard is already down, back closes just the box.
     BackHandler(enabled = showComposeBox) {
         showComposeBox = false
     }
     val imeTargetBottomPx = WindowInsets.imeAnimationTarget.getBottom(density)
+    // The compose box lives and dies with the keyboard. Watch the IME's
+    // animation TARGET, not its visibility: the target drops to 0 the moment
+    // a dismissal STARTS, so the box vanishes in step with the keyboard
+    // instead of lagging until the slide finishes.
+    var prevImeTargetForComposeBox by remember { mutableStateOf(0) }
+    LaunchedEffect(imeTargetBottomPx) {
+        if (prevImeTargetForComposeBox > 0 && imeTargetBottomPx == 0 && showComposeBox) {
+            showComposeBox = false
+        }
+        prevImeTargetForComposeBox = imeTargetBottomPx
+    }
     LaunchedEffect(imeTargetBottomPx) {
         val ch = fullCanvasArgs[3]
         if (ch <= 0 || fullCanvasArgs[5] <= 0) return@LaunchedEffect
