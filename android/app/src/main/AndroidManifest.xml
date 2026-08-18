@@ -42,6 +42,14 @@
                     android:host="the-real-witch.tail26a258.ts.net"
                     android:pathPrefix="/kohi-open" />
             </intent-filter>
+            <!-- kohi://open?host=<name> — launched by the dufs trampoline
+                 page via Chrome's intent:// syntax; needs no verification. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="kohi" android:host="open" />
+            </intent-filter>
         </activity>
 
         <service

@@ -39,7 +39,9 @@ class MainActivity : FragmentActivity() {
 
     private fun captureDeepLink(intent: Intent?) {
         val data = intent?.data ?: return
-        if (data.path?.startsWith("/kohi-open") != true) return
+        val isKohiScheme = data.scheme == "kohi"
+        val isHttpsPath = data.path?.startsWith("/kohi-open") == true
+        if (!isKohiScheme && !isHttpsPath) return
         DeepLinkBus.pendingHostName.value = data.getQueryParameter("host")?.trim()?.ifEmpty { null }
     }
 
