@@ -24,9 +24,11 @@ android {
         minSdk = 24
         targetSdk = 36
 
-        val major = (System.getenv("VERSION_MAJOR")?.toIntOrNull() ?: 0)
-        val minor = (System.getenv("VERSION_MINOR")?.toIntOrNull() ?: 2)
-        val patch = (System.getenv("VERSION_PATCH")?.toIntOrNull() ?: 1)
+        // kohi versioning: keep in step with the delivered APK name
+        // (kohi-v<major>.<minor>.<patch>.apk).
+        val major = (System.getenv("VERSION_MAJOR")?.toIntOrNull() ?: 1)
+        val minor = (System.getenv("VERSION_MINOR")?.toIntOrNull() ?: 23)
+        val patch = (System.getenv("VERSION_PATCH")?.toIntOrNull() ?: 7)
         val releaseBase = major * 10_000 + minor * 100 + patch
         versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: (releaseBase * 1_000)
         versionName = System.getenv("VERSION_NAME") ?: "$major.$minor.$patch"
