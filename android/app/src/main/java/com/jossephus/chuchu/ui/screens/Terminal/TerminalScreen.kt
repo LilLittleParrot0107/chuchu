@@ -34,7 +34,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imeAnimationTarget
-import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.offset
@@ -43,6 +43,7 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -385,6 +386,7 @@ fun TerminalScreen(
         showComposeBox = false
     }
     val imeTargetBottomPx = WindowInsets.imeAnimationTarget.getBottom(density)
+    val imeNowBottomPx = WindowInsets.ime.getBottom(density)
     // The compose box lives and dies with the keyboard. Watch the IME's
     // animation TARGET, not its visibility: the target drops to 0 the moment
     // a dismissal STARTS, so the box vanishes in step with the keyboard
@@ -409,9 +411,10 @@ fun TerminalScreen(
             ch,
             fullCanvasArgs[4],
             predictedH,
-            // Early resize only on DISMISS (grow): the remote repaint then
-            // overlaps the slide. On OPEN it caused a visible flash.
-            resizeNow = imeTargetBottomPx == 0,
+            // Layout snaps at slide start in BOTH directions now, so the
+            // early resize always matches what is on screen — fire it
+            // immediately and let the repaint ride the slide.
+            resizeNow = true,
         )
     }
     var showGlobalTabManager by remember { mutableStateOf(false) }
@@ -1162,13 +1165,19 @@ fun TerminalScreen(
                                     if (showTabSheet || showGlobalTabManager) 10.dp
                                     else 0.dp
                                 )
-                                // Smooth slide (v9's snap-to-target padding
-                                // read as jank). The EARLY PTY resize still
-                                // happens: a LaunchedEffect on
-                                // imeAnimationTarget below predicts the final
-                                // viewport at animation START and dispatches
-                                // the resize concurrently with the slide.
-                                .imePadding()
+                                // Keyboard motion, Termius-grade: the LAYOUT
+                                // snaps to the destination ONCE at slide start
+                                // (imeAnimationTarget) and the PTY resize +
+                                // remote repaint run during the slide; the
+                                // VISUAL slide is a pure GPU translation that
+                                // keeps content glued to the keyboard edge.
+                                // No per-frame relayout, no end-of-slide jolt,
+                                // both directions.
+                                .graphicsLayer {
+                                    translationY =
+                                        (imeTargetBottomPx - imeNowBottomPx).toFloat()
+                                }
+                                .windowInsetsPadding(WindowInsets.imeAnimationTarget)
                     ) {
                         // Tab strip (strip mode only — always visible even with zero tabs)
                         if (tabMode == TerminalTabMode.Strip) {
