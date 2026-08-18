@@ -1702,7 +1702,7 @@ fun TerminalScreen(
                                                 onValueChange = { composeBoxText = it },
                                                 label = "",
                                                 showLabel = false,
-                                                placeholder = "Soạn ở đây rồi gửi vào terminal…",
+                                                placeholder = "compose here, then send to the terminal…",
                                                 autoFocus = true,
                                                 singleLine = true,
                                                 modifier = Modifier.weight(1f),
@@ -1771,7 +1771,7 @@ fun TerminalScreen(
                                                         vertical = 8.dp,
                                                     ),
                                             ) {
-                                                ChuText("Chèn", style = typography.label)
+                                                ChuText("insert", style = typography.label)
                                             }
                                             ChuButton(
                                                 onClick = sendComposeBox,
@@ -1784,7 +1784,7 @@ fun TerminalScreen(
                                                         vertical = 8.dp,
                                                     ),
                                             ) {
-                                                ChuText("Gửi ↵", style = typography.label)
+                                                ChuText("send ↵", style = typography.label)
                                             }
                                         }
                                     }
