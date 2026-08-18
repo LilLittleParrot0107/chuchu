@@ -1,5 +1,6 @@
 package com.jossephus.chuchu
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.SystemBarStyle
@@ -21,11 +22,35 @@ import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTheme
 import com.jossephus.chuchu.ui.theme.GhosttyThemeRegistry
 import com.jossephus.chuchu.ui.theme.resolveActiveThemeName
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 
+/**
+ * Hand-off channel for deep links (Telegram notification links):
+ * https://<tailnet>/kohi-open?host=<profile name>. MainActivity writes the
+ * requested host name here; ApplicationNavController consumes it once the
+ * app (and any app-lock) is ready.
+ */
+object DeepLinkBus {
+    val pendingHostName = MutableStateFlow<String?>(null)
+}
+
 class MainActivity : FragmentActivity() {
+
+    private fun captureDeepLink(intent: Intent?) {
+        val data = intent?.data ?: return
+        if (data.path?.startsWith("/kohi-open") != true) return
+        DeepLinkBus.pendingHostName.value = data.getQueryParameter("host")?.trim()?.ifEmpty { null }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        captureDeepLink(intent)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        captureDeepLink(intent)
         val settings = SettingsRepository.getInstance(this)
         lifecycleScope.launch {
             settings.hideScreenContents.collect { hideScreenContents ->

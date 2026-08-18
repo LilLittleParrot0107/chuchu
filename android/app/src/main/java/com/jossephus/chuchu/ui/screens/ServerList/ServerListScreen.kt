@@ -73,6 +73,7 @@ fun ServerListScreen(
     onConnectServer: (Long) -> Unit,
     onDeleteServer: (Long) -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenWeb: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -143,7 +144,7 @@ fun ServerListScreen(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     ChuText("$ ", style = typography.headline, color = colors.textMuted)
-                    ChuText("chuchu", style = typography.headline)
+                    ChuText("kohi", style = typography.headline)
                 }
 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -156,6 +157,13 @@ fun ServerListScreen(
                         ) {
                             ChuText("filter", style = typography.label, color = colors.textSecondary)
                         }
+                    }
+                    ChuButton(
+                        onClick = onOpenWeb,
+                        variant = ChuButtonVariant.Outlined,
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                    ) {
+                        ChuText("web", style = typography.label, color = colors.textSecondary)
                     }
                     ChuButton(
                         onClick = onOpenSettings,

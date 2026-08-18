@@ -7,6 +7,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.flow.firstOrNull
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.platform.LocalContext
@@ -56,6 +57,25 @@ fun ApplicationNavController() {
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // Telegram deep link consumer: when a /kohi-open?host=<name> link armed
+    // the bus, look the profile up by name and jump straight to its terminal.
+    val deepLinkHost by com.jossephus.chuchu.DeepLinkBus.pendingHostName.collectAsStateWithLifecycle()
+    LaunchedEffect(deepLinkHost) {
+        val wanted = deepLinkHost ?: return@LaunchedEffect
+        val db = com.jossephus.chuchu.data.db.AppDatabase.getInstance(application)
+        val list = com.jossephus.chuchu.data.repository.HostRepository(db.hostProfileDao())
+            .observeAll()
+            .firstOrNull()
+        com.jossephus.chuchu.DeepLinkBus.pendingHostName.value = null
+        if (list != null) {
+            val match = list.firstOrNull { it.name.equals(wanted, ignoreCase = true) }
+                ?: list.firstOrNull { it.host.equals(wanted, ignoreCase = true) }
+            if (match != null) {
+                navController.navigate("terminal/${match.id}")
+            }
+        }
     }
 
     NavHost(navController = navController, startDestination = "servers") {
@@ -109,9 +129,18 @@ fun ApplicationNavController() {
                 },
                 onDeleteServer = vm::deleteServer,
                 onOpenSettings = { navController.navigate("settings") },
+                onOpenWeb = { navController.navigate("web") },
             )
         }
-        composable("settings") {
+        composable("web") {
+            val settingsRepo = SettingsRepository.getInstance(application)
+            val webUrl by settingsRepo.webPortalUrl.collectAsStateWithLifecycle()
+            com.jossephus.chuchu.ui.screens.Web.WebPortalScreen(
+                url = webUrl,
+                onClose = { navController.popBackStack() },
+            )
+        }
+                composable("settings") {
             val settingsRepo = SettingsRepository.getInstance(application)
             val backupViewModel: SettingsBackupViewModel = viewModel(
                 factory = SettingsBackupViewModel.factory(application),
@@ -202,6 +231,7 @@ fun ApplicationNavController() {
                     hostId = null,
                     openLocalShell = true,
                     onOpenSettings = { navController.navigate("settings") },
+                    onOpenWeb = { navController.navigate("web") },
                     onBack = { navController.popBackStack() },
                 )
             } else {
@@ -223,6 +253,7 @@ fun ApplicationNavController() {
                 vm = vm,
                 hostId = id,
                 onOpenSettings = { navController.navigate("settings") },
+                onOpenWeb = { navController.navigate("web") },
                 onBack = { navController.popBackStack() },
             )
         }

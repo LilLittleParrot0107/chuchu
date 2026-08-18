@@ -23,6 +23,7 @@ enum class BuiltinCommand(
     NewTab("new_tab", "new tab", "open a new tab", 'n'),
     Actions("actions", "actions", "toggle floating custom actions button", 'a'),
     Settings("settings", "settings", "open settings", 's'),
+    Web("web", "web", "open the web portal (dufs)", 'w'),
     Close("close", "close", "close the active tab", 'q');
 
     companion object {

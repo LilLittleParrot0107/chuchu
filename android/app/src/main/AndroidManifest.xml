@@ -23,12 +23,24 @@
             android:enabled="true"
             android:exported="true"
             android:label="@string/app_name"
+            android:launchMode="singleTask"
             android:windowSoftInputMode="adjustNothing"
             android:theme="@style/Theme.Chuchu">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- Telegram deep link: https://<tailnet host>/kohi-open?host=<name>
+                 (no autoVerify: tapping shows the app chooser, which is fine) -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="https"
+                    android:host="the-real-witch.tail26a258.ts.net"
+                    android:pathPrefix="/kohi-open" />
             </intent-filter>
         </activity>
 

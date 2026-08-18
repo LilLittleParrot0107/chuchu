@@ -522,8 +522,10 @@ fun TerminalCanvas(
                                     if (trackpadMoved) {
                                         trackpadAccumX += changePos.x - changePrevPos.x
                                         trackpadAccumY += changePos.y - changePrevPos.y
-                                        val cw = currentCellWidth.value
-                                        val chp = currentCellHeight.value
+                                        // Deliberately > 1 cell per step: at
+                                        // 1.0 the trackpad felt hair-trigger.
+                                        val cw = currentCellWidth.value * TRACKPAD_CELLS_PER_STEP_X
+                                        val chp = currentCellHeight.value * TRACKPAD_CELLS_PER_STEP_Y
                                         while (true) {
                                             // Dominant axis per step so diagonal
                                             // wobble doesn't fire both axes.
@@ -1104,6 +1106,9 @@ private fun isNerdFontPrivateUse(cp: Int): Boolean {
         (cp in 0xF0000..0xFFFFD) ||
         (cp in 0x100000..0x10FFFD)
 }
+
+private const val TRACKPAD_CELLS_PER_STEP_X = 1.6f
+private const val TRACKPAD_CELLS_PER_STEP_Y = 1.4f
 
 private enum class DragMode {
     None,
