@@ -34,7 +34,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imeAnimationTarget
-import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.offset
@@ -43,7 +43,6 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -382,7 +381,6 @@ fun TerminalScreen(
     val fullCanvasArgs = remember { IntArray(6) }
     val imeVisibleNow = WindowInsets.isImeVisible
     val imeTargetBottomPx = WindowInsets.imeAnimationTarget.getBottom(density)
-    val imeNowBottomPx = WindowInsets.ime.getBottom(density)
     LaunchedEffect(imeTargetBottomPx) {
         val ch = fullCanvasArgs[3]
         if (ch <= 0 || fullCanvasArgs[5] <= 0) return@LaunchedEffect
@@ -396,10 +394,9 @@ fun TerminalScreen(
             ch,
             fullCanvasArgs[4],
             predictedH,
-            // Layout snaps at slide start in BOTH directions now, so the
-            // early resize always matches what is on screen — fire it
-            // immediately and let the repaint ride the slide.
-            resizeNow = true,
+            // Early resize only on DISMISS (grow): the remote repaint then
+            // overlaps the slide. On OPEN it caused a visible flash.
+            resizeNow = imeTargetBottomPx == 0,
         )
     }
     var showGlobalTabManager by remember { mutableStateOf(false) }
@@ -1150,23 +1147,15 @@ fun TerminalScreen(
                                     if (showTabSheet || showGlobalTabManager) 10.dp
                                     else 0.dp
                                 )
-                                // Keyboard motion, Termius-grade: the LAYOUT
-                                // snaps to the destination ONCE at slide start
-                                // (imeAnimationTarget) and the PTY resize +
-                                // remote repaint run during the slide; the
-                                // VISUAL slide is a pure GPU translation that
-                                // keeps content glued to the keyboard edge.
-                                // No per-frame relayout, no end-of-slide jolt,
-                                // both directions.
-                                // Painted BEFORE the translation layer: the
-                                // strip the sliding content vacates must show
-                                // solid app background, not a see-through hole.
-                                .background(colors.background)
-                                .graphicsLayer {
-                                    translationY =
-                                        (imeTargetBottomPx - imeNowBottomPx).toFloat()
-                                }
-                                .windowInsetsPadding(WindowInsets.imeAnimationTarget)
+                                // Smooth slide (v9's snap-to-target padding
+                                // read as jank; the snap+GPU-translation
+                                // rework broke keyboard dismissal on some
+                                // IMEs — content stayed up). The EARLY PTY
+                                // resize still happens: a LaunchedEffect on
+                                // imeAnimationTarget below predicts the final
+                                // viewport at animation START and dispatches
+                                // the resize concurrently with the slide.
+                                .imePadding()
                     ) {
                         // Tab strip (strip mode only — always visible even with zero tabs)
                         if (tabMode == TerminalTabMode.Strip) {

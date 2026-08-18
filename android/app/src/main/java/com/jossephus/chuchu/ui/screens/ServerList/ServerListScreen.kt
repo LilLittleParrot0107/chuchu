@@ -163,7 +163,7 @@ fun ServerListScreen(
                         variant = ChuButtonVariant.Outlined,
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                     ) {
-                        ChuText("📁", style = typography.label, color = colors.textSecondary)
+                        ChuText("❏", style = typography.label, color = colors.textSecondary)
                     }
                     ChuButton(
                         onClick = onOpenSettings,
