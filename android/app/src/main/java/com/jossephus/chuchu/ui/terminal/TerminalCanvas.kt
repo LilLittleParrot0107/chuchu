@@ -921,33 +921,17 @@ fun TerminalCanvas(
             nCanvas.restore()
         }
 
-        // Arrow-trackpad indicator: a soft ring with four chevrons riding the
-        // finger, so it's obvious cursor-steering mode is active.
+        // Arrow-trackpad indicator: a plain soft ring riding the finger
+        // (user preference — no chevrons).
         trackpadIndicator?.let { pos ->
-            val ring = Color.White.copy(alpha = 0.55f)
             val r = 26.dp.toPx()
             drawCircle(color = Color.White.copy(alpha = 0.15f), radius = r, center = pos)
             drawCircle(
-                color = ring,
+                color = Color.White.copy(alpha = 0.55f),
                 radius = r,
                 center = pos,
                 style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx()),
             )
-            val a = 6.dp.toPx()
-            val g = r + 9.dp.toPx()
-            val tri = androidx.compose.ui.graphics.Path()
-            fun chevron(cx: Float, cy: Float, dx: Float, dy: Float) {
-                tri.reset()
-                tri.moveTo(cx + dx * a, cy + dy * a)
-                tri.lineTo(cx - dy * a, cy + dx * a)
-                tri.lineTo(cx + dy * a, cy - dx * a)
-                tri.close()
-                drawPath(tri, ring)
-            }
-            chevron(pos.x - g, pos.y, -1f, 0f)
-            chevron(pos.x + g, pos.y, 1f, 0f)
-            chevron(pos.x, pos.y - g, 0f, -1f)
-            chevron(pos.x, pos.y + g, 0f, 1f)
         }
     }
 }
