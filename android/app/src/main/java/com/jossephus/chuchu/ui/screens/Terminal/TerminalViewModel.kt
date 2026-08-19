@@ -655,6 +655,7 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
     private var resizedOnce = false
     private var lastCellWidth = 0
     private var lastCellHeight = 0
+    private var lastScreenWidth = 0
 
     // Viewport the screen predicted from imeAnimationTarget at keyboard-slide
     // START. The PTY is resized to it immediately (repaint overlaps the
@@ -742,17 +743,24 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
         // immediately; a change in cell size (pinch-zoom re-rasterizing per
         // grid step) settles for 120ms before reaching the engine.
         val cellsChanged = cellWidth != lastCellWidth || cellHeight != lastCellHeight
+        val widthChanged = lastScreenWidth != 0 && screenWidth != lastScreenWidth
         lastCellWidth = cellWidth
         lastCellHeight = cellHeight
-        if (!resizedOnce || !cellsChanged) {
+        lastScreenWidth = screenWidth
+        if (!resizedOnce || (!cellsChanged && !widthChanged)) {
             resizedOnce = true
             resizeSettleJob?.cancel()
             sessionRepository.resize(cols, rows, cellWidth, cellHeight, screenWidth, screenHeight)
             return
         }
+        // Width changes only come from structural transitions — fold/unfold,
+        // rotation, split-screen — and foldables report a bogus intermediate
+        // window size mid-hinge (measured live: 31x70 → 27x61 → 30x32), each
+        // of which repainted the whole remote frame. Debounce until the
+        // window stops moving. Height-only changes (keyboard) stay immediate.
         resizeSettleJob?.cancel()
         resizeSettleJob = viewModelScope.launch {
-            kotlinx.coroutines.delay(120)
+            kotlinx.coroutines.delay(if (widthChanged && !cellsChanged) 450 else 120)
             sessionRepository.resize(cols, rows, cellWidth, cellHeight, screenWidth, screenHeight)
         }
     }
