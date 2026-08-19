@@ -705,16 +705,20 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
         val predicted = predictedViewport
         if (predicted != null && cellWidth == lastCellWidth && cellHeight == lastCellHeight) {
             val (pw, ph) = predicted
-            if (screenWidth == pw && kotlin.math.abs(screenHeight - ph) <= cellHeight) {
-                // Slide finished at (or within a row of) the prediction.
+            if (screenWidth == pw && screenHeight == ph) {
+                // Slide finished EXACTLY at the prediction. (A within-one-row
+                // tolerance here was a trap: near-final frames can land 1px
+                // short, and with a fractional cell height that px flips the
+                // row count — the "settled" resize then sent rows±1 and the
+                // true final frame corrected it: a 30→29→30 bounce, measured
+                // live at font 17. Near-final transients are swallowed below
+                // instead.)
                 val pg = predictedGrid
                 predictedViewport = null
                 predictedGrid = null
                 // Re-resize only when the GRID actually differs from what the
-                // early resize already sent. A pixel-only mismatch (inset
-                // rounding) still fires SIGWINCH, so the remote repainted the
-                // whole frame a second time right after the keyboard settled —
-                // the post-slide hitch.
+                // early resize already sent — a pixel-only difference still
+                // fires SIGWINCH and repaints the whole remote frame.
                 if (!predictionResized || pg == null || cols != pg.first || rows != pg.second) {
                     sessionRepository.resize(cols, rows, cellWidth, cellHeight, screenWidth, screenHeight)
                 }
@@ -723,7 +727,10 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
             if (screenWidth == pw &&
                 android.os.SystemClock.uptimeMillis() - predictedAtMs < 700L
             ) {
-                // Mid-slide frame; the PTY is already at the destination.
+                // Mid-slide frame (including near-final ones a few px off the
+                // target); the PTY is already at the destination. If the IME
+                // truly settles somewhere else, the 700ms window expires and
+                // the fall-through below resizes to reality.
                 return
             }
             // Width changed (rotation) or prediction expired — fall through.
