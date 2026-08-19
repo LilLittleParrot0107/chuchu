@@ -1,6 +1,7 @@
 package com.jossephus.chuchu
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.SystemBarStyle
@@ -22,8 +23,11 @@ import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTheme
 import com.jossephus.chuchu.ui.theme.GhosttyThemeRegistry
 import com.jossephus.chuchu.ui.theme.resolveActiveThemeName
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import java.net.HttpURLConnection
+import java.net.URL
 
 /**
  * Hand-off channel for deep links (Telegram notification links):
@@ -43,10 +47,37 @@ class MainActivity : FragmentActivity() {
     private fun captureDeepLink(intent: Intent?) {
         val data = intent?.data ?: return
         val isKohiScheme = data.scheme == "kohi"
-        val isHttpsPath = data.path?.startsWith("/kohi-open") == true
+        val path = data.path.orEmpty()
+        val isHttpsPath = path.startsWith("/kohi-open") || path.startsWith("/kohi-focus/go")
         if (!isKohiScheme && !isHttpsPath) return
-        DeepLinkBus.pendingPane.value = data.getQueryParameter("pane")?.trim()?.ifEmpty { null }
-        DeepLinkBus.pendingHostName.value = data.getQueryParameter("host")?.trim()?.ifEmpty { null }
+        // Telegram sometimes leaves the href's "&amp;" un-escaped, so the
+        // second parameter arrives named "amp;pane" (seen in the hook's
+        // access log). Accept both spellings.
+        fun param(name: String) =
+            (data.getQueryParameter(name) ?: data.getQueryParameter("amp;$name"))
+                ?.trim()?.ifEmpty { null }
+        val pane = param("pane")
+        DeepLinkBus.pendingPane.value = pane
+        DeepLinkBus.pendingHostName.value = param("host")
+        // A verified App Link hands the URL straight to us, so the hook page
+        // that used to focus the herdr tab on its way through the browser
+        // never runs — call the hook's /focus endpoint ourselves. (kohi://
+        // links come FROM that page, which already did it.)
+        if (isHttpsPath && pane != null) {
+            val focusUrl = "${data.scheme}://${data.host}/kohi-focus/focus?pane=" + Uri.encode(pane)
+            lifecycleScope.launch(Dispatchers.IO) {
+                runCatching {
+                    val conn = URL(focusUrl).openConnection() as HttpURLConnection
+                    conn.connectTimeout = 4000
+                    conn.readTimeout = 4000
+                    try {
+                        conn.responseCode
+                    } finally {
+                        conn.disconnect()
+                    }
+                }
+            }
+        }
     }
 
     override fun onNewIntent(intent: Intent) {

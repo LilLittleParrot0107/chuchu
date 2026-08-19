@@ -31,9 +31,15 @@
 
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- Telegram deep link: https://<tailnet host>/kohi-open?host=<name>
-                 (no autoVerify: tapping shows the app chooser, which is fine) -->
-            <intent-filter>
+            <!-- Telegram deep link, VERIFIED: the tailnet host serves
+                 /.well-known/assetlinks.json naming this package + signing
+                 fingerprint, so Android opens kohi straight from the tap —
+                 no browser, no trampoline page, no second tap. Covers the
+                 notification links (/kohi-focus/go) and the legacy
+                 /kohi-open path. Verification needs the tailnet reachable;
+                 if it does not take, "Open by default" in app settings does
+                 the same thing by hand, and the browser path still works. -->
+            <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
@@ -41,6 +47,10 @@
                     android:scheme="https"
                     android:host="the-real-witch.tail26a258.ts.net"
                     android:pathPrefix="/kohi-open" />
+                <data
+                    android:scheme="https"
+                    android:host="the-real-witch.tail26a258.ts.net"
+                    android:pathPrefix="/kohi-focus/go" />
             </intent-filter>
             <!-- kohi://open?host=<name> — launched by the dufs trampoline
                  page via Chrome's intent:// syntax; needs no verification. -->

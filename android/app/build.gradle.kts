@@ -28,7 +28,7 @@ android {
         // (kohi-v<major>.<minor>.<patch>.apk).
         val major = (System.getenv("VERSION_MAJOR")?.toIntOrNull() ?: 1)
         val minor = (System.getenv("VERSION_MINOR")?.toIntOrNull() ?: 23)
-        val patch = (System.getenv("VERSION_PATCH")?.toIntOrNull() ?: 11)
+        val patch = (System.getenv("VERSION_PATCH")?.toIntOrNull() ?: 12)
         // versionCode must never go backwards: Android refuses to install a
         // lower code over an existing build.
         val releaseBase = major * 10_000 + minor * 100 + patch
