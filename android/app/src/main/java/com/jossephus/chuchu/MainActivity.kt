@@ -48,7 +48,14 @@ class MainActivity : FragmentActivity() {
         val data = intent?.data ?: return
         val isKohiScheme = data.scheme == "kohi"
         val path = data.path.orEmpty()
-        val isHttpsPath = path.startsWith("/kohi-open") || path.startsWith("/kohi-focus/go")
+        // Short form https://<tailnet host>/k/<pane>: the notification link
+        // has to appear UNMASKED in Telegram (a link hiding behind text
+        // always draws the "open this link?" prompt), so it carries the pane
+        // in the path and nothing else.
+        val shortPane = Regex("""^/k/(w[0-9A-Za-z]+:[pt][0-9A-Za-z]+)$""")
+            .find(path)?.groupValues?.get(1)
+        val isHttpsPath =
+            path.startsWith("/kohi-open") || path.startsWith("/kohi-focus/go") || shortPane != null
         if (!isKohiScheme && !isHttpsPath) return
         // Telegram sometimes leaves the href's "&amp;" un-escaped, so the
         // second parameter arrives named "amp;pane" (seen in the hook's
@@ -56,9 +63,13 @@ class MainActivity : FragmentActivity() {
         fun param(name: String) =
             (data.getQueryParameter(name) ?: data.getQueryParameter("amp;$name"))
                 ?.trim()?.ifEmpty { null }
-        val pane = param("pane")
+        val pane = shortPane ?: param("pane")
         DeepLinkBus.pendingPane.value = pane
-        DeepLinkBus.pendingHostName.value = param("host")
+        // The short form carries no host, so fall back to the first label of
+        // the domain the link came from (the-real-witch.tail26a258.ts.net →
+        // "the-real-witch"), which is what the long form sends anyway.
+        DeepLinkBus.pendingHostName.value =
+            param("host") ?: data.host?.substringBefore('.')?.ifEmpty { null }
         // A verified App Link hands the URL straight to us, so the hook page
         // that used to focus the herdr tab on its way through the browser
         // never runs — call the hook's /focus endpoint ourselves. (kohi://

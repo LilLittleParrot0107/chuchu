@@ -51,6 +51,14 @@
                     android:scheme="https"
                     android:host="the-real-witch.tail26a258.ts.net"
                     android:pathPrefix="/kohi-focus/go" />
+                <!-- Short notification link: /k/<pane>. Telegram only opens a
+                     link without its "open this link?" prompt when the text
+                     IS the URL, so the link has to stay short enough to read
+                     raw in the message. -->
+                <data
+                    android:scheme="https"
+                    android:host="the-real-witch.tail26a258.ts.net"
+                    android:pathPrefix="/k/" />
             </intent-filter>
             <!-- kohi://open?host=<name> — launched by the dufs trampoline
                  page via Chrome's intent:// syntax; needs no verification. -->
