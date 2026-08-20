@@ -30,16 +30,21 @@
     @androidx.room.Delete <methods>;
 }
 
-# === Compose: keep composable functions ===
+# === Compose ===
+# KHONG keep toan bo androidx.compose. Luat do tung o day va no khoa 75% so
+# method trong dex khoi R8: do duoc 40087/52773 method la Compose, giu nguyen
+# ten day du (vd LazyStaggeredGridItemProviderKt — app khong dung staggered
+# grid o dau ca). Compose ship san consumer proguard rules, khong can keep tay.
+# Bo dong do cat ~1.5MB va keo so method ra xa tran 65536 cua mot dex.
 -dontwarn androidx.compose.**
--keep class androidx.compose.** { *; }
 
 # === Kotlin coroutines ===
 -dontwarn kotlinx.coroutines.**
 
 # === Android components ===
--keep class * extends android.app.Activity
--keep class * extends android.app.Service
+# AGP tu sinh keep rule cho moi class khai bao trong manifest, nen hai dong
+# `extends Activity/Service` la thua. Giu lai AppCompatActivity vi no la
+# lop CHA trung gian, khong nam trong manifest.
 -keep class * extends androidx.appcompat.app.AppCompatActivity
 
 # === Serialization ===
