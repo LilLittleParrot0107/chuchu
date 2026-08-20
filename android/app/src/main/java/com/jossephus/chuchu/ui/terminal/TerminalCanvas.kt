@@ -114,7 +114,6 @@ fun TerminalCanvas(
     val trackpadStepYPx = with(density) { TRACKPAD_STEP_Y_DP.dp.toPx() }
     val trackpadDeadZonePx = with(density) { TRACKPAD_DEAD_ZONE_DP.dp.toPx() }
     val trackpadAxisForcePx = with(density) { TRACKPAD_AXIS_FORCE_DP.dp.toPx() }
-    val trackpadAxisSwitchPx = with(density) { TRACKPAD_AXIS_SWITCH_DP.dp.toPx() }
     val autoScrollIntervalMs = 55L
     val doubleTapTimeoutMillis = remember { ViewConfiguration.getDoubleTapTimeout().toLong() }
     val doubleTapSlopPx = remember(androidViewConfiguration) { androidViewConfiguration.scaledDoubleTapSlop.toFloat() }
@@ -396,7 +395,7 @@ fun TerminalCanvas(
                         try {
                             while (true) {
                                 val timeoutMs = (longPressDeadline - lastEventUptime).coerceAtLeast(1L)
-                                val inAutoScrollZone = dragMode == DragMode.ClientSelectionDrag && autoScrollDir != 0
+                                val inAutoScrollZone = false
                                 val event = when {
                                     dragMode == DragMode.None && !didScroll && !didPinch && !didDragGesture ->
                                         withTimeoutOrNull(timeoutMs) { awaitPointerEvent() }
@@ -440,11 +439,6 @@ fun TerminalCanvas(
                                     autoScrollingSelection = false
                                     val releasedDragMode = dragMode
                                     dragMode = DragMode.None
-                                    if (releasedDragMode == DragMode.AppMouseDrag) {
-                                        val s = currentSnapshot.value
-                                        val releasePos = toSnapshotSpace(lastPointerPos, s)
-                                        currentOnAppSelectionDrag.value(TerminalMouseAction.Release, releasePos.x, releasePos.y)
-                                    }
                                     if (releasedDragMode == DragMode.ArrowTrackpad) {
                                         trackpadIndicator = null
                                         trackpadAxisHint = TrackpadAxis.None
@@ -511,6 +505,18 @@ fun TerminalCanvas(
                                     break
                                 }
 
+                                // Trackpad dang bat thi ngon thu hai bi BO QUA hoan toan.
+                                // Truoc day no roi vao nhanh pinch: co chu nhay, roi khi
+                                // nhac ngon dau ra `change` thanh ngon thu hai trong khi
+                                // relX/relY van do tu `down.position` cua ngon cu -> nhay
+                                // vot qua ca vung chet lan nguong ep truc -> chot truc va
+                                // ban mui ten theo huong khong ai muon.
+                                if (pressed.size >= 2 && dragMode == DragMode.ArrowTrackpad) {
+                                    pressed.forEach {
+                                        if (it.position != it.previousPosition) it.consume()
+                                    }
+                                    continue
+                                }
                                 if (pressed.size >= 2) {
                                     didPinch = true
                                     val first = pressed[0].position
@@ -657,7 +663,21 @@ fun TerminalCanvas(
                                                 } else {
                                                     change.position.x - trackpadAnchor.x
                                                 }
-                                            if (abs(perp) >= trackpadAxisSwitchPx) {
+                                            // Nguong doi truc = DUNG mot nac cua truc
+                                            // sap sang. Truoc day la 42dp co dinh roi
+                                            // xoa sach quang do, nen goc chu L ton
+                                            // 42dp + 30dp ~ 2cm moi ra mui ten dau —
+                                            // so voi 30dp cho moi mui ten khac. Gio
+                                            // di du mot nac vuong goc thi DOI TRUC VA
+                                            // AN LUON mui ten do: van dung "mot lan
+                                            // vuot mot mui ten", ma khong con khuc chet.
+                                            val switchPx =
+                                                if (trackpadAxis == TrackpadAxis.Horizontal) {
+                                                    trackpadStepYPx
+                                                } else {
+                                                    trackpadStepXPx
+                                                }
+                                            if (abs(perp) >= switchPx) {
                                                 trackpadAxis =
                                                     if (trackpadAxis == TrackpadAxis.Horizontal) {
                                                         TrackpadAxis.Vertical
@@ -685,14 +705,12 @@ fun TerminalCanvas(
                                                     trackpadStepXPx
                                                 }
                                             if (switched) {
-                                                // Ve 0, KHONG ban ngay mot nac.
-                                                // Ban ngay lam huong moi nhay
-                                                // truoc khi nguoi dung kip thay
-                                                // truc da doi — dung kieu "nhay
-                                                // nhieu hon mot lan" ma bao cao
-                                                // ke. Huong moi phai duoc di du
-                                                // mot doan nhu moi huong khac.
-                                                trackpadResidual = 0f
+                                                // DUNG mot nac, khong hon: quang duong
+                                                // vuong goc vua di chinh la mot nac cua
+                                                // truc moi, nen no duoc tinh cong chu
+                                                // khong bi vut. Dat bang stepPx de vong
+                                                // duoi ban ra dung mot mui ten roi ve 0.
+                                                trackpadResidual = sign(perp) * stepPx
                                             }
 
                                             // The perpendicular component is
@@ -772,34 +790,6 @@ fun TerminalCanvas(
                                     }
                                     continue
                                 }
-                                if (dragMode == DragMode.AppMouseDrag) {
-                                    lastPointerPos = change.position
-                                    autoScrollDir = 0
-                                    autoScrollingSelection = false
-                                    if (change.position != change.previousPosition) {
-                                        currentOnAppSelectionDrag.value(TerminalMouseAction.Motion, changePos.x, changePos.y)
-                                        change.consume()
-                                    }
-                                    continue
-                                }
-                                if (dragMode == DragMode.ClientSelectionDrag && selectedCell != null) {
-                                    lastPointerPos = change.position
-                                    updateSelectionDrag(
-                                        existing = currentSelectionState.value,
-                                        selectedCell = selectedCell,
-                                        onSelectionChange = currentOnSelectionChange.value,
-                                    )
-                                    autoScrollDir = when {
-                                        change.position.y < currentAutoScrollEdgeZonePx.value -> -1
-                                        change.position.y > canvasSize.height - currentAutoScrollEdgeZonePx.value -> 1
-                                        else -> 0
-                                    }
-                                    autoScrollingSelection = autoScrollDir != 0
-                                    if (change.position != change.previousPosition) {
-                                        change.consume()
-                                    }
-                                    continue
-                                }
 
                                 val dragX = changePos.x - changePrevPos.x
                                 val dragY = changePos.y - changePrevPos.y
@@ -841,16 +831,13 @@ fun TerminalCanvas(
                             }
                         } finally {
                             trackpadIndicator = null
+                            // Phai ro CA hai. Thieu dong duoi thi lan giu sau,
+                            // vong tron hien ra da san hai gach cua truc cu —
+                            // dung thu ma no sinh ra de phan biet. Duong nay chay
+                            // khi he thong cuop chuoi cham (vuot canh de back,
+                            // keo thanh thong bao, dialog bat len).
+                            trackpadAxisHint = TrackpadAxis.None
                             autoScrollingSelection = false
-                            if (dragMode == DragMode.AppMouseDrag) {
-                                val s = currentSnapshot.value
-                                val releasePos = toSnapshotSpace(lastPointerPos, s)
-                                currentOnAppSelectionDrag.value(
-                                    TerminalMouseAction.Release,
-                                    releasePos.x,
-                                    releasePos.y,
-                                )
-                            }
                         }
                     }
                 }
@@ -1364,16 +1351,12 @@ private fun isNerdFontPrivateUse(cp: Int): Boolean {
 }
 
 /**
- * One arrow key per this much finger travel, same on both axes.
+ * Doan ngon tay phai di de ra MOT lan bam mui ten.
  *
- * 12dp = 1.5x Android's 8dp touch slop, and above the ~5dp of tremor and
- * finger-roll that a resting hand produces. Isotropic on purpose: any
- * per-axis difference silently rotates the horizontal/vertical boundary away
- * from 45°, which is exactly the bug this replaced. Directional asymmetry
- * belongs in the axis-lock rule, not in the step size.
- */
-/**
- * Doan ngon tay phai di de ra MOT lan bam mui ten. v1.25 dat 12dp cho ca hai
+ * Buoc KHONG deu hai truc — va dieu do KHONG lam lech ranh gioi ngang/doc 45
+ * do, vi quyet dinh truc dua tren VECTOR huong (relX/relY) chu khong dua tren
+ * so nac. Day la cho tung nham o ban truoc.
+ * v1.25 dat 12dp cho ca hai
  * truc va bi bao la "spam mui ten": vuot binh thuong ra chuc lan bam. Nong len
  * gan gap doi, va Y dai hon X vi Up/Down dat hon (Up o dau nhac shell = goi lai
  * lich su, mat dong dang go).
@@ -1381,7 +1364,10 @@ private fun isNerdFontPrivateUse(cp: Int): Boolean {
 private const val TRACKPAD_STEP_X_DP = 22f
 private const val TRACKPAD_STEP_Y_DP = 30f
 
-/** Travel before the first key. 2x touch slop: past noise, into intent. */
+/**
+ * Doan phai di truoc khi CHOT TRUC (khong phai truoc khi ra phim dau).
+ * Phim dau con can them tron mot nac nua, vi phan du bat dau tu 0.
+ */
 private const val TRACKPAD_DEAD_ZONE_DP = 16f
 
 /** Commit the axis unconditionally once the vector is this long. */
@@ -1391,14 +1377,15 @@ private const val TRACKPAD_AXIS_FORCE_DP = 32f
 private const val TRACKPAD_AXIS_RATIO = 1.3f
 
 /**
- * Doan vuong goc phai di duoc de doi truc GIUA cu chi (khong can nha tay).
- * Rong hon mot nac (12dp) nhieu lan, nen khong the vo tinh cham phai; do lai tu
- * mot moc TU DAT LAI moi khi co nac, nen duong cong tu nhien cua cu vuot dai
- * khong bao gio don gop thanh mot lan doi truc.
+ * Giu bao lau thi trackpad bat (vong tron hien). Mac dinh he thong la 500ms,
+ * cham hon muc can cho cu chi nay. KHONG rut sau hon 300ms: van phai la mot
+ * cai giu CO CHU Y, neu khong thi cham roi ngap ngung mot nhip la mat cu cuon.
+ *
+ * Nguong DOI TRUC khong con la hang so — no bang dung mot nac cua truc sap
+ * sang, tinh ngay trong vong lap cu chi.
  */
 private const val TRACKPAD_ARM_MS = 300L
 
-private const val TRACKPAD_AXIS_SWITCH_DP = 42f
 
 
 /** Haptic ceiling. Below ~30ms ticks merge into a buzz and add latency. */
@@ -1408,12 +1395,21 @@ private enum class TrackpadAxis { None, Horizontal, Vertical }
 
 private enum class DragMode {
     None,
-    ClientSelectionDrag,
-    AppMouseDrag,
 
-    /** Long-press armed: a stationary release keeps the word selection made
-     * at press time; dragging clears it and turns motion into arrow keys,
-     * one keypress per cell of travel (Termius-style cursor trackpad). */
+    /**
+     * Giu roi keo = phim mui ten (kieu trackpad con tro cua Termius).
+     *
+     * Chon tu KHONG tao luc nhan, ma tao luc NHA tay tai cho; keo di thi thanh
+     * mui ten. Moi phim ung voi mot doan dp CO DINH chu khong phai mot o ky tu,
+     * nen co font nao cung cho cam giac nhu nhau.
+     *
+     * Truoc day con hai gia tri nua — ClientSelectionDrag (keo boi den) va
+     * AppMouseDrag (gui su kien chuot cho app bat mouse tracking: vim, tmux,
+     * htop). Tu khi trackpad chiem cho giu-roi-keo thi KHONG CON NOI NAO gan
+     * hai gia tri do, moi nhanh xu ly chung thanh code chet, va onAppSelectionDrag
+     * khong bao gio duoc goi nua. Da xoa han thay vi de code trong nhu con song.
+     * Muon lay lai keo-chuot-trong-app thi phai gan no vao mot cu chi khac.
+     */
     ArrowTrackpad,
 }
 

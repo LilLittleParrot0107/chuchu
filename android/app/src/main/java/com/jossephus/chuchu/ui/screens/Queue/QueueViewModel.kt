@@ -78,12 +78,17 @@ class QueueViewModel(
             return true
         }
         val since = _ui.value.state.rev.takeIf { _ui.value.everLoaded }
-        _ui.update { it.copy(loading = !it.everLoaded, needsSetup = false) }
+        // KHONG xoa needsSetup o day. Truoc day xoa lac quan truoc khi biet ket
+        // qua, nen dang go dia chi trong bang cau hinh thi vong poll ke tiep tat
+        // panel, `remember(currentUrl)` mat sach chu, request lai hong, panel
+        // hien lai voi o trong — lap vo han theo nhip backoff.
+        _ui.update { it.copy(loading = !it.everLoaded) }
 
         return when (val r = withContext(Dispatchers.IO) { c.fetch(since) }) {
             is QueueClient.Fetch.Fresh -> {
                 _ui.update {
-                    it.copy(state = r.state, loading = false, everLoaded = true, error = null)
+                    it.copy(state = r.state, loading = false, everLoaded = true,
+                            error = null, needsSetup = false)
                 }
                 false
             }
@@ -189,7 +194,7 @@ class QueueViewModel(
                         @Suppress("UNCHECKED_CAST")
                         return QueueViewModel(SettingsRepository.getInstance(application)) as T
                     }
-                    throw IllegalArgumentException("Unknown ViewModel class: ${'$'}{modelClass.name}")
+                    throw IllegalArgumentException("Unknown ViewModel class: " + modelClass.name)
                 }
             }
     }
