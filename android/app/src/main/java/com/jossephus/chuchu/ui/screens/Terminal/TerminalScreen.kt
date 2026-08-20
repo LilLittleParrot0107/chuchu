@@ -995,12 +995,37 @@ fun TerminalScreen(
                         }
                     }
 
-                    fun copySelection() {
-                        val text = selectionState?.text ?: return
+                    fun putOnClipboard(text: String, note: String) {
                         clipboard?.setPrimaryClip(ClipData.newPlainText("terminal selection", text))
-                        Toast.makeText(context, "Copied selection", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, note, Toast.LENGTH_SHORT).show()
                         selection = null
                         selectionState = null
+                    }
+
+                    fun copySelection() {
+                        putOnClipboard(selectionState?.text ?: return, "Đã copy")
+                    }
+
+                    /**
+                     * Copy nhưng nối các dòng lại thành một.
+                     *
+                     * Vì sao cần: terminal chỉ rộng ~45 cột, mà thứ hay copy nhất là
+                     * một dòng lệnh dài. Ứng dụng vẽ ra màn hình (Claude Code chẳng
+                     * hạn) tự bẻ dòng bằng ký tự xuống dòng THẬT kèm thụt lề, nên
+                     * trong bộ nhớ terminal nó đã là hai dòng — ghostty không có cách
+                     * nào biết nó vốn là một. Dán ra là lệnh gãy đôi, chạy không được.
+                     *
+                     * Đây là hành động RIÊNG, không phải sửa ngầm nút copy: nối dòng
+                     * đúng cho lệnh nhưng sai cho đoạn code nhiều dòng, nên phải để
+                     * người dùng chọn chứ không tự đoán.
+                     */
+                    fun copySelectionJoined() {
+                        val raw = selectionState?.text ?: return
+                        val joined = raw.split('\n')
+                            .map { it.trim() }
+                            .filter { it.isNotEmpty() }
+                            .joinToString(" ")
+                        putOnClipboard(joined, "Đã copy (nối dòng)")
                     }
 
                     val importFileLauncher =
@@ -1497,6 +1522,28 @@ fun TerminalScreen(
                                                     style = typography.label,
                                                     color = colors.textMuted,
                                                 )
+                                            }
+                                            // Chi hien khi vung chon co NHIEU dong —
+                                            // mot dong thi nut nay khong lam gi khac
+                                            // nut copy, bay ra chi to chat cho.
+                                            if (selState.text.orEmpty().contains('\n')) {
+                                                ChuButton(
+                                                    onClick = ::copySelectionJoined,
+                                                    variant = ChuButtonVariant.Ghost,
+                                                    bracketed = true,
+                                                    borderColor = colors.textMuted,
+                                                    contentPadding =
+                                                        PaddingValues(
+                                                            horizontal = 12.dp,
+                                                            vertical = 6.dp,
+                                                        ),
+                                                ) {
+                                                    ChuText(
+                                                        "copy 1 dòng",
+                                                        style = typography.label,
+                                                        color = colors.textMuted,
+                                                    )
+                                                }
                                             }
                                         }
                                         if (hasClipboardText) {
