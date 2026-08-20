@@ -827,6 +827,22 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
         sessionRepository.writeKey(key.engineKey, 0, mods, GhosttyKeyAction.Release)
     }
 
+    /**
+     * A frame's worth of trackpad arrows: one scroll-to-bottom and one write
+     * for the whole burst.
+     *
+     * [scrollToActive] forces an un-throttled full-grid snapshot, so calling it
+     * per key turned a fast swipe into ~150 snapshots a second on the same
+     * thread that drains SSH — the rendering fell behind the finger and the
+     * gesture felt inaccurate even when the arithmetic was right.
+     */
+    fun onArrowKeyRepeat(key: TerminalSpecialKey, mods: Int, repeat: Int) {
+        if (repeat <= 0) return
+        sessionRepository.scrollToActive()
+        sessionRepository.writeKeyRepeat(key.engineKey, 0, mods, GhosttyKeyAction.Press, repeat)
+        sessionRepository.writeKeyRepeat(key.engineKey, 0, mods, GhosttyKeyAction.Release, repeat)
+    }
+
     fun onPasteText(text: String) {
         if (text.isEmpty()) return
         sessionRepository.scrollToActive()

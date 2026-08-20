@@ -1383,8 +1383,8 @@ fun TerminalScreen(
                                     // removed at the user's request.
                                     onDoubleTap = { showComposeBox = true },
                                     onTripleTap = {},
-                                    onArrowKey = { key ->
-                                        vm.onSpecialKeyInput(key, 0)
+                                    onArrowKey = { key, count ->
+                                        vm.onArrowKeyRepeat(key, 0, count)
                                     },
                                     onPrimaryClick = vm::onPrimaryMouseClick,
                                     onAppSelectionDrag = vm::onAppSelectionDrag,

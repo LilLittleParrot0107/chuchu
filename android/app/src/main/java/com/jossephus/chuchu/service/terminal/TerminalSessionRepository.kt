@@ -360,6 +360,10 @@ class TerminalSessionRepository private constructor(application: Application) {
         activeEngine()?.writeKey(key, codepoint, mods, action, utf8)
     }
 
+    fun writeKeyRepeat(key: Int, codepoint: Int, mods: Int, action: Int, repeat: Int) {
+        activeEngine()?.writeKeyRepeat(key, codepoint, mods, action, repeat)
+    }
+
     fun writeText(text: String) {
         activeEngine()?.writeText(text)
     }

@@ -298,6 +298,42 @@ class TerminalSessionEngine(
         }
     }
 
+    /**
+     * Send one key [repeat] times in a single write.
+     *
+     * The trackpad gesture can produce a dozen arrow presses inside one frame.
+     * Sent one at a time, each became its own coroutine on this engine's single
+     * thread plus its own SSH packet — the burst queued ahead of the read loop
+     * and the echo arrived after the finger had already stopped. Encoding once
+     * and concatenating collapses that to one packet.
+     *
+     * Deliberately N copies of the escape sequence rather than a parameterised
+     * CUF (`ESC[nC`): readline and Ink parse the parameterised form as a
+     * different key, not as n presses.
+     */
+    fun writeKeyRepeat(key: Int, codepoint: Int, mods: Int, action: Int, repeat: Int) {
+        if (repeat <= 0) return
+        scope.launch(dispatcher) {
+            if (handle == 0L) return@launch
+            val encoded =
+                bridge.nativeEncodeKey(handle, key, codepoint, mods, action, null) ?: return@launch
+            if (encoded.isEmpty()) return@launch
+            val payload =
+                if (repeat == 1) {
+                    encoded
+                } else {
+                    ByteArray(encoded.size * repeat).also { out ->
+                        for (i in 0 until repeat) {
+                            encoded.copyInto(out, i * encoded.size)
+                        }
+                    }
+                }
+            try {
+                writeRemote(payload)
+            } catch (_: Exception) {}
+        }
+    }
+
     fun writeText(text: String) {
         scope.launch(dispatcher) {
             if (handle == 0L) return@launch

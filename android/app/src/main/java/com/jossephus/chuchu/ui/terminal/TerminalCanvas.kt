@@ -14,6 +14,7 @@ import android.view.ViewConfiguration
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -45,6 +46,8 @@ import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.hypot
 import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.sign
 import kotlin.math.round
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.isActive
@@ -71,7 +74,7 @@ fun TerminalCanvas(
     onTap: () -> Unit = {},
     onDoubleTap: () -> Unit = {},
     onTripleTap: () -> Unit = {},
-    onArrowKey: (key: TerminalSpecialKey) -> Unit = {},
+    onArrowKey: (key: TerminalSpecialKey, count: Int) -> Unit = { _, _ -> },
     onPrimaryClick: (x: Float, y: Float) -> Unit = { _, _ -> },
     onAppSelectionDrag: (action: Int, x: Float, y: Float) -> Unit = { _, _, _ -> },
     onScroll: (delta: Int, x: Float, y: Float) -> Unit = { _, _, _ -> },
@@ -96,6 +99,10 @@ fun TerminalCanvas(
     val longPressSlopPx = remember(touchSlopPx) { touchSlopPx * 1.5f }
     val longPressTimeoutMillis = remember { ViewConfiguration.getLongPressTimeout().toLong() }
     val autoScrollEdgeZonePx = with(density) { 48.dp.toPx() }
+    // Trackpad geometry, in real physical distance rather than character cells.
+    val trackpadStepPx = with(density) { TRACKPAD_STEP_DP.dp.toPx() }
+    val trackpadDeadZonePx = with(density) { TRACKPAD_DEAD_ZONE_DP.dp.toPx() }
+    val trackpadAxisForcePx = with(density) { TRACKPAD_AXIS_FORCE_DP.dp.toPx() }
     val autoScrollIntervalMs = 55L
     val doubleTapTimeoutMillis = remember { ViewConfiguration.getDoubleTapTimeout().toLong() }
     val doubleTapSlopPx = remember(androidViewConfiguration) { androidViewConfiguration.scaledDoubleTapSlop.toFloat() }
@@ -228,6 +235,41 @@ fun TerminalCanvas(
     var selectionViewportBaseline by remember { mutableStateOf<Int?>(null) }
     var autoScrollingSelection by remember { mutableStateOf(false) }
 
+    // Arrow keys are coalesced per frame, exactly like scroll below: a fast
+    // swipe used to fire one SSH write (plus a forced full-grid snapshot) per
+    // keystroke, which queued behind the SSH read loop and made the echo lag
+    // the finger — the cursor looked stuck, so you swiped further and
+    // overshot. One write per frame carrying N repeats fixes the lag at its
+    // source. Opposite directions inside a frame cancel out for free.
+    val arrowKeyChannel = remember { Channel<ArrowBurst>(capacity = Channel.UNLIMITED) }
+    LaunchedEffect(arrowKeyChannel) {
+        while (isActive) {
+            val first = arrowKeyChannel.receive()
+            var key = first.key
+            var net = first.count
+            while (true) {
+                val next = arrowKeyChannel.tryReceive().getOrNull() ?: break
+                when (next.key) {
+                    key -> net += next.count
+                    key.oppositeArrow() -> net -= next.count
+                    else -> {
+                        // Axis change: flush what we have, start a new run.
+                        if (net > 0) currentOnArrowKey.value(key, net)
+                        if (net < 0) currentOnArrowKey.value(key.oppositeArrow(), -net)
+                        key = next.key
+                        net = next.count
+                    }
+                }
+            }
+            if (net < 0) {
+                key = key.oppositeArrow()
+                net = -net
+            }
+            if (net > 0) currentOnArrowKey.value(key, net)
+            withFrameNanos { }
+        }
+    }
+
     val scrollDeltaChannel = remember { Channel<TerminalScrollDelta>(capacity = Channel.UNLIMITED) }
     LaunchedEffect(scrollDeltaChannel) {
         while (isActive) {
@@ -320,8 +362,9 @@ fun TerminalCanvas(
                             return Offset((position.x - offsetX) / scale, (position.y - offsetY) / scale)
                         }
                         var dragRemainder = 0f
-                        var trackpadAccumX = 0f
-                        var trackpadAccumY = 0f
+                        var trackpadAxis = TrackpadAxis.None
+                        var trackpadResidual = 0f
+                        var trackpadLastHapticMs = 0L
                         var trackpadMoved = false
                         var startPinchDistance: Float? = null
                         var anchorFontSp = 0f
@@ -520,38 +563,103 @@ fun TerminalCanvas(
                                         }
                                     }
                                     if (trackpadMoved) {
-                                        trackpadAccumX += changePos.x - changePrevPos.x
-                                        trackpadAccumY += changePos.y - changePrevPos.y
-                                        // Deliberately > 1 cell per step: at
-                                        // 1.0 the trackpad felt hair-trigger.
-                                        val cw = currentCellWidth.value * TRACKPAD_CELLS_PER_STEP_X
-                                        val chp = currentCellHeight.value * TRACKPAD_CELLS_PER_STEP_Y
-                                        while (true) {
-                                            // Dominant axis per step so diagonal
-                                            // wobble doesn't fire both axes.
-                                            val stepsX = abs(trackpadAccumX) / cw
-                                            val stepsY = abs(trackpadAccumY) / chp
-                                            if (stepsX < 1f && stepsY < 1f) break
-                                            if (stepsX >= stepsY) {
-                                                if (trackpadAccumX > 0) {
-                                                    trackpadAccumX -= cw
-                                                    currentOnArrowKey.value(TerminalSpecialKey.Right)
-                                                } else {
-                                                    trackpadAccumX += cw
-                                                    currentOnArrowKey.value(TerminalSpecialKey.Left)
-                                                }
-                                            } else {
-                                                if (trackpadAccumY > 0) {
-                                                    trackpadAccumY += -chp
-                                                    currentOnArrowKey.value(TerminalSpecialKey.Down)
-                                                } else {
-                                                    trackpadAccumY += chp
-                                                    currentOnArrowKey.value(TerminalSpecialKey.Up)
+                                        // Step size is a fixed physical distance,
+                                        // NOT the cell size. A cell is ~8.7dp
+                                        // wide — below Android's 8dp touch slop
+                                        // and below normal hand tremor, so a
+                                        // cell-sized step turned noise into
+                                        // keystrokes. Worse, cells are ~2.1x
+                                        // taller than wide, so normalising each
+                                        // axis by its own cell put the
+                                        // horizontal/vertical boundary at 62°
+                                        // instead of 45°: a 45° diagonal always
+                                        // read as horizontal. One isotropic step
+                                        // fixes both, and makes the gesture
+                                        // behave the same at every font size.
+                                        val stepPx = trackpadStepPx
+                                        val relX = change.position.x - down.position.x
+                                        val relY = change.position.y - down.position.y
+
+                                        if (trackpadAxis == TrackpadAxis.None) {
+                                            // Commit to an axis once, at the edge
+                                            // of the dead zone, using the vector
+                                            // from the START of the gesture — a
+                                            // single frame's delta is only a few
+                                            // dp long and its angle is mostly
+                                            // noise. Ambiguous near the diagonal:
+                                            // wait for the vector to grow, which
+                                            // halves the angular error.
+                                            val dist = hypot(relX.toDouble(), relY.toDouble()).toFloat()
+                                            if (dist >= trackpadDeadZonePx) {
+                                                val ax = abs(relX)
+                                                val ay = abs(relY)
+                                                val major = max(ax, ay)
+                                                val minor = min(ax, ay)
+                                                if (major >= minor * TRACKPAD_AXIS_RATIO ||
+                                                    dist >= trackpadAxisForcePx
+                                                ) {
+                                                    trackpadAxis =
+                                                        if (ax >= ay) TrackpadAxis.Horizontal
+                                                        else TrackpadAxis.Vertical
+                                                    val along =
+                                                        if (trackpadAxis == TrackpadAxis.Horizontal) relX
+                                                        else relY
+                                                    // Clamp so a late commit can
+                                                    // never dump 2-3 steps at once.
+                                                    trackpadResidual =
+                                                        sign(along) * min(abs(along), trackpadDeadZonePx)
                                                 }
                                             }
-                                            currentHaptics.value.performHapticFeedback(
-                                                HapticFeedbackType.TextHandleMove,
-                                            )
+                                        }
+
+                                        if (trackpadAxis != TrackpadAxis.None) {
+                                            // The perpendicular component is
+                                            // DISCARDED, not accumulated: that is
+                                            // what stops a slightly curved swipe
+                                            // from silently banking up a stray
+                                            // Up/Down. Up at a shell prompt
+                                            // recalls history and wipes the line,
+                                            // so a stray one is expensive.
+                                            trackpadResidual +=
+                                                if (trackpadAxis == TrackpadAxis.Horizontal) {
+                                                    change.position.x - change.previousPosition.x
+                                                } else {
+                                                    change.position.y - change.previousPosition.y
+                                                }
+
+                                            var steps = 0
+                                            while (abs(trackpadResidual) >= stepPx) {
+                                                val s = sign(trackpadResidual)
+                                                // Subtract one step, never zero:
+                                                // the remainder is what makes the
+                                                // cursor track the finger exactly,
+                                                // and it doubles as reversal
+                                                // hysteresis for free.
+                                                trackpadResidual -= s * stepPx
+                                                steps += s.toInt()
+                                            }
+                                            if (steps != 0) {
+                                                val key = when {
+                                                    trackpadAxis == TrackpadAxis.Horizontal && steps > 0 ->
+                                                        TerminalSpecialKey.Right
+                                                    trackpadAxis == TrackpadAxis.Horizontal ->
+                                                        TerminalSpecialKey.Left
+                                                    steps > 0 -> TerminalSpecialKey.Down
+                                                    else -> TerminalSpecialKey.Up
+                                                }
+                                                arrowKeyChannel.trySend(ArrowBurst(key, abs(steps)))
+                                                // One tick per event, rate-limited.
+                                                // Firing per key saturated the
+                                                // vibrator into a buzz and added
+                                                // its own latency.
+                                                val nowMs = change.uptimeMillis
+                                                if (nowMs - trackpadLastHapticMs >= TRACKPAD_HAPTIC_MIN_MS) {
+                                                    trackpadLastHapticMs = nowMs
+                                                    currentHaptics.value.performHapticFeedback(
+                                                        HapticFeedbackType.TextHandleMove,
+                                                    )
+                                                }
+                                            }
                                         }
                                     }
                                     if (change.position != change.previousPosition) {
@@ -644,7 +752,8 @@ fun TerminalCanvas(
             }
         }
 
-    Canvas(modifier = canvasModifier) {
+    Box(modifier = canvasModifier) {
+    Canvas(modifier = Modifier.fillMaxSize()) {
         val cols = max(snapshot.cols, 1)
         val rows = max(snapshot.rows, 1)
         val contentWidth = cols * cellWidth
@@ -923,9 +1032,16 @@ fun TerminalCanvas(
             nCanvas.restore()
         }
 
-        // Arrow-trackpad indicator: a plain soft ring riding the finger
-        // (user preference — no chevrons).
-        trackpadIndicator?.let { pos ->
+    }
+
+    // The trackpad ring lives in its OWN layer. Read inside the grid Canvas it
+    // invalidated the whole draw lambda on every touch sample, re-running the
+    // text-run builder for every cell on screen at pointer rate. That dropped
+    // pointer samples, which made the deltas lumpy, which made the axis choice
+    // wrong — the indicator was quietly corrupting the gesture it existed to
+    // explain. Its own Canvas redraws just the ring.
+    trackpadIndicator?.let { pos ->
+        Canvas(modifier = Modifier.fillMaxSize()) {
             val r = 26.dp.toPx()
             drawCircle(color = Color.White.copy(alpha = 0.15f), radius = r, center = pos)
             drawCircle(
@@ -936,7 +1052,20 @@ fun TerminalCanvas(
             )
         }
     }
+    }
 }
+
+/** N presses of one arrow key, coalesced into a single wire write. */
+private data class ArrowBurst(val key: TerminalSpecialKey, val count: Int)
+
+private fun TerminalSpecialKey.oppositeArrow(): TerminalSpecialKey =
+    when (this) {
+        TerminalSpecialKey.Left -> TerminalSpecialKey.Right
+        TerminalSpecialKey.Right -> TerminalSpecialKey.Left
+        TerminalSpecialKey.Up -> TerminalSpecialKey.Down
+        TerminalSpecialKey.Down -> TerminalSpecialKey.Up
+        else -> this
+    }
 
 private data class TerminalScrollDelta(
     val delta: Int,
@@ -1107,8 +1236,30 @@ private fun isNerdFontPrivateUse(cp: Int): Boolean {
         (cp in 0x100000..0x10FFFD)
 }
 
-private const val TRACKPAD_CELLS_PER_STEP_X = 1.6f
-private const val TRACKPAD_CELLS_PER_STEP_Y = 1.4f
+/**
+ * One arrow key per this much finger travel, same on both axes.
+ *
+ * 12dp = 1.5x Android's 8dp touch slop, and above the ~5dp of tremor and
+ * finger-roll that a resting hand produces. Isotropic on purpose: any
+ * per-axis difference silently rotates the horizontal/vertical boundary away
+ * from 45°, which is exactly the bug this replaced. Directional asymmetry
+ * belongs in the axis-lock rule, not in the step size.
+ */
+private const val TRACKPAD_STEP_DP = 12f
+
+/** Travel before the first key. 2x touch slop: past noise, into intent. */
+private const val TRACKPAD_DEAD_ZONE_DP = 16f
+
+/** Commit the axis unconditionally once the vector is this long. */
+private const val TRACKPAD_AXIS_FORCE_DP = 32f
+
+/** Major/minor ratio needed to commit early; ~±26° of "too close to call". */
+private const val TRACKPAD_AXIS_RATIO = 1.3f
+
+/** Haptic ceiling. Below ~30ms ticks merge into a buzz and add latency. */
+private const val TRACKPAD_HAPTIC_MIN_MS = 40L
+
+private enum class TrackpadAxis { None, Horizontal, Vertical }
 
 private enum class DragMode {
     None,
