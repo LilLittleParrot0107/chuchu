@@ -560,7 +560,10 @@ fun TerminalCanvas(
                                 )
                                 if (dragMode == DragMode.ArrowTrackpad) {
                                     lastPointerPos = change.position
-                                    trackpadIndicator = change.position
+                                    // KHONG cap nhat theo ngon tay: vong tron ghim
+                                    // tai cho dat tay. Truoc day no bam theo tay nen
+                                    // luc nao cung co mot dom di chuyen giua man
+                                    // hinh, che mat chinh chu dang can nhin.
                                     autoScrollDir = 0
                                     autoScrollingSelection = false
                                     if (!trackpadMoved) {
@@ -619,8 +622,11 @@ fun TerminalCanvas(
                                                         else relY
                                                     // Clamp so a late commit can
                                                     // never dump 2-3 steps at once.
-                                                    trackpadResidual =
-                                                        sign(along) * min(abs(along), trackpadDeadZonePx)
+                                                    // Bat dau tu 0: mo san bang
+                                                    // vung chet nghia la mui ten
+                                                    // dau tien ra gan nhu ngay
+                                                    // khi vua chot truc.
+                                                    trackpadResidual = 0f
                                                     trackpadAnchor = change.position
                                                     trackpadAxisHint = trackpadAxis
                                                 }
@@ -679,11 +685,14 @@ fun TerminalCanvas(
                                                     trackpadStepXPx
                                                 }
                                             if (switched) {
-                                                // Dung mot nac: doan doi truc da tra
-                                                // du roi, nen huong moi dap ngay
-                                                // trong khung nay thay vi bat di
-                                                // them mot buoc nua.
-                                                trackpadResidual = sign(perp) * stepPx
+                                                // Ve 0, KHONG ban ngay mot nac.
+                                                // Ban ngay lam huong moi nhay
+                                                // truoc khi nguoi dung kip thay
+                                                // truc da doi — dung kieu "nhay
+                                                // nhieu hon mot lan" ma bao cao
+                                                // ke. Huong moi phai duoc di du
+                                                // mot doan nhu moi huong khac.
+                                                trackpadResidual = 0f
                                             }
 
                                             // The perpendicular component is
@@ -709,16 +718,27 @@ fun TerminalCanvas(
                                             // nhanh; muon di xa thi vuot them lan.
                                             trackpadResidual += rawDelta
 
+                                            // MOI NAC MOT LAN BAM, va moi lan
+                                            // deu doi di DU mot doan moi.
+                                            //
+                                            // Truoc day o day TRU di mot buoc va
+                                            // giu phan du, de con tro bam theo
+                                            // ngon tay that muot. Nhung phan du
+                                            // do lam nac ke tiep bat gan nhu tuc
+                                            // thi — nguoi dung thay la "vuot mot
+                                            // cai nhay may o". Muot khong bu lai
+                                            // duoc viec khong doan truoc duoc:
+                                            // gio XOA HAN phan du, moi mui ten
+                                            // deu doi tron mot doan ke tu mui
+                                            // truoc.
+                                            //
+                                            // Va toi da MOT nac moi su kien cham:
+                                            // vong lap cu co the ban 3-4 mui ten
+                                            // trong cung mot khung khi vay nhanh.
                                             var steps = 0
-                                            while (abs(trackpadResidual) >= stepPx) {
-                                                val s = sign(trackpadResidual)
-                                                // Subtract one step, never zero:
-                                                // the remainder is what makes the
-                                                // cursor track the finger exactly,
-                                                // and it doubles as reversal
-                                                // hysteresis for free.
-                                                trackpadResidual -= s * stepPx
-                                                steps += s.toInt()
+                                            if (abs(trackpadResidual) >= stepPx) {
+                                                steps = sign(trackpadResidual).toInt()
+                                                trackpadResidual = 0f
                                             }
                                             if (steps != 0) {
                                                 // Anchor follows real progress along
@@ -1129,7 +1149,6 @@ fun TerminalCanvas(
         val axisHint = trackpadAxisHint
         Canvas(modifier = Modifier.fillMaxSize()) {
             val r = 26.dp.toPx()
-            drawCircle(color = Color.White.copy(alpha = 0.15f), radius = r, center = pos)
             drawCircle(
                 color = Color.White.copy(alpha = 0.55f),
                 radius = r,
