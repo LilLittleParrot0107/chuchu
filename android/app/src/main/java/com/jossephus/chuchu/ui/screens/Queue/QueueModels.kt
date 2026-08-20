@@ -40,6 +40,8 @@ data class QueueAction(
 
 data class QueueTask(
     val id: Int,
+    /** Pane của agent nhận việc — dùng để lọc việc theo agent, y như qq. */
+    val target: String,
     val text: String,
     val state: String,
     val glyph: String,
@@ -55,6 +57,8 @@ data class QueueAgent(
     val glyph: String,
     val tone: QueueTone,
     val label: String,
+    /** Chữ ngắn hiện cạnh tên khi cần chú ý ("cần anh", "còn job"); qq gọi là word. */
+    val word: String,
 )
 
 data class QueueBanner(
@@ -112,10 +116,12 @@ data class QueueState(
             glyph = o.optString("glyph").ifEmpty { "•" },
             tone = QueueTone.from(o.optString("tone")),
             label = o.optString("label"),
+            word = o.optString("word"),
         )
 
         private fun parseTask(o: JSONObject) = QueueTask(
             id = o.optInt("id", -1),
+            target = o.optString("target"),
             text = o.optString("text"),
             state = o.optString("state"),
             glyph = o.optString("glyph").ifEmpty { "•" },
