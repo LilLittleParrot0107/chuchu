@@ -5,6 +5,15 @@ name: Build debug APK
 on:
   workflow_dispatch: {}
 
+# Bấm dispatch lần nữa thì huỷ lần trước: hôm 20/8 có 15 lần dispatch, nhiều
+# lần chỉ để sửa một chi tiết giao diện, và các run cũ vẫn chạy tới hết.
+concurrency:
+  group: debug-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
   apk:
     runs-on: ubuntu-latest
@@ -14,7 +23,39 @@ jobs:
         uses: actions/checkout@v4
 
       - uses: DeterminateSystems/nix-installer-action@main
-      - uses: DeterminateSystems/magic-nix-cache-action@main
+      # magic-nix-cache đã bị bỏ: bước "Post" của nó từng tốn 3 phút 07 để đẩy
+      # store lên GHA cache — nhiều hơn cả phần nó tiết kiệm được, vì store path
+      # của devshell vốn tới từ cache.nixos.org.
+
+      # Cache phần nix tự tải flake input. Log cho thấy riêng "unpacking
+      # github:NixOS/nixpkgs" mất 53s mỗi lần chạy.
+      - name: Cache nix flake inputs
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/nix
+          key: nix-flake-${{ hashFiles('flake.lock') }}
+
+      # Cache zig: đây là bước nặng nhất (~3 phút, phần lớn là compile lại
+      # ghostty + libssh2 + openssl từ đầu). restore-keys quan trọng — sửa một
+      # file .zig vẫn dùng lại được package đã tải và phần lớn object của các
+      # thư viện C không đổi.
+      - name: Cache zig build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/zig
+            zig-src/.zig-cache
+          key: zig-${{ hashFiles('zig-src/build.zig.zon', 'zig-src/**/*.zig') }}
+          restore-keys: zig-
+
+      - name: Cache gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ hashFiles('android/gradle/libs.versions.toml', 'android/**/*.gradle.kts') }}
+          restore-keys: gradle-
 
       - name: build chuchu_jni
         run: |
@@ -27,6 +68,9 @@ jobs:
       # Release build (R8 minify + resource shrink — roughly the official
       # nightly's size) signed with the committed fixed debug keystore via
       # the build.gradle.kts fallback, so it installs over the debug builds.
+      #
+      # -x lintVitalRelease: lint chiếm ~50s và không bắt được gì mà CI này cần —
+      # đây là bản sideload cho một người dùng, không phải bản lên store.
       - name: build android release APK
         env:
           ANDROID_ABI_FILTERS: arm64-v8a
@@ -35,7 +79,7 @@ jobs:
             set -e
             cd android
             chmod +x ./gradlew
-            ./gradlew assembleRelease
+            ./gradlew assembleRelease -x lintVitalRelease
           '
 
       - name: Upload APK artifact
