@@ -130,6 +130,29 @@ fun ApplicationNavController() {
                 onDeleteServer = vm::deleteServer,
                 onOpenSettings = { navController.navigate("settings") },
                 onOpenWeb = { navController.navigate("web") },
+                onOpenQueue = { navController.navigate("queue") },
+            )
+        }
+        composable("queue") {
+            val vm: com.jossephus.chuchu.ui.screens.Queue.QueueViewModel =
+                viewModel(factory = com.jossephus.chuchu.ui.screens.Queue.QueueViewModel.factory(application))
+            val ui by vm.ui.collectAsStateWithLifecycle()
+            val qUrl by vm.queueUrl.collectAsStateWithLifecycle()
+            val qToken by vm.queueToken.collectAsStateWithLifecycle()
+            // Poll chi chay khi man hinh dang hien: roi nen la ngung han, khong
+            // de mot vong 2 giay chay ngam an pin va giu song WiFi.
+            androidx.lifecycle.compose.LifecycleResumeEffect(Unit) {
+                vm.startPolling()
+                onPauseOrDispose { vm.stopPolling() }
+            }
+            com.jossephus.chuchu.ui.screens.Queue.QueueScreen(
+                ui = ui,
+                onAction = vm::runAction,
+                onAdd = vm::addTask,
+                onRefresh = vm::refreshNow,
+                currentUrl = qUrl,
+                currentToken = qToken,
+                onSaveConfig = vm::saveConfig,
             )
         }
         composable("web") {

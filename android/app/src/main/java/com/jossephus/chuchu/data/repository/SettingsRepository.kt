@@ -47,6 +47,12 @@ class SettingsRepository(context: Context) {
     private val _webPortalUrl = MutableStateFlow(prefs.getString(KEY_WEB_PORTAL_URL, DEFAULT_WEB_PORTAL_URL) ?: DEFAULT_WEB_PORTAL_URL)
     val webPortalUrl: StateFlow<String> = _webPortalUrl.asStateFlow()
 
+    private val _queueUrl = MutableStateFlow(prefs.getString(KEY_QUEUE_URL, DEFAULT_QUEUE_URL) ?: DEFAULT_QUEUE_URL)
+    val queueUrl: StateFlow<String> = _queueUrl.asStateFlow()
+
+    private val _queueToken = MutableStateFlow(prefs.getString(KEY_QUEUE_TOKEN, "") ?: "")
+    val queueToken: StateFlow<String> = _queueToken.asStateFlow()
+
     private val _appLockEnabled = MutableStateFlow(prefs.getBoolean(KEY_APP_LOCK_ENABLED, false))
     val appLockEnabled: StateFlow<Boolean> = _appLockEnabled.asStateFlow()
 
@@ -118,6 +124,18 @@ class SettingsRepository(context: Context) {
     fun setAccessoryBarSingleRow(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_ACCESSORY_BAR_SINGLE_ROW, enabled).apply()
         _accessoryBarSingleRow.value = enabled
+    }
+
+    fun setQueueUrl(value: String) {
+        val v = value.trim().trimEnd('/')
+        prefs.edit().putString(KEY_QUEUE_URL, v).apply()
+        _queueUrl.value = v
+    }
+
+    fun setQueueToken(value: String) {
+        val v = value.trim()
+        prefs.edit().putString(KEY_QUEUE_TOKEN, v).apply()
+        _queueToken.value = v
     }
 
     fun setWebPortalUrl(value: String) {
@@ -214,6 +232,10 @@ class SettingsRepository(context: Context) {
         private const val KEY_SHOW_CUSTOM_ACTIONS_FAB = "show_custom_actions_fab"
         private const val KEY_BUILTIN_SHORTCUTS = "builtin_shortcuts"
         private const val KEY_ACCESSORY_BAR_SINGLE_ROW = "terminal_accessory_bar_single_row"
+        private const val KEY_QUEUE_URL = "queue_url"
+        private const val KEY_QUEUE_TOKEN = "queue_token"
+        // qsrv nam sau `tailscale serve` cung host voi cong web portal.
+        private const val DEFAULT_QUEUE_URL = "https://the-real-witch.tail26a258.ts.net/q"
         private const val KEY_WEB_PORTAL_URL = "web_portal_url"
         private const val DEFAULT_WEB_PORTAL_URL = "https://the-real-witch.tail26a258.ts.net"
         private const val KEY_TAB_MODE = "terminal_tab_mode"

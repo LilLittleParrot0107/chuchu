@@ -75,6 +75,7 @@ fun ServerListScreen(
     onDeleteServer: (Long) -> Unit,
     onOpenSettings: () -> Unit,
     onOpenWeb: () -> Unit = {},
+    onOpenQueue: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -154,6 +155,15 @@ fun ServerListScreen(
                 }
 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ChuButton(
+                        onClick = onOpenQueue,
+                        variant = ChuButtonVariant.Outlined,
+                        bracketed = true,
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                        contentDescription = "Hàng đợi task",
+                    ) {
+                        ChuText("q", style = typography.label, color = colors.textSecondary)
+                    }
                     if (!isSearchVisible && hosts.isNotEmpty()) {
                         ChuButton(
                             onClick = { isSearchVisible = true },

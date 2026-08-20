@@ -130,6 +130,9 @@ dependencies {
     implementation("androidx.biometric:biometric:1.2.0-alpha05")
     implementation("androidx.fragment:fragment-ktx:1.8.2")
     testImplementation(libs.junit)
+    // org.json cua Android chi la stub trong unit test (moi ham nem
+    // "not mocked"). Them ban that de test parser hang doi chay duoc tren JVM.
+    testImplementation("org.json:json:20240303")
     androidTestImplementation(libs.androidx.junit)
     implementation(libs.androidx.compose.foundation)
     androidTestImplementation(libs.androidx.espresso.core)
