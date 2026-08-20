@@ -94,6 +94,9 @@ fun TerminalCanvas(
     // Finger position while the arrow-trackpad is armed; null when inactive.
     // Read by the Canvas draw pass to render the trackpad indicator overlay.
     var trackpadIndicator by remember { mutableStateOf<Offset?>(null) }
+    // Doi vai lan moi cu chi (luc chot truc), khac han vi tri doi moi mau cham
+    // -> de chung o day khong lam ve lai them.
+    var trackpadAxisHint by remember { mutableStateOf(TrackpadAxis.None) }
     val androidViewConfiguration = remember(context) { ViewConfiguration.get(context) }
     val touchSlopPx = remember(androidViewConfiguration) { androidViewConfiguration.scaledTouchSlop.toFloat() }
     val longPressSlopPx = remember(touchSlopPx) { touchSlopPx * 1.5f }
@@ -103,6 +106,7 @@ fun TerminalCanvas(
     val trackpadStepPx = with(density) { TRACKPAD_STEP_DP.dp.toPx() }
     val trackpadDeadZonePx = with(density) { TRACKPAD_DEAD_ZONE_DP.dp.toPx() }
     val trackpadAxisForcePx = with(density) { TRACKPAD_AXIS_FORCE_DP.dp.toPx() }
+    val trackpadAxisSwitchPx = with(density) { TRACKPAD_AXIS_SWITCH_DP.dp.toPx() }
     val autoScrollIntervalMs = 55L
     val doubleTapTimeoutMillis = remember { ViewConfiguration.getDoubleTapTimeout().toLong() }
     val doubleTapSlopPx = remember(androidViewConfiguration) { androidViewConfiguration.scaledDoubleTapSlop.toFloat() }
@@ -365,6 +369,7 @@ fun TerminalCanvas(
                         var trackpadAxis = TrackpadAxis.None
                         var trackpadResidual = 0f
                         var trackpadLastHapticMs = 0L
+                        var trackpadAnchor = Offset.Zero
                         var trackpadMoved = false
                         var startPinchDistance: Float? = null
                         var anchorFontSp = 0f
@@ -434,6 +439,7 @@ fun TerminalCanvas(
                                     }
                                     if (releasedDragMode == DragMode.ArrowTrackpad) {
                                         trackpadIndicator = null
+                                        trackpadAxisHint = TrackpadAxis.None
                                         if (!trackpadMoved) {
                                             // Stationary hold + release: this is
                                             // the deliberate word-select gesture
@@ -608,11 +614,52 @@ fun TerminalCanvas(
                                                     // never dump 2-3 steps at once.
                                                     trackpadResidual =
                                                         sign(along) * min(abs(along), trackpadDeadZonePx)
+                                                    trackpadAnchor = change.position
+                                                    trackpadAxisHint = trackpadAxis
                                                 }
                                             }
                                         }
 
                                         if (trackpadAxis != TrackpadAxis.None) {
+                                            // Re-commit the axis mid-gesture so an
+                                            // L-shaped move (right, then down) works
+                                            // without lifting. Locking for the whole
+                                            // gesture meant a fresh long-press per
+                                            // leg — half a second of nothing each
+                                            // time, which is what made the trackpad
+                                            // feel stiff.
+                                            //
+                                            // Measured from an anchor that RESETS on
+                                            // every emitted step, not from the
+                                            // gesture origin. While the finger is
+                                            // travelling along the axis the anchor
+                                            // keeps up, so the gentle curve of a real
+                                            // swipe can never accumulate into a
+                                            // switch; only genuinely stopping and
+                                            // going sideways can.
+                                            val perp =
+                                                if (trackpadAxis == TrackpadAxis.Horizontal) {
+                                                    change.position.y - trackpadAnchor.y
+                                                } else {
+                                                    change.position.x - trackpadAnchor.x
+                                                }
+                                            if (abs(perp) >= trackpadAxisSwitchPx) {
+                                                trackpadAxis =
+                                                    if (trackpadAxis == TrackpadAxis.Horizontal) {
+                                                        TrackpadAxis.Vertical
+                                                    } else {
+                                                        TrackpadAxis.Horizontal
+                                                    }
+                                                trackpadAxisHint = trackpadAxis
+                                                trackpadAnchor = change.position
+                                                // Exactly one step's worth: the
+                                                // switch distance is already paid,
+                                                // so the new direction answers on
+                                                // the same frame instead of asking
+                                                // for another 12dp first.
+                                                trackpadResidual = sign(perp) * stepPx
+                                            }
+
                                             // The perpendicular component is
                                             // DISCARDED, not accumulated: that is
                                             // what stops a slightly curved swipe
@@ -620,12 +667,29 @@ fun TerminalCanvas(
                                             // Up/Down. Up at a shell prompt
                                             // recalls history and wipes the line,
                                             // so a stray one is expensive.
-                                            trackpadResidual +=
+                                            val rawDelta =
                                                 if (trackpadAxis == TrackpadAxis.Horizontal) {
                                                     change.position.x - change.previousPosition.x
                                                 } else {
                                                     change.position.y - change.previousPosition.y
                                                 }
+                                            // Speed-scaled gain. Below ACCEL_LO the
+                                            // gain is exactly 1, so careful
+                                            // character-by-character work is bit for
+                                            // bit what it was; the boost only exists
+                                            // for the flick that crosses a long
+                                            // command line. Acceleration that also
+                                            // touched slow movement would trade away
+                                            // the accuracy this gesture was rebuilt
+                                            // for.
+                                            val dtMs = (change.uptimeMillis -
+                                                change.previousUptimeMillis).coerceAtLeast(1L)
+                                            val speed = abs(rawDelta) / dtMs
+                                            val gain = 1f + (
+                                                (speed - TRACKPAD_ACCEL_LO) /
+                                                    (TRACKPAD_ACCEL_HI - TRACKPAD_ACCEL_LO)
+                                                ).coerceIn(0f, 1f) * (TRACKPAD_ACCEL_MAX - 1f)
+                                            trackpadResidual += rawDelta * gain
 
                                             var steps = 0
                                             while (abs(trackpadResidual) >= stepPx) {
@@ -639,6 +703,9 @@ fun TerminalCanvas(
                                                 steps += s.toInt()
                                             }
                                             if (steps != 0) {
+                                                // Anchor follows real progress along
+                                                // the axis; see the re-commit note.
+                                                trackpadAnchor = change.position
                                                 val key = when {
                                                     trackpadAxis == TrackpadAxis.Horizontal && steps > 0 ->
                                                         TerminalSpecialKey.Right
@@ -1041,6 +1108,7 @@ fun TerminalCanvas(
     // wrong — the indicator was quietly corrupting the gesture it existed to
     // explain. Its own Canvas redraws just the ring.
     trackpadIndicator?.let { pos ->
+        val axisHint = trackpadAxisHint
         Canvas(modifier = Modifier.fillMaxSize()) {
             val r = 26.dp.toPx()
             drawCircle(color = Color.White.copy(alpha = 0.15f), radius = r, center = pos)
@@ -1050,6 +1118,28 @@ fun TerminalCanvas(
                 center = pos,
                 style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx()),
             )
+            // Two ticks on the committed axis. Until an axis is chosen the ring
+            // is bare, so "held but not yet steering" and "steering left/right"
+            // are told apart at a glance — previously both looked identical and
+            // a swipe that silently went to the wrong axis had no tell.
+            if (axisHint != TrackpadAxis.None) {
+                val tick = 7.dp.toPx()
+                val gap = r - 5.dp.toPx()
+                val w = 2.dp.toPx()
+                val c = Color.White.copy(alpha = 0.75f)
+                for (dir in intArrayOf(-1, 1)) {
+                    val from: Offset
+                    val to: Offset
+                    if (axisHint == TrackpadAxis.Horizontal) {
+                        from = Offset(pos.x + dir * gap, pos.y)
+                        to = Offset(pos.x + dir * (gap + tick), pos.y)
+                    } else {
+                        from = Offset(pos.x, pos.y + dir * gap)
+                        to = Offset(pos.x, pos.y + dir * (gap + tick))
+                    }
+                    drawLine(color = c, start = from, end = to, strokeWidth = w)
+                }
+            }
         }
     }
     }
@@ -1255,6 +1345,23 @@ private const val TRACKPAD_AXIS_FORCE_DP = 32f
 
 /** Major/minor ratio needed to commit early; ~±26° of "too close to call". */
 private const val TRACKPAD_AXIS_RATIO = 1.3f
+
+/**
+ * Doan vuong goc phai di duoc de doi truc GIUA cu chi (khong can nha tay).
+ * Rong hon mot nac (12dp) nhieu lan, nen khong the vo tinh cham phai; do lai tu
+ * mot moc TU DAT LAI moi khi co nac, nen duong cong tu nhien cua cu vuot dai
+ * khong bao gio don gop thanh mot lan doi truc.
+ */
+private const val TRACKPAD_AXIS_SWITCH_DP = 30f
+
+/**
+ * Tang toc theo van toc, don vi px/ms. Duoi LO thi he so dung bang 1 — di cham
+ * chinh xac tung ky tu khong he doi. Chi cu vay nhanh de bang qua ca dong lenh
+ * moi duoc nhan, toi da MAX lan.
+ */
+private const val TRACKPAD_ACCEL_LO = 0.7f
+private const val TRACKPAD_ACCEL_HI = 3.2f
+private const val TRACKPAD_ACCEL_MAX = 2.2f
 
 /** Haptic ceiling. Below ~30ms ticks merge into a buzz and add latency. */
 private const val TRACKPAD_HAPTIC_MIN_MS = 40L

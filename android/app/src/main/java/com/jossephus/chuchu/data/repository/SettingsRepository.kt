@@ -44,7 +44,7 @@ class SettingsRepository(context: Context) {
     private val _accessoryBarSingleRow = MutableStateFlow(prefs.getBoolean(KEY_ACCESSORY_BAR_SINGLE_ROW, false))
     val accessoryBarSingleRow: StateFlow<Boolean> = _accessoryBarSingleRow.asStateFlow()
 
-    private val _webPortalUrl = MutableStateFlow(prefs.getString(KEY_WEB_PORTAL_URL, DEFAULT_WEB_PORTAL_URL) ?: DEFAULT_WEB_PORTAL_URL)
+    private val _webPortalUrl = MutableStateFlow(migrateWebPortalUrl())
     val webPortalUrl: StateFlow<String> = _webPortalUrl.asStateFlow()
 
     private val _queueUrl = MutableStateFlow(prefs.getString(KEY_QUEUE_URL, DEFAULT_QUEUE_URL) ?: DEFAULT_QUEUE_URL)
@@ -136,6 +136,14 @@ class SettingsRepository(context: Context) {
         val v = value.trim()
         prefs.edit().putString(KEY_QUEUE_TOKEN, v).apply()
         _queueToken.value = v
+    }
+
+    /** Doi duong dufs cu (goc tailnet) sang duong moi mot lan, ngay khi mo app. */
+    private fun migrateWebPortalUrl(): String {
+        val cur = prefs.getString(KEY_WEB_PORTAL_URL, null) ?: return DEFAULT_WEB_PORTAL_URL
+        if (cur.trim() !in LEGACY_WEB_PORTAL_URLS) return cur
+        prefs.edit().putString(KEY_WEB_PORTAL_URL, DEFAULT_WEB_PORTAL_URL).apply()
+        return DEFAULT_WEB_PORTAL_URL
     }
 
     fun setWebPortalUrl(value: String) {
@@ -237,7 +245,17 @@ class SettingsRepository(context: Context) {
         // qsrv nam sau `tailscale serve` cung host voi cong web portal.
         private const val DEFAULT_QUEUE_URL = "https://the-real-witch.tail26a258.ts.net/q"
         private const val KEY_WEB_PORTAL_URL = "web_portal_url"
-        private const val DEFAULT_WEB_PORTAL_URL = "https://the-real-witch.tail26a258.ts.net"
+        // dufs khong con serve o goc: 20/8 thu pham vi ve /home/a/chuchu va
+        // gan vao `tailscale serve --set-path /chuchu` (goc phoi ca $HOME ra
+        // tailnet, ke ca ~/.ssh). Duong cu gio khong co gi ánh xa -> 404.
+        private const val DEFAULT_WEB_PORTAL_URL = "https://the-real-witch.tail26a258.ts.net/chuchu/"
+        // Ban da cai luu duong cu trong prefs nen doi mac dinh khong cuu duoc
+        // ho; phai di tru. Chi doi khi giá trị dung y het mac dinh cu — nguoi
+        // dung tu go duong khac thi khong dung vao.
+        private val LEGACY_WEB_PORTAL_URLS = setOf(
+            "https://the-real-witch.tail26a258.ts.net",
+            "https://the-real-witch.tail26a258.ts.net/",
+        )
         private const val KEY_TAB_MODE = "terminal_tab_mode"
         private const val KEY_APP_LOCK_ENABLED = "app_lock_enabled"
         private const val KEY_REQUIRE_AUTH_ON_CONNECT = "require_auth_on_connect"
