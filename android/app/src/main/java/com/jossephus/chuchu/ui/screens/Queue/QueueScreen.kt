@@ -286,9 +286,9 @@ private fun ConfigPanel(
     ) {
         ChuText("Cấu hình hàng đợi", style = type.title)
         ChuText(
-            "Token nằm ở ~/.config/qsrv.token trên máy chủ. " +
-                "Địa chỉ phải là đường tailnet — qsrv chỉ nghe loopback nên " +
-                "ngoài tailnet không gọi tới được.",
+            "Chỉ cần địa chỉ. Đi qua tailnet thì máy chủ đã biết chắc là bạn, " +
+                "không cần token. Ô token bên dưới chỉ dùng khi chạy qsrv " +
+                "không nằm sau tailscale serve.",
             style = type.bodySmall,
             color = colors.textSecondary,
         )
@@ -303,8 +303,8 @@ private fun ConfigPanel(
         ChuTextField(
             value = token,
             onValueChange = { token = it },
-            label = "Token",
-            placeholder = "dán token vào đây",
+            label = "Token (không bắt buộc)",
+            placeholder = "để trống nếu dùng qua tailnet",
             singleLine = true,
             autoFocus = false,
             visualTransformation = PasswordVisualTransformation(),
@@ -312,7 +312,7 @@ private fun ConfigPanel(
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             ChuButton(
                 onClick = { onSave(url, token) },
-                enabled = url.isNotBlank() && token.isNotBlank(),
+                enabled = url.isNotBlank(),
                 bracketed = true,
             ) { ChuText("Lưu", color = colors.onAccent) }
             if (onDismiss != null) {

@@ -44,9 +44,13 @@ class QueueViewModel(
 
     private fun client(): QueueClient? {
         val url = settings.queueUrl.value
-        val token = settings.queueToken.value
-        if (url.isBlank() || token.isBlank()) return null
-        return QueueClient(url, token)
+        if (url.isBlank()) return null
+        // Token la TUY CHON. Di qua `tailscale serve` thi qsrv da biet chac day
+        // la chinh chu tailnet qua header ma client khong bia duoc — chung thuc
+        // do manh hon token. Bat go 44 ky tu tren dien thoai chi de lap lai mot
+        // dieu server da biet la hanh nguoi dung, khong them an toan.
+        // Van gui neu co, cho truong hop chay qsrv KHONG nam sau serve.
+        return QueueClient(url, settings.queueToken.value)
     }
 
     /** Gọi khi màn hình hiện ra. Huỷ bằng [stopPolling] khi màn hình khuất. */
