@@ -100,10 +100,18 @@ fun TerminalCanvas(
     val androidViewConfiguration = remember(context) { ViewConfiguration.get(context) }
     val touchSlopPx = remember(androidViewConfiguration) { androidViewConfiguration.scaledTouchSlop.toFloat() }
     val longPressSlopPx = remember(touchSlopPx) { touchSlopPx * 1.5f }
-    val longPressTimeoutMillis = remember { ViewConfiguration.getLongPressTimeout().toLong() }
+    // Mac dinh he thong la 400ms, cham hon muc can thiet cho cu chi nay: vong
+    // tron hien muon lam nguoi dung tuong may khong nhan. Rut xuong 300ms.
+    // KHONG rut sau hon: van con phai la mot cai giu CO CHU Y, neu khong thi
+    // cham roi ngap ngung mot nhip la bi cuop mat cu cuon.
+    // Lay min voi he thong de may nao dat nguong thap hon thi ta khong keo dai ra.
+    val longPressTimeoutMillis = remember {
+        minOf(ViewConfiguration.getLongPressTimeout().toLong(), TRACKPAD_ARM_MS)
+    }
     val autoScrollEdgeZonePx = with(density) { 48.dp.toPx() }
     // Trackpad geometry, in real physical distance rather than character cells.
-    val trackpadStepPx = with(density) { TRACKPAD_STEP_DP.dp.toPx() }
+    val trackpadStepXPx = with(density) { TRACKPAD_STEP_X_DP.dp.toPx() }
+    val trackpadStepYPx = with(density) { TRACKPAD_STEP_Y_DP.dp.toPx() }
     val trackpadDeadZonePx = with(density) { TRACKPAD_DEAD_ZONE_DP.dp.toPx() }
     val trackpadAxisForcePx = with(density) { TRACKPAD_AXIS_FORCE_DP.dp.toPx() }
     val trackpadAxisSwitchPx = with(density) { TRACKPAD_AXIS_SWITCH_DP.dp.toPx() }
@@ -582,7 +590,6 @@ fun TerminalCanvas(
                                         // read as horizontal. One isotropic step
                                         // fixes both, and makes the gesture
                                         // behave the same at every font size.
-                                        val stepPx = trackpadStepPx
                                         val relX = change.position.x - down.position.x
                                         val relY = change.position.y - down.position.y
 
@@ -637,6 +644,7 @@ fun TerminalCanvas(
                                             // swipe can never accumulate into a
                                             // switch; only genuinely stopping and
                                             // going sideways can.
+                                            var switched = false
                                             val perp =
                                                 if (trackpadAxis == TrackpadAxis.Horizontal) {
                                                     change.position.y - trackpadAnchor.y
@@ -652,11 +660,29 @@ fun TerminalCanvas(
                                                     }
                                                 trackpadAxisHint = trackpadAxis
                                                 trackpadAnchor = change.position
-                                                // Exactly one step's worth: the
-                                                // switch distance is already paid,
-                                                // so the new direction answers on
-                                                // the same frame instead of asking
-                                                // for another 12dp first.
+                                                switched = true
+                                            }
+
+                                            // Doc dai mot nac khac nhau theo truc:
+                                            // Up/Down dat hon Left/Right nhieu (mot
+                                            // Up nham o dau nhac shell la mat ca
+                                            // dong dang go), nen no doi doan keo
+                                            // dai hon.
+                                            //
+                                            // PHAI tinh SAU khi truc da chot xong:
+                                            // tinh truoc thi khung vua doi truc con
+                                            // do bang buoc cua truc CU.
+                                            val stepPx =
+                                                if (trackpadAxis == TrackpadAxis.Vertical) {
+                                                    trackpadStepYPx
+                                                } else {
+                                                    trackpadStepXPx
+                                                }
+                                            if (switched) {
+                                                // Dung mot nac: doan doi truc da tra
+                                                // du roi, nen huong moi dap ngay
+                                                // trong khung nay thay vi bat di
+                                                // them mot buoc nua.
                                                 trackpadResidual = sign(perp) * stepPx
                                             }
 
@@ -673,23 +699,15 @@ fun TerminalCanvas(
                                                 } else {
                                                     change.position.y - change.previousPosition.y
                                                 }
-                                            // Speed-scaled gain. Below ACCEL_LO the
-                                            // gain is exactly 1, so careful
-                                            // character-by-character work is bit for
-                                            // bit what it was; the boost only exists
-                                            // for the flick that crosses a long
-                                            // command line. Acceleration that also
-                                            // touched slow movement would trade away
-                                            // the accuracy this gesture was rebuilt
-                                            // for.
-                                            val dtMs = (change.uptimeMillis -
-                                                change.previousUptimeMillis).coerceAtLeast(1L)
-                                            val speed = abs(rawDelta) / dtMs
-                                            val gain = 1f + (
-                                                (speed - TRACKPAD_ACCEL_LO) /
-                                                    (TRACKPAD_ACCEL_HI - TRACKPAD_ACCEL_LO)
-                                                ).coerceIn(0f, 1f) * (TRACKPAD_ACCEL_MAX - 1f)
-                                            trackpadResidual += rawDelta * gain
+                                            // KHONG tang toc. Da thu o v1.25 va
+                                            // hong: mot cu vuot nhanh binh thuong
+                                            // (~300px trong 150ms) bi nhan len
+                                            // thanh 14 lan bam mui ten. Voi Up o
+                                            // dau nhac shell thi do la 14 lan goi
+                                            // lai lich su — pha thang dong lenh.
+                                            // Cu chi nay can DOAN TRUOC DUOC hon la
+                                            // nhanh; muon di xa thi vuot them lan.
+                                            trackpadResidual += rawDelta
 
                                             var steps = 0
                                             while (abs(trackpadResidual) >= stepPx) {
@@ -1335,7 +1353,14 @@ private fun isNerdFontPrivateUse(cp: Int): Boolean {
  * from 45°, which is exactly the bug this replaced. Directional asymmetry
  * belongs in the axis-lock rule, not in the step size.
  */
-private const val TRACKPAD_STEP_DP = 12f
+/**
+ * Doan ngon tay phai di de ra MOT lan bam mui ten. v1.25 dat 12dp cho ca hai
+ * truc va bi bao la "spam mui ten": vuot binh thuong ra chuc lan bam. Nong len
+ * gan gap doi, va Y dai hon X vi Up/Down dat hon (Up o dau nhac shell = goi lai
+ * lich su, mat dong dang go).
+ */
+private const val TRACKPAD_STEP_X_DP = 22f
+private const val TRACKPAD_STEP_Y_DP = 30f
 
 /** Travel before the first key. 2x touch slop: past noise, into intent. */
 private const val TRACKPAD_DEAD_ZONE_DP = 16f
@@ -1352,16 +1377,10 @@ private const val TRACKPAD_AXIS_RATIO = 1.3f
  * mot moc TU DAT LAI moi khi co nac, nen duong cong tu nhien cua cu vuot dai
  * khong bao gio don gop thanh mot lan doi truc.
  */
-private const val TRACKPAD_AXIS_SWITCH_DP = 30f
+private const val TRACKPAD_ARM_MS = 300L
 
-/**
- * Tang toc theo van toc, don vi px/ms. Duoi LO thi he so dung bang 1 — di cham
- * chinh xac tung ky tu khong he doi. Chi cu vay nhanh de bang qua ca dong lenh
- * moi duoc nhan, toi da MAX lan.
- */
-private const val TRACKPAD_ACCEL_LO = 0.7f
-private const val TRACKPAD_ACCEL_HI = 3.2f
-private const val TRACKPAD_ACCEL_MAX = 2.2f
+private const val TRACKPAD_AXIS_SWITCH_DP = 42f
+
 
 /** Haptic ceiling. Below ~30ms ticks merge into a buzz and add latency. */
 private const val TRACKPAD_HAPTIC_MIN_MS = 40L
