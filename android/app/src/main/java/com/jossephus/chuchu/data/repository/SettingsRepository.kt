@@ -248,13 +248,17 @@ class SettingsRepository(context: Context) {
         // dufs khong con serve o goc: 20/8 thu pham vi ve /home/a/chuchu va
         // gan vao `tailscale serve --set-path /chuchu` (goc phoi ca $HOME ra
         // tailnet, ke ca ~/.ssh). Duong cu gio khong co gi ánh xa -> 404.
-        private const val DEFAULT_WEB_PORTAL_URL = "https://the-real-witch.tail26a258.ts.net/chuchu/"
+        private const val DEFAULT_WEB_PORTAL_URL = "https://the-real-witch.tail26a258.ts.net/home/"
         // Ban da cai luu duong cu trong prefs nen doi mac dinh khong cuu duoc
         // ho; phai di tru. Chi doi khi giá trị dung y het mac dinh cu — nguoi
         // dung tu go duong khac thi khong dung vao.
         private val LEGACY_WEB_PORTAL_URLS = setOf(
             "https://the-real-witch.tail26a258.ts.net",
             "https://the-real-witch.tail26a258.ts.net/",
+            // dufs da doi goc tu /home/a/chuchu sang /home/a (danh sach trang),
+            // nen duyet nen bat dau o home chu khong ket trong mot du an.
+            "https://the-real-witch.tail26a258.ts.net/chuchu/",
+            "https://the-real-witch.tail26a258.ts.net/chuchu",
         )
         private const val KEY_TAB_MODE = "terminal_tab_mode"
         private const val KEY_APP_LOCK_ENABLED = "app_lock_enabled"

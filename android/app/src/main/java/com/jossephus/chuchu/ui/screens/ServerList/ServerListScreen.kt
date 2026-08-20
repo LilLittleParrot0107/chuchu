@@ -90,6 +90,7 @@ fun ServerListScreen(
     var pendingConnectHostId by remember { mutableStateOf<Long?>(null) }
     var pendingLocalShell by remember { mutableStateOf(false) }
     var isSearchVisible by remember { mutableStateOf(false) }
+    var menuOpen by remember { mutableStateOf(false) }
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) {
@@ -144,26 +145,23 @@ fun ServerListScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                // The title doubles as the portal entry: tapping "kohi" opens
-                // the dufs browser (the separate ❏ button was dropped).
+                // Bam "kohi" mo mot menu nho thay vi nhay thang sang dufs:
+                // gio co hai dich (file, hang doi) nen tieu de khong the mac
+                // dinh la mot trong hai duoc nua.
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.clickable(onClick = onOpenWeb),
+                    modifier = Modifier.clickable { menuOpen = !menuOpen },
                 ) {
                     ChuText("$ ", style = typography.headline, color = colors.textMuted)
                     ChuText("kohi", style = typography.headline)
+                    ChuText(
+                        if (menuOpen) " ▾" else " ▸",
+                        style = typography.label,
+                        color = colors.textMuted,
+                    )
                 }
 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ChuButton(
-                        onClick = onOpenQueue,
-                        variant = ChuButtonVariant.Outlined,
-                        bracketed = true,
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                        contentDescription = "Hàng đợi task",
-                    ) {
-                        ChuText("q", style = typography.label, color = colors.textSecondary)
-                    }
                     if (!isSearchVisible && hosts.isNotEmpty()) {
                         ChuButton(
                             onClick = { isSearchVisible = true },
@@ -180,6 +178,27 @@ fun ServerListScreen(
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                     ) {
                         ChuText("settings", style = typography.label, color = colors.textSecondary)
+                    }
+                }
+            }
+
+            if (menuOpen) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ChuButton(
+                        onClick = { menuOpen = false; onOpenWeb() },
+                        variant = ChuButtonVariant.Outlined,
+                        bracketed = true,
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 5.dp),
+                    ) {
+                        ChuText("file", style = typography.label, color = colors.textSecondary)
+                    }
+                    ChuButton(
+                        onClick = { menuOpen = false; onOpenQueue() },
+                        variant = ChuButtonVariant.Outlined,
+                        bracketed = true,
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 5.dp),
+                    ) {
+                        ChuText("queue", style = typography.label, color = colors.textSecondary)
                     }
                 }
             }
