@@ -120,4 +120,19 @@ class QueueModelsTest {
         val s = QueueState.parse("""{"global_actions":[{"op":"pause"}]}""")
         assertEquals("pause", s.globalActions.single().label)
     }
+
+    /**
+     * Parser dễ tính + `key = { it.id }` trong LazyColumn = văng app nếu hai
+     * task cùng rơi về id mặc định. Task không có id thì bỏ, vì mọi thao tác
+     * (top/up/del/retry) đều cần id nên có hiện ra cũng không làm gì được.
+     */
+    @Test
+    fun `task khong co id bi bo de khong trung key`() {
+        val s = QueueState.parse(
+            """{"tasks":[{"text":"khong id"},{"text":"cung khong id"},{"id":8,"text":"co id"}]}"""
+        )
+        assertEquals(1, s.tasks.size)
+        assertEquals(8, s.tasks.single().id)
+        assertEquals(s.tasks.size, s.tasks.map { it.id }.distinct().size)
+    }
 }

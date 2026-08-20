@@ -93,7 +93,10 @@ data class QueueState(
             summary = o.optString("summary"),
             globalActions = o.optJSONArray("global_actions").mapObjects(::parseAction),
             agents = o.optJSONArray("agents").mapObjects(::parseAgent),
-            tasks = o.optJSONArray("tasks").mapObjects(::parseTask),
+            // Bỏ task không có id: mọi thao tác đều cần id nên nó vô dụng, mà
+            // giữ lại thì hai task như thế cùng thành id -1 → trùng key trong
+            // LazyColumn → văng app. Parser dễ tính không được đẻ ra key trùng.
+            tasks = o.optJSONArray("tasks").mapObjects(::parseTask).filter { it.id >= 0 },
         )
 
         private fun parseAction(o: JSONObject) = QueueAction(
