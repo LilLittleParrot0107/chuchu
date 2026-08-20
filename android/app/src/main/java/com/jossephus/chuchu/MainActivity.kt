@@ -43,6 +43,11 @@ object DeepLinkBus {
 }
 
 class MainActivity : FragmentActivity() {
+    private companion object {
+        const val TRUSTED_HOOK_HOST = "the-real-witch.tail26a258.ts.net"
+        val PANE_RE = Regex("^w[0-9A-Za-z]+:[pt][0-9A-Za-z]+$")
+    }
+
 
     private fun captureDeepLink(intent: Intent?) {
         val data = intent?.data ?: return
@@ -74,8 +79,14 @@ class MainActivity : FragmentActivity() {
         // that used to focus the herdr tab on its way through the browser
         // never runs — call the hook's /focus endpoint ourselves. (kohi://
         // links come FROM that page, which already did it.)
-        if (isHttpsPath && pane != null) {
-            val focusUrl = "${data.scheme}://${data.host}/kohi-focus/focus?pane=" + Uri.encode(pane)
+        // CHI goi hook tren dung host tin cay. `data.host` den thang tu intent,
+        // ma MainActivity la exported: mot app khac gui intent tuong minh voi
+        // `http://100.x.y.z:8080/kohi-open?pane=...` la khien kohi ban GET toi
+        // dia chi do — quet/kich hoat endpoint noi bo trong tailnet tu dien thoai.
+        // `pane` cung phai khop dinh dang, khong duoc la chuoi tuy y.
+        val trusted = data.scheme == "https" && data.host == TRUSTED_HOOK_HOST
+        if (isHttpsPath && pane != null && trusted && PANE_RE.matches(pane)) {
+            val focusUrl = "https://$TRUSTED_HOOK_HOST/kohi-focus/focus?pane=" + Uri.encode(pane)
             lifecycleScope.launch(Dispatchers.IO) {
                 runCatching {
                     val conn = URL(focusUrl).openConnection() as HttpURLConnection

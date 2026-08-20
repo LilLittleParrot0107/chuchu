@@ -598,9 +598,13 @@ fun TerminalScreen(
         }
         val prepared = vm.prepareTabOpenForHost(hostId) ?: return@LaunchedEffect
         vm.refreshTailscaleStatus()
-        // Biometric verification already happened in ApplicationNavController
-        // before navigating to this route — skip the redundant re-prompt.
-        openPreparedTab(prepared.spec, false, false)
+        // KHONG duoc bo qua xac thuc. Gia dinh cu ("da xac thuc o
+        // ApplicationNavController roi") SAI voi duong deep link: mot app khac,
+        // hay mot trang web bat ky qua `intent://open?host=...#Intent;scheme=kohi;end`,
+        // dieu huong thang toi day. Bo qua nghia la ho mo duoc SSH bang mat khau
+        // da luu VA chay postConnectCommand tren may remote, ke ca khi host do
+        // da bat "doi xac thuc truoc khi ket noi".
+        openPreparedTab(prepared.spec, prepared.requiresVerification, false)
     }
 
     // Strip mode: never auto-back from normal host-scoped empty state.

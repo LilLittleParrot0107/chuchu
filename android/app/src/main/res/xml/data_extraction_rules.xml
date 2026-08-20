@@ -4,10 +4,18 @@
         <!-- SSH private keys, host passwords, passphrases, and trusted host keys are backed up only through Chuchu's encrypted local export flow. -->
         <exclude domain="database" path="." />
         <exclude domain="sharedpref" path="." />
+        <!-- domain="file" la HOME cua local shell (filesDir). Moi thu nguoi dung
+             tao trong shell — history, khoa ssh-keygen, script, token — nam o do.
+             Thieu dong nay thi chung duoc sao luu thang len Google Drive. -->
+        <exclude domain="file" path="." />
     </cloud-backup>
     <device-transfer>
         <!-- Device-to-device transfer must not move plaintext local secrets outside the encrypted export flow. -->
         <exclude domain="database" path="." />
         <exclude domain="sharedpref" path="." />
+        <!-- domain="file" la HOME cua local shell (filesDir). Moi thu nguoi dung
+             tao trong shell — history, khoa ssh-keygen, script, token — nam o do.
+             Thieu dong nay thi chung duoc sao luu thang len Google Drive. -->
+        <exclude domain="file" path="." />
     </device-transfer>
 </data-extraction-rules>

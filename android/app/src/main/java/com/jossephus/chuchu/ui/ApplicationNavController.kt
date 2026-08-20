@@ -32,6 +32,10 @@ import com.jossephus.chuchu.ui.screens.Terminal.TerminalScreen
 import com.jossephus.chuchu.ui.screens.Terminal.TerminalViewModel
 import com.jossephus.chuchu.ui.security.VerificationResult
 import com.jossephus.chuchu.ui.security.requireUserVerification
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.unit.dp
 
 @Composable
 fun ApplicationNavController() {
@@ -42,6 +46,8 @@ fun ApplicationNavController() {
     var appUnlocked by rememberSaveable { mutableStateOf(false) }
     var unlockPromptRequested by rememberSaveable { mutableStateOf(false) }
     var appLockBlockedUntilToggle by rememberSaveable { mutableStateOf(false) }
+    val settingsRepo = SettingsRepository.getInstance(application)
+    val appLockEnabled by settingsRepo.appLockEnabled.collectAsStateWithLifecycle()
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { source, event ->
@@ -76,6 +82,18 @@ fun ApplicationNavController() {
                 navController.navigate("terminal/${match.id}")
             }
         }
+    }
+
+    // Khoa app phai CHE noi dung. Truoc day NavHost ve vo dieu kien va khoa chi
+    // la BiometricPrompt noi len tren: bam Cancel -> appLockBlockedUntilToggle =
+    // true -> prompt khong bao gio hien lai -> huy prompt LA DUNG DUOC app day du
+    // (danh sach server, terminal, export khoa SSH).
+    if (appLockEnabled && !appUnlocked) {
+        LockedGate(
+            blocked = appLockBlockedUntilToggle,
+            onRetry = { appLockBlockedUntilToggle = false },
+        )
+        return
     }
 
     NavHost(navController = navController, startDestination = "servers") {
@@ -282,8 +300,6 @@ fun ApplicationNavController() {
         }
     }
 
-    val settingsRepo = SettingsRepository.getInstance(application)
-    val appLockEnabled by settingsRepo.appLockEnabled.collectAsStateWithLifecycle()
     if (!appLockEnabled) {
         appUnlocked = false
         unlockPromptRequested = false
@@ -299,9 +315,44 @@ fun ApplicationNavController() {
             ) { result ->
                 appUnlocked = result == VerificationResult.Success
                 if (result != VerificationResult.Success) {
+                    // Chan tu dong hien lai (khong spam prompt), nhung nguoi dung
+                    // van bam nut "Mo khoa" duoc. Truoc day co day khong co loi ra:
+                    // huy mot lan la co khoa vinh vien... ma NavHost van ve, tuc la
+                    // "khoa vinh vien" that ra = mo khoa vinh vien.
                     appLockBlockedUntilToggle = true
                 }
                 unlockPromptRequested = false
+            }
+        }
+    }
+}
+
+@Composable
+private fun LockedGate(blocked: Boolean, onRetry: () -> Unit) {
+    val colors = com.jossephus.chuchu.ui.theme.ChuColors.current
+    androidx.compose.foundation.layout.Box(
+        modifier = androidx.compose.ui.Modifier
+            .fillMaxSize()
+            .background(colors.background),
+        contentAlignment = androidx.compose.ui.Alignment.Center,
+    ) {
+        androidx.compose.foundation.layout.Column(
+            horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+        ) {
+            com.jossephus.chuchu.ui.components.ChuText("kohi đang khoá")
+            if (blocked) {
+                androidx.compose.foundation.layout.Spacer(
+                    androidx.compose.ui.Modifier.height(12.dp),
+                )
+                com.jossephus.chuchu.ui.components.ChuButton(
+                    onClick = onRetry,
+                    bracketed = true,
+                ) {
+                    com.jossephus.chuchu.ui.components.ChuText(
+                        "Mở khoá",
+                        color = colors.onAccent,
+                    )
+                }
             }
         }
     }
