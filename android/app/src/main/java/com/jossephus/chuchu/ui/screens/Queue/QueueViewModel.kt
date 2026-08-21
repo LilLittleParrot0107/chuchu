@@ -169,6 +169,32 @@ class QueueViewModel(
         }
     }
 
+    /** Xoá sạch toàn bộ các việc đã xong (hoàn tất) của agent hoặc tất cả */
+    fun clearDoneTasks(targetPane: String? = null) {
+        viewModelScope.launch {
+            val c = client() ?: return@launch
+            val doneTasks = _ui.value.state.tasks.filter {
+                (it.state.equals("done", ignoreCase = true) || it.state.equals("completed", ignoreCase = true)) &&
+                    (targetPane == null || it.target == targetPane)
+            }
+            if (doneTasks.isEmpty()) {
+                _ui.update { it.copy(toast = "Không có tác vụ đã xong để dọn dẹp") }
+                return@launch
+            }
+            _ui.update { it.copy(toast = "Đang dọn ${doneTasks.size} tác vụ đã xong…") }
+            withContext(Dispatchers.IO) {
+                for (task in doneTasks) {
+                    val rmOp = task.actions.firstOrNull {
+                        it.op == "rm" || it.op == "del" || it.op == "delete" || it.danger
+                    }?.op ?: "rm"
+                    c.act(rmOp, task.id, null)
+                }
+            }
+            _ui.update { it.copy(toast = "Đã dọn dẹp ${doneTasks.size} tác vụ đã xong", error = null) }
+            refreshOnce()
+        }
+    }
+
     fun fetchLogs(n: Int = 60) {
         viewModelScope.launch {
             _ui.update { it.copy(logsLoading = true, logsError = null) }
