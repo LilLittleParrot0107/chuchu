@@ -148,7 +148,6 @@ fun ApplicationNavController() {
                 onDeleteServer = vm::deleteServer,
                 onOpenSettings = { navController.navigate("settings") },
                 onOpenWeb = { navController.navigate("web") },
-                onOpenQueue = { navController.navigate("queue") },
             )
         }
         composable("queue") {
@@ -196,6 +195,7 @@ fun ApplicationNavController() {
             val accessoryBarSingleRow by settingsRepo.accessoryBarSingleRow.collectAsStateWithLifecycle()
             val customKeyGroups by settingsRepo.terminalCustomKeyGroups.collectAsStateWithLifecycle()
             val showCustomActionsFab by settingsRepo.showCustomActionsFab.collectAsStateWithLifecycle()
+            val showQueueFab by settingsRepo.showQueueFab.collectAsStateWithLifecycle()
             val builtinShortcuts by settingsRepo.builtinShortcuts.collectAsStateWithLifecycle()
             val tabMode by settingsRepo.terminalTabMode.collectAsStateWithLifecycle()
             val localShellEnabled by settingsRepo.localShellEnabled.collectAsStateWithLifecycle()
@@ -217,6 +217,8 @@ fun ApplicationNavController() {
                 currentTerminalCustomKeyGroups = customKeyGroups,
                 showCustomActionsFab = showCustomActionsFab,
                 onShowCustomActionsFabChanged = settingsRepo::setShowCustomActionsFab,
+                showQueueFab = showQueueFab,
+                onShowQueueFabChanged = settingsRepo::setShowQueueFab,
                 builtinShortcuts = builtinShortcuts,
                 onBuiltinShortcutsChanged = settingsRepo::setBuiltinShortcuts,
                 currentTabMode = tabMode,

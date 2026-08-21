@@ -38,6 +38,9 @@ class SettingsRepository(context: Context) {
     private val _showCustomActionsFab = MutableStateFlow(prefs.getBoolean(KEY_SHOW_CUSTOM_ACTIONS_FAB, true))
     val showCustomActionsFab: StateFlow<Boolean> = _showCustomActionsFab.asStateFlow()
 
+    private val _showQueueFab = MutableStateFlow(prefs.getBoolean(KEY_SHOW_QUEUE_FAB, true))
+    val showQueueFab: StateFlow<Boolean> = _showQueueFab.asStateFlow()
+
     private val _builtinShortcuts = MutableStateFlow(loadBuiltinShortcuts())
     val builtinShortcuts: StateFlow<Map<String, String>> = _builtinShortcuts.asStateFlow()
 
@@ -113,6 +116,11 @@ class SettingsRepository(context: Context) {
     fun setShowCustomActionsFab(visible: Boolean) {
         prefs.edit().putBoolean(KEY_SHOW_CUSTOM_ACTIONS_FAB, visible).apply()
         _showCustomActionsFab.value = visible
+    }
+
+    fun setShowQueueFab(visible: Boolean) {
+        prefs.edit().putBoolean(KEY_SHOW_QUEUE_FAB, visible).apply()
+        _showQueueFab.value = visible
     }
 
     fun setBuiltinShortcuts(shortcuts: Map<String, String>) {
@@ -238,6 +246,7 @@ class SettingsRepository(context: Context) {
         private const val KEY_ACCESSORY_LAYOUT = "terminal_accessory_layout"
         private const val KEY_TERMINAL_CUSTOM_ACTIONS = "terminal_custom_actions"
         private const val KEY_SHOW_CUSTOM_ACTIONS_FAB = "show_custom_actions_fab"
+        private const val KEY_SHOW_QUEUE_FAB = "show_queue_fab"
         private const val KEY_BUILTIN_SHORTCUTS = "builtin_shortcuts"
         private const val KEY_ACCESSORY_BAR_SINGLE_ROW = "terminal_accessory_bar_single_row"
         private const val KEY_QUEUE_URL = "queue_url"

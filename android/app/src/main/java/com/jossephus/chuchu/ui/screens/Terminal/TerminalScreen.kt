@@ -428,6 +428,7 @@ fun TerminalScreen(
             )
     }
     val showCustomActionsFab by settingsRepo.showCustomActionsFab.collectAsStateWithLifecycle()
+    val showQueueFab by settingsRepo.showQueueFab.collectAsStateWithLifecycle()
     val builtinShortcuts by settingsRepo.builtinShortcuts.collectAsStateWithLifecycle()
     var fabFilteredActions by remember { mutableStateOf<List<TerminalCustomAction>?>(null) }
     val chuchuKeys =
@@ -451,7 +452,6 @@ fun TerminalScreen(
                     if (activeId != null) vm.closeTab(activeId)
                 },
                 BuiltinCommand.Actions to { settingsRepo.setShowCustomActionsFab(!showCustomActionsFab) },
-                BuiltinCommand.Queue to { onOpenQueue() },
                 BuiltinCommand.Settings to { onOpenSettings() },
                 BuiltinCommand.Web to { onOpenWeb() },
             )
@@ -1696,45 +1696,63 @@ fun TerminalScreen(
                                     },
                                 )
 
-                                if (currentTerminalCustomKeyGroups.isNotEmpty() &&
-                                    (showCustomActionsFab || fabFilteredActions != null)
+                                Column(
+                                    modifier = Modifier
+                                        .align(Alignment.BottomEnd)
+                                        .padding(end = 14.dp, bottom = 12.dp),
+                                    horizontalAlignment = Alignment.End,
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
                                 ) {
-                                    TerminalCustomActionsFab(
-                                        groups = currentTerminalCustomKeyGroups,
-                                        onActionClick = { action ->
-                                            val decoded = decodeCustomActionValue(action.payload)
-                                            val unescaped =
-                                                com.jossephus.chuchu.ui.terminal
-                                                    .unescapeCustomActionText(decoded.text)
-                                            val rawText =
-                                                unescaped +
-                                                    if (
-                                                        CustomActionModifier.Enter in
-                                                            decoded.modifiers
+                                    if (showQueueFab) {
+                                        ChuButton(
+                                            onClick = onOpenQueue,
+                                            variant = ChuButtonVariant.Filled,
+                                            bracketed = true,
+                                            backgroundColor = colors.surface,
+                                            borderColor = colors.accent,
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                                        ) {
+                                            ChuText("⚡", style = typography.label, color = colors.accent)
+                                        }
+                                    }
+
+                                    if (currentTerminalCustomKeyGroups.isNotEmpty() &&
+                                        (showCustomActionsFab || fabFilteredActions != null)
+                                    ) {
+                                        TerminalCustomActionsFab(
+                                            groups = currentTerminalCustomKeyGroups,
+                                            onActionClick = { action ->
+                                                val decoded = decodeCustomActionValue(action.payload)
+                                                val unescaped =
+                                                    com.jossephus.chuchu.ui.terminal
+                                                        .unescapeCustomActionText(decoded.text)
+                                                val rawText =
+                                                    unescaped +
+                                                        if (
+                                                            CustomActionModifier.Enter in
+                                                                decoded.modifiers
+                                                        )
+                                                            "\n"
+                                                        else ""
+                                                if (unescaped.any { it.code < 0x20 || it.code == 0x7F }) {
+                                                    // Escaped control bytes (\cb, \e,
+                                                    // \xNN): ship raw so prefix combos
+                                                    // like Ctrl+B,A survive.
+                                                    vm.onTextInput(rawText.replace('\n', '\r'))
+                                                } else {
+                                                    val actionModifierState =
+                                                        modifierStateForCustomAction(decoded.modifiers)
+                                                    vm.dispatchTextWithModifierState(
+                                                        rawText,
+                                                        actionModifierState,
                                                     )
-                                                        "\n"
-                                                    else ""
-                                            if (unescaped.any { it.code < 0x20 || it.code == 0x7F }) {
-                                                // Escaped control bytes (\cb, \e,
-                                                // \xNN): ship raw so prefix combos
-                                                // like Ctrl+B,A survive.
-                                                vm.onTextInput(rawText.replace('\n', '\r'))
-                                            } else {
-                                                val actionModifierState =
-                                                    modifierStateForCustomAction(decoded.modifiers)
-                                                vm.dispatchTextWithModifierState(
-                                                    rawText,
-                                                    actionModifierState,
-                                                )
-                                            }
-                                            requestInputFocus()
-                                        },
-                                        modifier =
-                                            Modifier.align(Alignment.BottomEnd)
-                                                .padding(end = 14.dp, bottom = 12.dp),
-                                        filteredActions = fabFilteredActions,
-                                        onClearFilter = { fabFilteredActions = null },
-                                    )
+                                                }
+                                                requestInputFocus()
+                                            },
+                                            filteredActions = fabFilteredActions,
+                                            onClearFilter = { fabFilteredActions = null },
+                                        )
+                                    }
                                 }
 
                                 // Compose-box trigger lives in the accessory bar

@@ -87,6 +87,8 @@ internal fun TerminalSettings(
     onEditCustomActions: () -> Unit,
     showCustomActionsFab: Boolean,
     onShowCustomActionsFabChanged: (Boolean) -> Unit,
+    showQueueFab: Boolean = true,
+    onShowQueueFabChanged: (Boolean) -> Unit = {},
     builtinShortcuts: Map<String, String> = emptyMap(),
     onEditChuchuCommands: () -> Unit = {},
     currentTabMode: TerminalTabMode = TerminalTabMode.Classic,
@@ -421,6 +423,28 @@ internal fun TerminalSettings(
                     ChuSwitch(
                         checked = showCustomActionsFab,
                         onCheckedChange = onShowCustomActionsFabChanged,
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        ChuText("show queue button", style = typography.label)
+                        ChuText(
+                            "toggle visibility of the floating queue button in terminal",
+                            style = typography.bodySmall,
+                            color = colors.textMuted,
+                        )
+                    }
+                    ChuSwitch(
+                        checked = showQueueFab,
+                        onCheckedChange = onShowQueueFabChanged,
                     )
                 }
             }
