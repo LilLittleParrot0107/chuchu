@@ -295,6 +295,7 @@ fun TerminalScreen(
     hostId: Long?,
     onOpenSettings: () -> Unit,
     onOpenWeb: () -> Unit = {},
+    onOpenQueue: () -> Unit = {},
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     openLocalShell: Boolean = false,
@@ -450,6 +451,7 @@ fun TerminalScreen(
                     if (activeId != null) vm.closeTab(activeId)
                 },
                 BuiltinCommand.Actions to { settingsRepo.setShowCustomActionsFab(!showCustomActionsFab) },
+                BuiltinCommand.Queue to { onOpenQueue() },
                 BuiltinCommand.Settings to { onOpenSettings() },
                 BuiltinCommand.Web to { onOpenWeb() },
             )
@@ -1940,6 +1942,7 @@ fun TerminalScreen(
                                         showLocalShellFilesUnsupported()
                                     }
                                 },
+                                onOpenQueue = onOpenQueue,
                                 onComposeBox = { showComposeBox = true },
                                 onSummonKeyboard = requestInputFocus,
                                 useSingleRow = useSingleRowAccessoryBar,
@@ -2032,6 +2035,10 @@ fun TerminalScreen(
                             } else {
                                 showLocalShellFilesUnsupported()
                             }
+                        },
+                        onOpenQueue = {
+                            showTabSheet = false
+                            onOpenQueue()
                         },
                         onOpenSettings = onOpenSettings,
                         useSingleRowAccessoryBar = useSingleRowAccessoryBar,

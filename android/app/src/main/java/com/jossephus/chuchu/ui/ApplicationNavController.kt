@@ -171,6 +171,7 @@ fun ApplicationNavController() {
                 currentUrl = qUrl,
                 currentToken = qToken,
                 onSaveConfig = vm::saveConfig,
+                onBack = { navController.popBackStack() },
             )
         }
         composable("web") {
@@ -273,6 +274,7 @@ fun ApplicationNavController() {
                     openLocalShell = true,
                     onOpenSettings = { navController.navigate("settings") },
                     onOpenWeb = { navController.navigate("web") },
+                    onOpenQueue = { navController.navigate("queue") },
                     onBack = { navController.popBackStack() },
                 )
             } else {
@@ -295,6 +297,7 @@ fun ApplicationNavController() {
                 hostId = id,
                 onOpenSettings = { navController.navigate("settings") },
                 onOpenWeb = { navController.navigate("web") },
+                onOpenQueue = { navController.navigate("queue") },
                 onBack = { navController.popBackStack() },
             )
         }

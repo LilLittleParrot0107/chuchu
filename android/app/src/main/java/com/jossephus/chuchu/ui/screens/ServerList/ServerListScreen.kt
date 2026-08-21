@@ -162,6 +162,14 @@ fun ServerListScreen(
                 }
 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ChuButton(
+                        onClick = onOpenQueue,
+                        variant = ChuButtonVariant.Outlined,
+                        bracketed = true,
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                    ) {
+                        ChuText("⚡ queue", style = typography.label, color = colors.accent)
+                    }
                     if (!isSearchVisible && hosts.isNotEmpty()) {
                         ChuButton(
                             onClick = { isSearchVisible = true },

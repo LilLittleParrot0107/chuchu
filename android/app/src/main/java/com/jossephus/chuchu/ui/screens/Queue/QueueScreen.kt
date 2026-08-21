@@ -1,28 +1,39 @@
 package com.jossephus.chuchu.ui.screens.Queue
 
+import android.widget.Toast
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -30,41 +41,34 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.jossephus.chuchu.ui.components.ChuButton
 import com.jossephus.chuchu.ui.components.ChuButtonVariant
+import com.jossephus.chuchu.ui.components.ChuCard
+import com.jossephus.chuchu.ui.components.ChuDialog
 import com.jossephus.chuchu.ui.components.ChuText
 import com.jossephus.chuchu.ui.components.ChuTextField
+import com.jossephus.chuchu.ui.components.TuiBadge
+import com.jossephus.chuchu.ui.theme.ChuColorPalette
 import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTypography
+import kotlinx.coroutines.delay
 
 /**
- * Màn hình hàng đợi — dựng theo đúng khung của `qq` (bản TUI chạy trên máy chủ),
- * không phải một danh sách thẻ tự nghĩ ra.
- *
- * Bốn thứ mượn nguyên của qq, vì chúng là lý do qq dùng được:
- *  1. **Việc lọc theo agent đang chọn.** Đổ phẳng cả hàng đợi thì không trả lời
- *     được câu hỏi duy nhất hay hỏi: "thằng này đang phải làm gì".
- *  2. **Mỗi việc đúng một dòng**, có chữ cái a/b/c… như qq — liếc là đếm được.
- *  3. **Vạch `▌` bên trái** đánh dấu dòng đang trỏ, thay cho khung viền.
- *  4. **Hai thanh nền đậm** (đỉnh và mục) chia màn hình, thay cho tiêu đề rời.
- *
- * Bảng ký hiệu và màu vẫn do qsrv gửi xuống, không nằm trong Kotlin — xem
- * QueueModels.kt.
+ * Bộ lọc trạng thái tác vụ trong hàng đợi.
  */
-
-// Bảng màu lấy đúng của qq để hai bên nhìn như một. Cố ý KHÔNG dùng theme app:
-// đây là cùng một công cụ ở hai màn hình, đổi màu là đổi cảm giác.
-private val QQ_FG = Color(0xFFE5E5E5)
-private val QQ_DIM = Color(0xFF7A7A7A)
-private val QQ_ACC = Color(0xFF6FBCF7)
-private val QQ_WARN = Color(0xFFE58A2B)
-private val QQ_ERR = Color(0xFFE05C5C)
-private val QQ_GOLD = Color(0xFFF6C17E)
-private val QQ_BAND = Color(0xFF1E1E24)
-private val QQ_SEL = Color(0xFF243447)
+enum class QueueStatusFilter(val label: String) {
+    All("Tất cả"),
+    Pending("Chờ"),
+    Running("Đang chạy"),
+    Done("Đã xong"),
+}
 
 @Composable
 fun QueueScreen(
@@ -75,266 +79,768 @@ fun QueueScreen(
     currentUrl: String,
     currentToken: String,
     onSaveConfig: (String, String) -> Unit,
+    onBack: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val colors = ChuColors.current
     val type = ChuTypography.current
-    var configOpen by remember { mutableStateOf(false) }
-    var selectedPane by remember { mutableStateOf<String?>(null) }
-    var selectedTask by remember { mutableStateOf<Int?>(null) }
-    val showConfig = configOpen || ui.needsSetup
+    val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
 
+    var configDialogOpen by remember { mutableStateOf(false) }
+    var selectedPane by remember { mutableStateOf<String?>(null) } // null = Tất cả
+    var selectedTaskId by remember { mutableStateOf<Int?>(null) }
+    var statusFilter by remember { mutableStateOf(QueueStatusFilter.All) }
+    var targetPaneForAdd by remember { mutableStateOf<String?>(null) }
+    var showTargetSelectorSheet by remember { mutableStateOf(false) }
+
+    val showConfig = configDialogOpen || ui.needsSetup
     val agents = ui.state.agents
-    // Chưa chọn thì lấy agent đầu; agent biến mất thì tự rơi về agent đầu.
-    val pane = selectedPane?.takeIf { p -> agents.any { it.pane == p } }
-        ?: agents.firstOrNull()?.pane
-    val mine = ui.state.tasks.filter { it.target == pane }
+    val allTasks = ui.state.tasks
 
-    Column(
+    // Tự động gán target cho tác vụ mới theo agent đang chọn hoặc agent đầu
+    val activeAddTarget = targetPaneForAdd
+        ?: selectedPane
+        ?: agents.firstOrNull()?.pane
+
+    // Lọc theo Pane
+    val paneFilteredTasks = if (selectedPane == null) {
+        allTasks
+    } else {
+        allTasks.filter { it.target == selectedPane }
+    }
+
+    // Lọc theo Status
+    val displayTasks = paneFilteredTasks.filter { task ->
+        when (statusFilter) {
+            QueueStatusFilter.All -> true
+            QueueStatusFilter.Pending -> task.state.equals("pending", ignoreCase = true)
+            QueueStatusFilter.Running -> task.state.equals("running", ignoreCase = true) ||
+                    task.state.equals("in_progress", ignoreCase = true) ||
+                    task.state.equals("active", ignoreCase = true)
+            QueueStatusFilter.Done -> task.state.equals("done", ignoreCase = true) ||
+                    task.state.equals("completed", ignoreCase = true)
+        }
+    }
+
+    val pendingCount = paneFilteredTasks.count { it.state.equals("pending", ignoreCase = true) }
+    val runningCount = paneFilteredTasks.count {
+        it.state.equals("running", ignoreCase = true) ||
+                it.state.equals("in_progress", ignoreCase = true) ||
+                it.state.equals("active", ignoreCase = true)
+    }
+    val doneCount = paneFilteredTasks.count {
+        it.state.equals("done", ignoreCase = true) ||
+                it.state.equals("completed", ignoreCase = true)
+    }
+
+    // Toast feedback overlay
+    var activeToast by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(ui.toast) {
+        if (ui.toast != null) {
+            activeToast = ui.toast
+            delay(2500)
+            activeToast = null
+        }
+    }
+
+    Box(
         modifier = modifier
             .fillMaxSize()
             .background(colors.background)
-            // Thiếu cái này thì màn hình chui lên dưới đồng hồ và thanh thông báo.
             .windowInsetsPadding(WindowInsets.safeDrawing)
             .imePadding(),
     ) {
-        TopBand(ui, agents.size, onAction, onRefresh) { configOpen = !configOpen }
-
-        if (showConfig) {
-            ConfigPanel(
-                currentUrl = currentUrl,
-                currentToken = currentToken,
-                onSave = { u, t -> onSaveConfig(u, t); configOpen = false },
-                onDismiss = if (ui.needsSetup) null else ({ configOpen = false }),
+        Column(modifier = Modifier.fillMaxSize()) {
+            // 1. Thanh tiêu đề & điều khiển trên cùng
+            QueueHeader(
+                ui = ui,
+                agentCount = agents.size,
+                pendingCount = pendingCount,
+                onBack = onBack,
+                onRefresh = onRefresh,
+                onAction = onAction,
+                onOpenConfig = { configDialogOpen = true },
             )
-            return@Column
-        }
 
-        Spacer(Modifier.height(6.dp))
+            // 2. Banner cảnh báo nếu tạm dừng hoặc lỗi server
+            if (ui.state.paused) {
+                QueuePausedBanner(
+                    onResume = {
+                        val resumeAction = ui.state.globalActions.firstOrNull { it.op == "resume" }
+                        if (resumeAction != null) {
+                            onAction(resumeAction, null)
+                        } else {
+                            onAction(QueueAction("resume", "Tiếp tục", false, false), null)
+                        }
+                    }
+                )
+            } else if (ui.error != null) {
+                QueueErrorBanner(
+                    message = ui.error,
+                    onRetry = onRefresh,
+                    onOpenConfig = { configDialogOpen = true },
+                )
+            } else if (ui.state.banner != null) {
+                QueueInfoBanner(banner = ui.state.banner)
+            }
 
-        agents.forEach { a ->
-            AgentRow(
-                agent = a,
-                count = ui.state.tasks.count { it.target == a.pane },
-                selected = a.pane == pane,
-                onClick = { selectedPane = a.pane; selectedTask = null },
+            Spacer(Modifier.height(6.dp))
+
+            // 3. Thanh Agent Chips (Chọn agent hoặc xem tất cả)
+            AgentChipsRow(
+                agents = agents,
+                allTasks = allTasks,
+                selectedPane = selectedPane,
+                onSelectPane = { pane ->
+                    selectedPane = pane
+                    selectedTaskId = null
+                    targetPaneForAdd = pane
+                },
             )
-        }
-        if (agents.isEmpty() && ui.everLoaded) {
-            ChuText(
-                "  không thấy agent nào",
-                style = type.labelSmall,
-                color = QQ_DIM,
-                modifier = Modifier.padding(vertical = 4.dp),
+
+            Spacer(Modifier.height(8.dp))
+
+            // 4. Thanh lọc trạng thái (Tất cả / Chờ / Đang chạy / Đã xong)
+            StatusFilterRow(
+                current = statusFilter,
+                allCount = paneFilteredTasks.size,
+                pendingCount = pendingCount,
+                runningCount = runningCount,
+                doneCount = doneCount,
+                onSelect = { statusFilter = it },
             )
-        }
 
-        Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(6.dp))
 
-        // ---------- thanh mục ----------
-        Band {
-            ChuText(
-                agents.firstOrNull { it.pane == pane }?.name ?: "chưa có agent",
-                style = type.label,
-                color = QQ_FG,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-            ChuText("${mine.size} việc", style = type.labelSmall, color = QQ_DIM)
-        }
-
-        Box(modifier = Modifier.weight(1f)) {
-            when {
-                mine.isEmpty() && ui.everLoaded -> Column(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.Center,
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    ChuText("chưa có việc nào", style = type.bodySmall, color = QQ_DIM)
-                    ChuText("gõ nội dung rồi bấm gửi", style = type.labelSmall, color = QQ_DIM)
-                }
-                mine.isEmpty() -> Box(Modifier.fillMaxSize(), Alignment.Center) {
-                    ChuText("đang tải…", color = QQ_DIM)
-                }
-                else -> LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    itemsIndexed(mine, key = { _, t -> t.id }) { k, task ->
-                        TaskRow(
-                            task = task,
-                            letter = if (k < 26) ('a' + k).toString() else "·",
-                            selected = task.id == selectedTask,
-                            busyOps = ui.busyOps,
-                            onClick = {
-                                selectedTask = if (selectedTask == task.id) null else task.id
-                            },
-                            onAction = onAction,
+            // 5. Danh sách tác vụ
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp),
+            ) {
+                when {
+                    displayTasks.isEmpty() && ui.everLoaded -> {
+                        QueueEmptyState(
+                            statusFilter = statusFilter,
+                            selectedPane = selectedPane,
+                            agentName = agents.firstOrNull { it.pane == selectedPane }?.name,
                         )
+                    }
+                    displayTasks.isEmpty() && ui.loading -> {
+                        Box(Modifier.fillMaxSize(), Alignment.Center) {
+                            ChuText("Đang kết nối và tải hàng đợi…", color = colors.textMuted)
+                        }
+                    }
+                    displayTasks.isEmpty() -> {
+                        Box(Modifier.fillMaxSize(), Alignment.Center) {
+                            ChuText("Chưa có dữ liệu hàng đợi", color = colors.textMuted)
+                        }
+                    }
+                    else -> {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            contentPadding = PaddingValues(bottom = 8.dp),
+                        ) {
+                            itemsIndexed(displayTasks, key = { _, t -> t.id }) { index, task ->
+                                QueueTaskCard(
+                                    task = task,
+                                    indexLetter = if (index < 26) ('a' + index).toString() else "${index + 1}",
+                                    selected = task.id == selectedTaskId,
+                                    busyOps = ui.busyOps,
+                                    onClick = {
+                                        selectedTaskId = if (selectedTaskId == task.id) null else task.id
+                                    },
+                                    onAction = onAction,
+                                    onCopy = { text ->
+                                        clipboardManager.setText(AnnotatedString(text))
+                                        Toast.makeText(context, "Đã sao chép nội dung", Toast.LENGTH_SHORT).show()
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 6. Thanh thêm tác vụ nhanh ở đáy
+            QueueAddDock(
+                agents = agents,
+                activeTarget = activeAddTarget,
+                onSelectTarget = { showTargetSelectorSheet = true },
+                onAdd = { text -> onAdd(text, activeAddTarget) },
+            )
+        }
+
+        // Floating Toast Feedback
+        AnimatedVisibility(
+            visible = activeToast != null,
+            enter = fadeIn() + slideInVertically { it / 2 },
+            exit = fadeOut() + slideOutVertically { it / 2 },
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 56.dp, start = 16.dp, end = 16.dp),
+        ) {
+            activeToast?.let { msg ->
+                ChuCard(
+                    background = colors.surface,
+                    border = colors.accent,
+                    modifier = Modifier.padding(8.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        ChuText("✦", style = type.label, color = colors.accent)
+                        ChuText(msg, style = type.label, color = colors.textPrimary)
                     }
                 }
             }
         }
 
-        AddBar { text -> onAdd(text, pane) }
+        // Modal Cấu hình qsrv URL & Token
+        if (showConfig) {
+            QueueConfigDialog(
+                currentUrl = currentUrl,
+                currentToken = currentToken,
+                onSave = { u, t ->
+                    onSaveConfig(u, t)
+                    configDialogOpen = false
+                },
+                onDismiss = if (ui.needsSetup) null else ({ configDialogOpen = false }),
+            )
+        }
+
+        // Modal chọn agent đích cho Add Bar
+        if (showTargetSelectorSheet && agents.isNotEmpty()) {
+            TargetAgentSelectorDialog(
+                agents = agents,
+                selected = activeAddTarget,
+                onSelect = { pane ->
+                    targetPaneForAdd = pane
+                    showTargetSelectorSheet = false
+                },
+                onDismiss = { showTargetSelectorSheet = false },
+            )
+        }
     }
 }
 
-/** Một thanh nền đậm chạy hết bề ngang — qq gọi là band. */
+/**
+ * Header thanh trên cùng với branding, live status dot, pause toggle, refresh, và settings.
+ */
 @Composable
-private fun Band(content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(QQ_BAND)
-            .padding(horizontal = 8.dp, vertical = 5.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        content = content,
-    )
-}
-
-@Composable
-private fun TopBand(
+private fun QueueHeader(
     ui: QueueUiState,
     agentCount: Int,
-    onAction: (QueueAction, Int?) -> Unit,
+    pendingCount: Int,
+    onBack: () -> Unit,
     onRefresh: () -> Unit,
-    onConfig: () -> Unit,
+    onAction: (QueueAction, Int?) -> Unit,
+    onOpenConfig: () -> Unit,
 ) {
+    val colors = ChuColors.current
     val type = ChuTypography.current
-    val pending = ui.state.tasks.count { it.state == "pending" }
-    Band {
-        ChuText("HÀNG ĐỢI", style = type.label, color = QQ_FG)
-        Box(Modifier.weight(1f))
-        // Chỗ này qq dành cho thứ CẦN ĐẾN NGƯỜI — báo động đè lên số đếm,
-        // vì số đếm lúc nào cũng đúng còn báo động thì không được lỡ.
-        val notice = ui.error ?: ui.state.banner?.text
-        if (notice != null) {
-            ChuText(
-                "⚠ $notice",
-                style = type.labelSmall,
-                color = if (ui.state.paused) QQ_WARN else QQ_ERR,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(3f),
-            )
-        } else {
-            ChuText("$agentCount agent · ", style = type.labelSmall, color = QQ_DIM)
-            ChuText("$pending", style = type.labelSmall, color = QQ_ACC)
-            ChuText(" chờ", style = type.labelSmall, color = QQ_DIM)
-        }
-        ui.state.globalActions.forEach { a ->
-            ChuText(
-                if (a.op == "pause") " ‖" else " ▶",
-                style = type.label,
-                // Đang tạm dừng thì nút chạy tiếp phải nổi lên, không được mờ
-                // như mọi thứ khác — đó là thứ người dùng đang đi tìm.
-                color = if (ui.state.paused) QQ_WARN else QQ_DIM,
-                modifier = Modifier.clickable { onAction(a, null) },
-            )
-        }
-        ChuText("⟳", style = type.label, color = QQ_DIM, modifier = Modifier.clickable(onClick = onRefresh))
-        ChuText("⚙", style = type.label, color = QQ_DIM, modifier = Modifier.clickable(onClick = onConfig))
-    }
-}
 
-@Composable
-private fun AgentRow(agent: QueueAgent, count: Int, selected: Boolean, onClick: () -> Unit) {
-    val type = ChuTypography.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(if (selected) QQ_SEL else Color.Transparent)
-            .clickable(onClick = onClick)
-            .padding(vertical = 4.dp),
+            .background(colors.surfaceVariant)
+            .border(1.dp, colors.border, RectangleShape)
+            .padding(horizontal = 8.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        ChuText("▌", style = type.label, color = if (selected) QQ_ACC else Color.Transparent)
-        Spacer(Modifier.width(6.dp))
-        ChuText(agent.glyph, style = type.label, color = agent.tone.color())
-        Spacer(Modifier.width(8.dp))
-        ChuText(
-            agent.name,
-            style = type.label,
-            color = if (selected) QQ_FG else QQ_DIM,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-        if (agent.word.isNotBlank()) {
-            ChuText(agent.word, style = type.labelSmall, color = QQ_WARN)
-            Spacer(Modifier.width(8.dp))
+        ChuButton(
+            onClick = onBack,
+            variant = ChuButtonVariant.Ghost,
+            bracketed = true,
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+        ) {
+            ChuText("←", style = type.label, color = colors.textSecondary)
         }
-        ChuText(
-            if (count > 0) "$count" else " ",
-            style = type.labelSmall,
-            color = if (count > 0) QQ_ACC else QQ_DIM,
-        )
-        Spacer(Modifier.width(8.dp))
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.weight(1f),
+        ) {
+            ChuText("$ ", style = type.label, color = colors.textMuted)
+            ChuText("kohi", style = type.label, color = colors.textPrimary)
+            ChuText("/queue", style = type.label, color = colors.accent)
+
+            Spacer(Modifier.width(6.dp))
+
+            val statusDotColor = when {
+                ui.loading -> colors.warning
+                ui.error != null -> colors.error
+                ui.state.paused -> colors.warning
+                ui.everLoaded -> colors.success
+                else -> colors.textMuted
+            }
+            ChuText("●", style = type.labelSmall, color = statusDotColor)
+
+            Spacer(Modifier.width(6.dp))
+            ChuText(
+                "${pendingCount} chờ",
+                style = type.labelSmall,
+                color = if (pendingCount > 0) colors.accent else colors.textMuted,
+            )
+        }
+
+        // Nút Tạm dừng / Tiếp tục toàn cục
+        ui.state.globalActions.forEach { action ->
+            val isPause = action.op == "pause"
+            ChuButton(
+                onClick = { onAction(action, null) },
+                variant = if (ui.state.paused) ChuButtonVariant.Filled else ChuButtonVariant.Outlined,
+                borderColor = if (ui.state.paused) colors.warning else colors.border,
+                backgroundColor = if (ui.state.paused) colors.warning else null,
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+            ) {
+                ChuText(
+                    if (isPause) "‖ Tạm dừng" else "▶ Tiếp tục",
+                    style = type.labelSmall,
+                    color = if (ui.state.paused) colors.onAccent else colors.textSecondary,
+                )
+            }
+        }
+
+        ChuButton(
+            onClick = onRefresh,
+            variant = ChuButtonVariant.Outlined,
+            bracketed = true,
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+        ) {
+            ChuText("⟳", style = type.label, color = colors.textSecondary)
+        }
+
+        ChuButton(
+            onClick = onOpenConfig,
+            variant = ChuButtonVariant.Outlined,
+            bracketed = true,
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+        ) {
+            ChuText("⚙", style = type.label, color = colors.textSecondary)
+        }
     }
 }
 
+/**
+ * Banner cảnh báo khi hàng đợi đang ở trạng thái Paused.
+ */
 @Composable
-private fun TaskRow(
+private fun QueuePausedBanner(onResume: () -> Unit) {
+    val colors = ChuColors.current
+    val type = ChuTypography.current
+    ChuCard(
+        background = colors.warning.copy(alpha = 0.12f),
+        border = colors.warning,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 10.dp, vertical = 4.dp),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.weight(1f),
+            ) {
+                ChuText("⏸", style = type.title, color = colors.warning)
+                Column {
+                    ChuText("HÀNG ĐỢI ĐANG TẠM DỪNG", style = type.label, color = colors.warning)
+                    ChuText(
+                        "Các agent sẽ không nhận thêm việc mới cho tới khi tiếp tục.",
+                        style = type.bodySmall,
+                        color = colors.textSecondary,
+                    )
+                }
+            }
+            Spacer(Modifier.width(8.dp))
+            ChuButton(
+                onClick = onResume,
+                variant = ChuButtonVariant.Filled,
+                backgroundColor = colors.warning,
+                bracketed = true,
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+            ) {
+                ChuText("▶ Chạy tiếp", style = type.labelSmall, color = colors.onAccent)
+            }
+        }
+    }
+}
+
+/**
+ * Banner báo lỗi kết nối.
+ */
+@Composable
+private fun QueueErrorBanner(
+    message: String,
+    onRetry: () -> Unit,
+    onOpenConfig: () -> Unit,
+) {
+    val colors = ChuColors.current
+    val type = ChuTypography.current
+    ChuCard(
+        background = colors.error.copy(alpha = 0.10f),
+        border = colors.error,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 10.dp, vertical = 4.dp),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.weight(1f),
+            ) {
+                ChuText("⚠", style = type.title, color = colors.error)
+                ChuText(message, style = type.bodySmall, color = colors.error)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                ChuButton(
+                    onClick = onRetry,
+                    variant = ChuButtonVariant.Ghost,
+                    bracketed = true,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                ) {
+                    ChuText("Thử lại", style = type.labelSmall, color = colors.textPrimary)
+                }
+                ChuButton(
+                    onClick = onOpenConfig,
+                    variant = ChuButtonVariant.Ghost,
+                    bracketed = true,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                ) {
+                    ChuText("Cấu hình", style = type.labelSmall, color = colors.accent)
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Banner thông báo từ server.
+ */
+@Composable
+private fun QueueInfoBanner(banner: QueueBanner) {
+    val colors = ChuColors.current
+    val type = ChuTypography.current
+    val toneColor = banner.tone.resolveColor(colors)
+    ChuCard(
+        background = toneColor.copy(alpha = 0.08f),
+        border = toneColor.copy(alpha = 0.6f),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 10.dp, vertical = 4.dp),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            ChuText("ℹ", style = type.label, color = toneColor)
+            ChuText(banner.text, style = type.bodySmall, color = toneColor)
+        }
+    }
+}
+
+/**
+ * Thanh Agent Chips cuộn ngang.
+ */
+@Composable
+private fun AgentChipsRow(
+    agents: List<QueueAgent>,
+    allTasks: List<QueueTask>,
+    selectedPane: String?,
+    onSelectPane: (String?) -> Unit,
+) {
+    val colors = ChuColors.current
+    val type = ChuTypography.current
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // Chip "Tất cả"
+        val isAllSelected = selectedPane == null
+        ChuButton(
+            onClick = { onSelectPane(null) },
+            variant = ChuButtonVariant.Outlined,
+            borderColor = if (isAllSelected) colors.accent else colors.border,
+            backgroundColor = if (isAllSelected) colors.accent.copy(alpha = 0.12f) else null,
+            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                ChuText("✦ Tất cả", style = type.label, color = if (isAllSelected) colors.accent else colors.textSecondary)
+                ChuText(
+                    "(${allTasks.size})",
+                    style = type.labelSmall,
+                    color = if (isAllSelected) colors.accent else colors.textMuted,
+                )
+            }
+        }
+
+        // Chips từng Agent
+        agents.forEach { agent ->
+            val isSelected = agent.pane == selectedPane
+            val agentTaskCount = allTasks.count { it.target == agent.pane }
+            val agentToneColor = agent.tone.resolveColor(colors)
+
+            ChuButton(
+                onClick = { onSelectPane(agent.pane) },
+                variant = ChuButtonVariant.Outlined,
+                borderColor = if (isSelected) colors.accent else colors.border,
+                backgroundColor = if (isSelected) colors.accent.copy(alpha = 0.12f) else null,
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    ChuText(agent.glyph, style = type.label, color = agentToneColor)
+                    ChuText(
+                        agent.name,
+                        style = type.label,
+                        color = if (isSelected) colors.textPrimary else colors.textSecondary,
+                    )
+                    if (agent.word.isNotBlank()) {
+                        TuiBadge(agent.word, colors.warning)
+                    }
+                    if (agentTaskCount > 0) {
+                        ChuText(
+                            "($agentTaskCount)",
+                            style = type.labelSmall,
+                            color = if (isSelected) colors.accent else colors.textMuted,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Thanh chuyển trạng thái lọc tác vụ.
+ */
+@Composable
+private fun StatusFilterRow(
+    current: QueueStatusFilter,
+    allCount: Int,
+    pendingCount: Int,
+    runningCount: Int,
+    doneCount: Int,
+    onSelect: (QueueStatusFilter) -> Unit,
+) {
+    val colors = ChuColors.current
+    val type = ChuTypography.current
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        QueueStatusFilter.entries.forEach { filter ->
+            val isSelected = filter == current
+            val count = when (filter) {
+                QueueStatusFilter.All -> allCount
+                QueueStatusFilter.Pending -> pendingCount
+                QueueStatusFilter.Running -> runningCount
+                QueueStatusFilter.Done -> doneCount
+            }
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .background(if (isSelected) colors.surfaceVariant else Color.Transparent)
+                    .border(
+                        1.dp,
+                        if (isSelected) colors.accent else colors.border.copy(alpha = 0.4f),
+                        RectangleShape,
+                    )
+                    .clickable { onSelect(filter) }
+                    .padding(vertical = 4.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    ChuText(
+                        filter.label,
+                        style = type.labelSmall,
+                        color = if (isSelected) colors.accent else colors.textMuted,
+                    )
+                    ChuText(
+                        "$count",
+                        style = type.labelSmall,
+                        color = if (isSelected) colors.textPrimary else colors.textMuted.copy(alpha = 0.7f),
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Thẻ hiển thị một tác vụ trong hàng đợi.
+ */
+@Composable
+private fun QueueTaskCard(
     task: QueueTask,
-    letter: String,
+    indexLetter: String,
     selected: Boolean,
     busyOps: Set<String>,
     onClick: () -> Unit,
     onAction: (QueueAction, Int?) -> Unit,
+    onCopy: (String) -> Unit,
 ) {
+    val colors = ChuColors.current
     val type = ChuTypography.current
-    Column(
+    val toneColor = task.tone.resolveColor(colors)
+    val isDone = task.state.equals("done", ignoreCase = true) || task.state.equals("completed", ignoreCase = true)
+
+    ChuCard(
+        background = if (selected) colors.surface else colors.surfaceVariant,
+        border = if (selected) colors.accent else colors.border,
         modifier = Modifier
             .fillMaxWidth()
-            .background(if (selected) QQ_SEL else Color.Transparent)
             .clickable(onClick = onClick),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            ChuText("▌", style = type.label, color = if (selected) QQ_ACC else Color.Transparent)
-            ChuText(letter, style = type.labelSmall, color = QQ_DIM)
-            Spacer(Modifier.width(6.dp))
-            ChuText(task.glyph, style = type.label, color = task.tone.color())
-            Spacer(Modifier.width(8.dp))
-            ChuText(
-                task.text.replace('\n', ' '),
-                style = type.label,
-                // qq: việc xong thì mờ đi, nó không còn đòi gì ở người đọc nữa.
-                color = if (task.state == "done") QQ_DIM else QQ_FG,
-                maxLines = if (selected) 4 else 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-            Spacer(Modifier.width(8.dp))
-        }
-        // Nút chỉ hiện cho dòng đang chọn. Bày nút trên MỌI dòng là thứ làm
-        // danh sách rối nhất — mỗi việc ba nút thì mười việc là ba mươi ô bấm.
-        if (selected) {
-            Row(
+        Row(modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
+            // Vạch màu trạng thái bên trái
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(start = 26.dp, end = 8.dp, bottom = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                    .width(4.dp)
+                    .fillMaxHeight()
+                    .background(toneColor),
+            )
+
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(10.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                ChuText("#${task.id} ${task.stateLabel}", style = type.labelSmall, color = QQ_DIM)
-                task.actions.forEach { a ->
-                    ChuButton(
-                        onClick = { onAction(a, task.id) },
-                        variant = ChuButtonVariant.Ghost,
-                        bracketed = true,
-                        enabled = "${a.op}:${task.id}" !in busyOps,
-                        borderColor = if (a.danger) QQ_ERR else QQ_DIM,
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 3.dp),
+                // Header của tác vụ: Index, glyph, trạng thái, và target
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
                         ChuText(
-                            a.label,
+                            "[$indexLetter] #${task.id}",
                             style = type.labelSmall,
-                            color = if (a.danger) QQ_ERR else QQ_FG,
+                            color = if (selected) colors.accent else colors.textMuted,
                         )
+                        ChuText(task.glyph, style = type.labelSmall, color = toneColor)
+                        TuiBadge(task.stateLabel, toneColor)
+                    }
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        if (task.target.isNotBlank()) {
+                            ChuText(
+                                "@${task.target}",
+                                style = type.labelSmall,
+                                color = colors.accentSecondary,
+                            )
+                        }
+                        ChuText(
+                            if (selected) "▲" else "▼",
+                            style = type.labelSmall,
+                            color = colors.textMuted,
+                        )
+                    }
+                }
+
+                // Nội dung tác vụ
+                ChuText(
+                    text = task.text,
+                    style = type.body,
+                    color = if (isDone) colors.textMuted else colors.textPrimary,
+                    maxLines = if (selected) 20 else 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+
+                // Thông tin phụ (sub) nếu có
+                if (task.sub.isNotBlank()) {
+                    ChuText(
+                        task.sub,
+                        style = type.labelSmall,
+                        color = colors.textMuted,
+                    )
+                }
+
+                // Hàng thao tác (Hiện khi được chọn hoặc luôn có nút nhanh)
+                if (selected) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(top = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        // Nút Copy
+                        ChuButton(
+                            onClick = { onCopy(task.text) },
+                            variant = ChuButtonVariant.Ghost,
+                            bracketed = true,
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 3.dp),
+                        ) {
+                            ChuText("📋 Chép", style = type.labelSmall, color = colors.textSecondary)
+                        }
+
+                        // Danh sách action server gửi xuống
+                        task.actions.forEach { action ->
+                            val opKey = "${action.op}:${task.id}"
+                            val isBusy = opKey in busyOps
+
+                            ChuButton(
+                                onClick = { onAction(action, task.id) },
+                                variant = ChuButtonVariant.Ghost,
+                                bracketed = true,
+                                enabled = !isBusy,
+                                borderColor = if (action.danger) colors.error else colors.border,
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 3.dp),
+                            ) {
+                                ChuText(
+                                    if (isBusy) "…" else action.label,
+                                    style = type.labelSmall,
+                                    color = if (action.danger) colors.error else colors.textPrimary,
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -342,40 +848,117 @@ private fun TaskRow(
     }
 }
 
+/**
+ * Giao diện khi không có tác vụ nào trong danh sách.
+ */
 @Composable
-private fun AddBar(onAdd: (String) -> Unit) {
+private fun QueueEmptyState(
+    statusFilter: QueueStatusFilter,
+    selectedPane: String?,
+    agentName: String?,
+) {
+    val colors = ChuColors.current
     val type = ChuTypography.current
-    var text by remember { mutableStateOf("") }
-    Row(
+
+    Column(
         modifier = Modifier
-            .fillMaxWidth()
-            .background(QQ_BAND)
-            .padding(6.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .fillMaxSize()
+            .padding(24.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        ChuTextField(
-            value = text,
-            onValueChange = { text = it },
-            label = "",
-            placeholder = "giao việc cho agent đang chọn…",
-            singleLine = true,
-            showLabel = false,
-            modifier = Modifier.weight(1f),
-            autoFocus = false,
-            verticalPadding = 6.dp,
+        ChuText("✦", style = type.headline, color = colors.textMuted)
+        Spacer(Modifier.height(8.dp))
+        val targetName = agentName ?: selectedPane ?: "hàng đợi"
+        val filterName = if (statusFilter == QueueStatusFilter.All) "" else "(${statusFilter.label})"
+        ChuText(
+            "Không có tác vụ nào $filterName của $targetName",
+            style = type.body,
+            color = colors.textSecondary,
         )
-        Spacer(Modifier.width(6.dp))
-        ChuButton(
-            onClick = { onAdd(text); text = "" },
-            enabled = text.isNotBlank(),
-            bracketed = true,
-            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-        ) { ChuText("gửi", style = type.labelSmall, color = ChuColors.current.onAccent) }
+        Spacer(Modifier.height(4.dp))
+        ChuText(
+            "Nhập nội dung vào ô bên dưới để giao việc mới",
+            style = type.bodySmall,
+            color = colors.textMuted,
+        )
     }
 }
 
+/**
+ * Thanh dock giao việc ở đáy màn hình.
+ */
 @Composable
-private fun ConfigPanel(
+private fun QueueAddDock(
+    agents: List<QueueAgent>,
+    activeTarget: String?,
+    onSelectTarget: () -> Unit,
+    onAdd: (String) -> Unit,
+) {
+    val colors = ChuColors.current
+    val type = ChuTypography.current
+    var inputText by remember { mutableStateOf("") }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(colors.surfaceVariant)
+            .border(1.dp, colors.border, RectangleShape)
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        // Nút chọn target agent
+        if (agents.isNotEmpty()) {
+            val targetLabel = activeTarget?.let { "@$it" } ?: "@agent"
+            ChuButton(
+                onClick = onSelectTarget,
+                variant = ChuButtonVariant.Outlined,
+                bracketed = true,
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+            ) {
+                ChuText(
+                    targetLabel,
+                    style = type.labelSmall,
+                    color = colors.accent,
+                    maxLines = 1,
+                )
+            }
+        }
+
+        ChuTextField(
+            value = inputText,
+            onValueChange = { inputText = it },
+            label = "",
+            placeholder = "Giao việc cho ${activeTarget?.let { "@$it" } ?: "agent"}…",
+            singleLine = true,
+            showLabel = false,
+            autoFocus = false,
+            verticalPadding = 6.dp,
+            modifier = Modifier.weight(1f),
+        )
+
+        ChuButton(
+            onClick = {
+                if (inputText.isNotBlank()) {
+                    onAdd(inputText.trim())
+                    inputText = ""
+                }
+            },
+            enabled = inputText.isNotBlank(),
+            bracketed = true,
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+        ) {
+            ChuText("Gửi ➤", style = type.labelSmall, color = colors.onAccent)
+        }
+    }
+}
+
+/**
+ * Dialog cấu hình endpoint qsrv URL & Token.
+ */
+@Composable
+private fun QueueConfigDialog(
     currentUrl: String,
     currentToken: String,
     onSave: (String, String) -> Unit,
@@ -386,57 +969,103 @@ private fun ConfigPanel(
     var url by remember(currentUrl) { mutableStateOf(currentUrl) }
     var token by remember(currentToken) { mutableStateOf(currentToken) }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ChuDialog(
+        title = "Cấu hình kết nối qsrv",
+        confirmLabel = "Lưu cấu hình",
+        onConfirm = { onSave(url, token) },
+        onDismiss = { onDismiss?.invoke() },
+        dismissLabel = if (onDismiss != null) "Đóng" else "Bỏ qua",
     ) {
-        ChuText(
-            "Chỉ cần địa chỉ. Đi qua tailnet thì máy chủ đã biết chắc là bạn, " +
-                "không cần token. Ô token bên dưới chỉ dùng khi chạy qsrv " +
-                "không nằm sau tailscale serve.",
-            style = type.bodySmall,
-            color = colors.textSecondary,
-        )
-        ChuTextField(
-            value = url,
-            onValueChange = { url = it },
-            label = "Địa chỉ qsrv",
-            placeholder = "https://may.tailnet.ts.net/q",
-            singleLine = true,
-            autoFocus = false,
-        )
-        ChuTextField(
-            value = token,
-            onValueChange = { token = it },
-            label = "Token (không bắt buộc)",
-            placeholder = "để trống nếu dùng qua tailnet",
-            singleLine = true,
-            autoFocus = false,
-            visualTransformation = PasswordVisualTransformation(),
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            ChuButton(
-                onClick = { onSave(url, token) },
-                enabled = url.isNotBlank(),
-                bracketed = true,
-            ) { ChuText("Lưu", color = colors.onAccent) }
-            if (onDismiss != null) {
-                ChuButton(onClick = onDismiss, variant = ChuButtonVariant.Ghost, bracketed = true) {
-                    ChuText("Đóng", color = colors.textSecondary)
+        Column(
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.verticalScroll(rememberScrollState()),
+        ) {
+            ChuText(
+                "Nhập địa chỉ máy chủ qsrv. Nếu kết nối qua Tailscale, bạn không cần nhập token.",
+                style = type.bodySmall,
+                color = colors.textSecondary,
+            )
+            ChuTextField(
+                value = url,
+                onValueChange = { url = it },
+                label = "Địa chỉ qsrv URL",
+                placeholder = "https://server.tailnet.ts.net/q hoặc http://127.0.0.1:5002",
+                singleLine = true,
+                autoFocus = false,
+            )
+            ChuTextField(
+                value = token,
+                onValueChange = { token = it },
+                label = "Bearer Token (tuỳ chọn)",
+                placeholder = "Để trống nếu dùng qua Tailscale",
+                singleLine = true,
+                autoFocus = false,
+                visualTransformation = PasswordVisualTransformation(),
+            )
+        }
+    }
+}
+
+/**
+ * Dialog chọn target agent cho tác vụ mới.
+ */
+@Composable
+private fun TargetAgentSelectorDialog(
+    agents: List<QueueAgent>,
+    selected: String?,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val colors = ChuColors.current
+    val type = ChuTypography.current
+
+    ChuDialog(
+        title = "Chọn Agent nhận việc",
+        confirmLabel = "Đóng",
+        onConfirm = onDismiss,
+        onDismiss = onDismiss,
+    ) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.verticalScroll(rememberScrollState()),
+        ) {
+            agents.forEach { agent ->
+                val isSelected = agent.pane == selected
+                val toneColor = agent.tone.resolveColor(colors)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(if (isSelected) colors.surface else Color.Transparent)
+                        .border(1.dp, if (isSelected) colors.accent else colors.border, RectangleShape)
+                        .clickable { onSelect(agent.pane) }
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        ChuText(agent.glyph, style = type.label, color = toneColor)
+                        ChuText(agent.name, style = type.label, color = colors.textPrimary)
+                        ChuText("(@${agent.pane})", style = type.labelSmall, color = colors.textMuted)
+                    }
+                    if (isSelected) {
+                        ChuText("✓", style = type.label, color = colors.accent)
+                    }
                 }
             }
         }
     }
 }
 
-/** qq dùng vàng cho "đang chạy", mờ cho "xong" — giữ đúng nghĩa đó. */
-private fun QueueTone.color(): Color = when (this) {
-    QueueTone.Accent -> QQ_GOLD
-    QueueTone.Ok -> QQ_DIM
-    QueueTone.Warn -> QQ_WARN
-    QueueTone.Error -> QQ_ERR
-    QueueTone.Dim -> QQ_DIM
+/**
+ * Chuyển đổi QueueTone sang màu sắc tương ứng trong theme của app.
+ */
+private fun QueueTone.resolveColor(colors: ChuColorPalette): Color = when (this) {
+    QueueTone.Accent -> colors.accent
+    QueueTone.Ok -> colors.success
+    QueueTone.Warn -> colors.warning
+    QueueTone.Error -> colors.error
+    QueueTone.Dim -> colors.textMuted
 }

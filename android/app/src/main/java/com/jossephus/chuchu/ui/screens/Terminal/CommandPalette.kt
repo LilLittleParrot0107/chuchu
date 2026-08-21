@@ -65,6 +65,7 @@ fun CommandPalette(
     onChuchuKey: () -> Unit,
     chuchuKeyActive: Boolean,
     onOpenFiles: () -> Unit,
+    onOpenQueue: (() -> Unit)? = null,
     onOpenSettings: () -> Unit,
     useSingleRowAccessoryBar: Boolean,
     onSelectTab: (String) -> Unit,
@@ -228,6 +229,16 @@ fun CommandPalette(
         ) {
           PaletteHint("↵", "open")
           PaletteHint("esc", "dismiss")
+          if (onOpenQueue != null) {
+            ChuButton(
+                onClick = { onDismiss(); onOpenQueue() },
+                variant = ChuButtonVariant.Ghost,
+                bracketed = true,
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+            ) {
+              ChuText("⚡ queue", style = typography.labelSmall, color = colors.accent)
+            }
+          }
           Spacer(modifier = Modifier.weight(1f))
           ChuButton(
               onClick = onAddTab,
@@ -258,6 +269,7 @@ fun CommandPalette(
           onChuchuKey = onChuchuKey,
           chuchuKeyActive = chuchuKeyActive,
           onOpenFiles = onOpenFiles,
+          onOpenQueue = onOpenQueue,
           useSingleRow = useSingleRowAccessoryBar,
           modifier =
               Modifier.align(Alignment.BottomCenter)

@@ -63,6 +63,7 @@ fun KeyboardAccessoryBar(
     onChuchuKey: (() -> Unit)? = null,
     chuchuKeyActive: Boolean = false,
     onOpenFiles: (() -> Unit)? = null,
+    onOpenQueue: (() -> Unit)? = null,
     onComposeBox: (() -> Unit)? = null,
     onSummonKeyboard: (() -> Unit)? = null,
     useSingleRow: Boolean = false,
@@ -148,6 +149,11 @@ fun KeyboardAccessoryBar(
                     buttonHeight = buttonHeight,
                     buttonPadding = buttonPadding,
                 )
+                QueueAccessoryButton(
+                    onOpenQueue = onOpenQueue,
+                    buttonHeight = buttonHeight,
+                    buttonPadding = buttonPadding,
+                )
                 SettingsButton(
                     onSettings = onSettings,
                     buttonHeight = buttonHeight,
@@ -192,6 +198,11 @@ fun KeyboardAccessoryBar(
                 onChuchuKey = onChuchuKey,
                 chuchuKeyActive = chuchuKeyActive,
                 onOpenFiles = onOpenFiles,
+                buttonHeight = buttonHeight,
+                buttonPadding = buttonPadding,
+            )
+            QueueAccessoryButton(
+                onOpenQueue = onOpenQueue,
                 buttonHeight = buttonHeight,
                 buttonPadding = buttonPadding,
             )
@@ -414,6 +425,25 @@ private fun FilesButton(
             ),
             color = colors.textPrimary,
         )
+    }
+}
+
+@Composable
+private fun QueueAccessoryButton(
+    onOpenQueue: (() -> Unit)?,
+    buttonHeight: Dp,
+    buttonPadding: PaddingValues,
+) {
+    val typography = ChuTypography.current
+    val colors = ChuColors.current
+    if (onOpenQueue == null) return
+    ChuButton(
+        onClick = onOpenQueue,
+        variant = ChuButtonVariant.Outlined,
+        modifier = Modifier.height(buttonHeight),
+        contentPadding = buttonPadding,
+    ) {
+        ChuText("⚡", style = typography.label, color = colors.accent)
     }
 }
 
