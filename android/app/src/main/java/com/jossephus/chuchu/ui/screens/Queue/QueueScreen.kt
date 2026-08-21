@@ -590,8 +590,7 @@ private fun TaskRow(
             ChuText(task.glyph, style = type.label, color = task.tone.color())
             Spacer(Modifier.width(8.dp))
             ChuText(
-                task.text.replace('
-', ' '),
+                task.text.replace('\n', ' '),
                 style = type.label,
                 // Việc đã xong thì mờ đi
                 color = if (isDone) QQ_DIM else QQ_FG,
