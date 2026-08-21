@@ -116,49 +116,26 @@ fun KeyboardAccessoryBar(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                // ⌨/✎ lead the row: the row scrolls horizontally, and at the
-                // tail they were invisible until the user discovered the
-                // scroll. Front position keeps them always on screen.
-                KeyboardButton(
-                    onSummonKeyboard = onSummonKeyboard,
-                    buttonHeight = buttonHeight,
-                    buttonPadding = buttonPadding,
-                )
-                ComposeBoxButton(
-                    onComposeBox = onComposeBox,
-                    buttonHeight = buttonHeight,
-                    buttonPadding = buttonPadding,
-                )
                 entries.forEach { entry ->
-                    AccessoryEntry(
+                    RenderAccessoryItem(
                         entry = entry,
-                        expanded = expandedGroupId == entry.id,
+                        expandedGroupId = expandedGroupId,
                         modifierState = modifierState,
                         onAction = onAction,
                         onToggleGroup = { id ->
                             expandedGroupId = if (expandedGroupId == id) null else id
                         },
+                        onSettings = onSettings,
+                        onChuchuKey = onChuchuKey,
+                        chuchuKeyActive = chuchuKeyActive,
+                        onOpenFiles = onOpenFiles,
+                        onOpenQueue = onOpenQueue,
+                        onComposeBox = onComposeBox,
+                        onSummonKeyboard = onSummonKeyboard,
                         buttonHeight = buttonHeight,
                         buttonPadding = buttonPadding,
                     )
                 }
-                FilesButton(
-                    onChuchuKey = onChuchuKey,
-                    chuchuKeyActive = chuchuKeyActive,
-                    onOpenFiles = onOpenFiles,
-                    buttonHeight = buttonHeight,
-                    buttonPadding = buttonPadding,
-                )
-                QueueAccessoryButton(
-                    onOpenQueue = onOpenQueue,
-                    buttonHeight = buttonHeight,
-                    buttonPadding = buttonPadding,
-                )
-                SettingsButton(
-                    onSettings = onSettings,
-                    buttonHeight = buttonHeight,
-                    buttonPadding = buttonPadding,
-                )
             }
             return
         }
@@ -171,47 +148,84 @@ fun KeyboardAccessoryBar(
             verticalArrangement = Arrangement.spacedBy(6.dp),
             maxLines = 2,
         ) {
-            KeyboardButton(
-                onSummonKeyboard = onSummonKeyboard,
-                buttonHeight = buttonHeight,
-                buttonPadding = buttonPadding,
-            )
-            ComposeBoxButton(
-                onComposeBox = onComposeBox,
-                buttonHeight = buttonHeight,
-                buttonPadding = buttonPadding,
-            )
             entries.forEach { entry ->
-                AccessoryEntry(
+                RenderAccessoryItem(
                     entry = entry,
-                    expanded = expandedGroupId == entry.id,
+                    expandedGroupId = expandedGroupId,
                     modifierState = modifierState,
                     onAction = onAction,
                     onToggleGroup = { id ->
                         expandedGroupId = if (expandedGroupId == id) null else id
                     },
+                    onSettings = onSettings,
+                    onChuchuKey = onChuchuKey,
+                    chuchuKeyActive = chuchuKeyActive,
+                    onOpenFiles = onOpenFiles,
+                    onOpenQueue = onOpenQueue,
+                    onComposeBox = onComposeBox,
+                    onSummonKeyboard = onSummonKeyboard,
                     buttonHeight = buttonHeight,
                     buttonPadding = buttonPadding,
                 )
             }
-            FilesButton(
-                onChuchuKey = onChuchuKey,
-                chuchuKeyActive = chuchuKeyActive,
-                onOpenFiles = onOpenFiles,
-                buttonHeight = buttonHeight,
-                buttonPadding = buttonPadding,
-            )
-            QueueAccessoryButton(
-                onOpenQueue = onOpenQueue,
-                buttonHeight = buttonHeight,
-                buttonPadding = buttonPadding,
-            )
-            SettingsButton(
-                onSettings = onSettings,
-                buttonHeight = buttonHeight,
-                buttonPadding = buttonPadding,
-            )
         }
+    }
+}
+
+@Composable
+private fun RenderAccessoryItem(
+    entry: ResolvedAccessoryEntry,
+    expandedGroupId: String?,
+    modifierState: ModifierState,
+    onAction: (AccessoryAction) -> Unit,
+    onToggleGroup: (String) -> Unit,
+    onSettings: (() -> Unit)?,
+    onChuchuKey: (() -> Unit)?,
+    chuchuKeyActive: Boolean,
+    onOpenFiles: (() -> Unit)?,
+    onOpenQueue: (() -> Unit)?,
+    onComposeBox: (() -> Unit)?,
+    onSummonKeyboard: (() -> Unit)?,
+    buttonHeight: Dp,
+    buttonPadding: PaddingValues,
+) {
+    when (entry.id) {
+        "keyboard" -> KeyboardButton(
+            onSummonKeyboard = onSummonKeyboard,
+            buttonHeight = buttonHeight,
+            buttonPadding = buttonPadding,
+        )
+        "compose" -> ComposeBoxButton(
+            onComposeBox = onComposeBox,
+            buttonHeight = buttonHeight,
+            buttonPadding = buttonPadding,
+        )
+        "queue" -> QueueAccessoryButton(
+            onOpenQueue = onOpenQueue,
+            buttonHeight = buttonHeight,
+            buttonPadding = buttonPadding,
+        )
+        "files" -> FilesButton(
+            onChuchuKey = onChuchuKey,
+            chuchuKeyActive = chuchuKeyActive,
+            onOpenFiles = onOpenFiles,
+            buttonHeight = buttonHeight,
+            buttonPadding = buttonPadding,
+        )
+        "settings" -> SettingsButton(
+            onSettings = onSettings,
+            buttonHeight = buttonHeight,
+            buttonPadding = buttonPadding,
+        )
+        else -> AccessoryEntry(
+            entry = entry,
+            expanded = expandedGroupId == entry.id,
+            modifierState = modifierState,
+            onAction = onAction,
+            onToggleGroup = onToggleGroup,
+            buttonHeight = buttonHeight,
+            buttonPadding = buttonPadding,
+        )
     }
 }
 

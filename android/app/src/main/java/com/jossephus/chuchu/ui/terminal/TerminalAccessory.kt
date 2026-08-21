@@ -103,12 +103,23 @@ sealed interface AccessoryAction {
     data class SendText(val text: String) : AccessoryAction
 
     data object Paste : AccessoryAction
+
+    data object SummonKeyboard : AccessoryAction
+
+    data object OpenComposeBox : AccessoryAction
+
+    data object OpenQueue : AccessoryAction
+
+    data object OpenFiles : AccessoryAction
+
+    data object OpenSettings : AccessoryAction
 }
 
 data class AccessoryKeyItem(
     val id: String,
     val label: String,
     val action: AccessoryAction,
+    val description: String? = null,
 )
 
 data class AccessoryKeyGroup(
@@ -164,11 +175,24 @@ object TerminalAccessoryDispatcher {
             modifierState = modifierState,
             shouldPaste = true,
         )
+
+        is AccessoryAction.SummonKeyboard,
+        is AccessoryAction.OpenComposeBox,
+        is AccessoryAction.OpenQueue,
+        is AccessoryAction.OpenFiles,
+        is AccessoryAction.OpenSettings -> AccessoryDispatchResult(
+            modifierState = modifierState,
+        )
     }
 }
 
 object TerminalAccessoryLayoutStore {
     private val catalogItems: List<AccessoryKeyItem> = listOf(
+        AccessoryKeyItem("keyboard", "⌨", AccessoryAction.SummonKeyboard, "bàn phím ảo"),
+        AccessoryKeyItem("compose", "✎", AccessoryAction.OpenComposeBox, "hộp soạn snippet"),
+        AccessoryKeyItem("queue", "⚡", AccessoryAction.OpenQueue, "hàng đợi queue"),
+        AccessoryKeyItem("files", "kohi", AccessoryAction.OpenFiles, "web portal / file"),
+        AccessoryKeyItem("settings", "⚙", AccessoryAction.OpenSettings, "cài đặt"),
         AccessoryKeyItem("tab", "Tab", AccessoryAction.SendSpecialKey(TerminalSpecialKey.Tab)),
         AccessoryKeyItem("enter", TerminalSpecialKey.Enter.label, AccessoryAction.SendSpecialKey(TerminalSpecialKey.Enter)),
         AccessoryKeyItem("space", "Space", AccessoryAction.SendText(" ")),
@@ -223,6 +247,8 @@ object TerminalAccessoryLayoutStore {
     private val compositeGroupById: Map<String, AccessoryKeyGroup> = compositeGroups.associateBy { it.id }
 
     private val defaultLayoutIds: List<String> = listOf(
+        "keyboard",
+        "compose",
         "escape",
         "tab",
         "ctrl",
@@ -235,6 +261,7 @@ object TerminalAccessoryLayoutStore {
         "right",
         "enter",
         "space",
+        "queue",
     )
 
     fun defaultEntries(): List<ResolvedAccessoryEntry> = resolveSelectedLayout(defaultLayoutIds)

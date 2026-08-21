@@ -1013,12 +1013,12 @@ private fun AccessoryChooserRow(
     val typography = ChuTypography.current
     val group = entry as? ResolvedAccessoryEntry.Group
     val childCount = group?.group?.children?.size ?: 0
-    val description =
-        if (group != null) {
-            if (childCount > 0) "group · $childCount keys" else "group"
-        } else {
-            "key"
-        }
+    val itemDescription = (entry as? ResolvedAccessoryEntry.Single)?.item?.description
+    val description = when {
+        itemDescription != null -> itemDescription
+        group != null -> if (childCount > 0) "group · $childCount keys" else "group"
+        else -> "key"
+    }
 
     Row(
         modifier = Modifier
