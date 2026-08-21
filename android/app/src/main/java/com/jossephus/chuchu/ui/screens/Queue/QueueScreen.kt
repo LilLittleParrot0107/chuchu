@@ -1326,7 +1326,6 @@ private fun QueueAddDock(
                 label = "",
                 placeholder = "Giao việc cho ${activeTarget?.let { "@$it" } ?: "agent"}…",
                 singleLine = false,
-                maxLines = 4,
                 showLabel = false,
                 autoFocus = false,
                 verticalPadding = 6.dp,
