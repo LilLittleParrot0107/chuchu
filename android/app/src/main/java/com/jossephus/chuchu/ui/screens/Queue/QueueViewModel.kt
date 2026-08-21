@@ -30,6 +30,9 @@ data class QueueUiState(
     val needsSetup: Boolean = false,
     val busyOps: Set<String> = emptySet(),
     val toast: String? = null,
+    val logs: List<String> = emptyList(),
+    val logsLoading: Boolean = false,
+    val logsError: String? = null,
 )
 
 class QueueViewModel(
@@ -146,21 +149,39 @@ class QueueViewModel(
         }
     }
 
-    fun addTask(text: String, target: String?) {
+    fun addTask(text: String, target: String?, mode: String? = null) {
         if (text.isBlank()) return
         viewModelScope.launch {
             val c = client() ?: run {
                 _ui.update { it.copy(needsSetup = true) }
                 return@launch
             }
-            when (val r = withContext(Dispatchers.IO) { c.add(text.trim(), target) }) {
+            when (val r = withContext(Dispatchers.IO) { c.add(text.trim(), target, mode) }) {
                 is QueueClient.Act.Ok -> {
-                    _ui.update { it.copy(toast = r.note.ifBlank { "Đã thêm" }, error = null) }
+                    _ui.update { it.copy(toast = r.note.ifBlank { "Đã thêm việc" }, error = null) }
                     refreshOnce()
                 }
                 is QueueClient.Act.Conflict -> refreshOnce()
                 is QueueClient.Act.Failed -> _ui.update {
                     it.copy(error = r.message, needsSetup = r.needsAuth)
+                }
+            }
+        }
+    }
+
+    fun fetchLogs(n: Int = 60) {
+        viewModelScope.launch {
+            _ui.update { it.copy(logsLoading = true, logsError = null) }
+            val c = client() ?: run {
+                _ui.update { it.copy(logsLoading = false, logsError = "Chưa cấu hình qsrv URL") }
+                return@launch
+            }
+            when (val r = withContext(Dispatchers.IO) { c.fetchLogs(n) }) {
+                is QueueClient.FetchLogs.Success -> {
+                    _ui.update { it.copy(logs = r.lines, logsLoading = false, logsError = null) }
+                }
+                is QueueClient.FetchLogs.Failed -> {
+                    _ui.update { it.copy(logsLoading = false, logsError = r.message) }
                 }
             }
         }

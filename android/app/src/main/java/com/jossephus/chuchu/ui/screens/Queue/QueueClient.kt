@@ -33,6 +33,11 @@ class QueueClient(
         data class Failed(val message: String, val needsAuth: Boolean = false) : Act
     }
 
+    sealed interface FetchLogs {
+        data class Success(val lines: List<String>) : FetchLogs
+        data class Failed(val message: String) : FetchLogs
+    }
+
     fun fetch(sinceRev: String?): Fetch {
         val q = if (sinceRev.isNullOrEmpty()) "" else
             "&since=" + URLEncoder.encode(sinceRev, "UTF-8")
@@ -70,6 +75,30 @@ class QueueClient(
             if (!mode.isNullOrEmpty()) put("mode", mode)
         }
         return send("/add", payload)
+    }
+
+    fun fetchLogs(n: Int = 50): FetchLogs {
+        return try {
+            val (code, body) = request("/log?n=$n", null)
+            when (code) {
+                HttpURLConnection.HTTP_OK -> {
+                    val o = JSONObject(body)
+                    val arr = o.optJSONArray("lines")
+                    val list = mutableListOf<String>()
+                    if (arr != null) {
+                        for (i in 0 until arr.length()) {
+                            list.add(arr.optString(i))
+                        }
+                    }
+                    FetchLogs.Success(list)
+                }
+                else -> FetchLogs.Failed(serverMessage(body) ?: "Lỗi tải log ($code)")
+            }
+        } catch (e: IOException) {
+            FetchLogs.Failed(offlineMessage(e))
+        } catch (e: Exception) {
+            FetchLogs.Failed("Không đọc được log")
+        }
     }
 
     private fun send(path: String, payload: JSONObject): Act = try {

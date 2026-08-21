@@ -168,6 +168,7 @@ fun ApplicationNavController() {
                 onAction = vm::runAction,
                 onAdd = vm::addTask,
                 onRefresh = vm::refreshNow,
+                onFetchLogs = vm::fetchLogs,
                 currentUrl = qUrl,
                 currentToken = qToken,
                 onSaveConfig = vm::saveConfig,
