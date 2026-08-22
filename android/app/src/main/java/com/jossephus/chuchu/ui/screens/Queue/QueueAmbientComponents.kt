@@ -12,11 +12,9 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,7 +26,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -45,7 +42,6 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.jossephus.chuchu.ui.components.ChuButton
@@ -57,16 +53,19 @@ import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTypography
 
 /**
- * Nút FAB thông minh có số đếm và hiệu ứng viền phát sáng theo trạng thái Queue.
+ * FAB nhỏ gọn đặt tại góc màn hình Terminal.
  */
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun QueuePulsingFab(
+fun QueueAmbientFab(
     summary: QueueAmbientSummary,
     onClick: () -> Unit,
-    onLongClick: () -> Unit,
+    onLongClick: () -> Unit = onClick,
     modifier: Modifier = Modifier,
 ) {
+    if (summary.totalActive == 0 && !summary.isAnyWorking && !summary.isAnyBlocked && !summary.hasError) {
+        return
+    }
+
     val colors = ChuColors.current
     val typography = ChuTypography.current
     val haptics = LocalHapticFeedback.current
@@ -86,17 +85,17 @@ fun QueuePulsingFab(
     )
 
     val borderColor = when {
-        summary.isAnyBlocked -> QueuePalette.Blocked.copy(alpha = pulseAlpha)
-        summary.hasError -> QueuePalette.Error
-        summary.isAnyWorking -> QueuePalette.Working.copy(alpha = pulseAlpha)
-        summary.totalActive > 0 -> QueuePalette.Working
+        summary.isAnyBlocked -> colors.warning.copy(alpha = pulseAlpha)
+        summary.hasError -> colors.error
+        summary.isAnyWorking -> colors.accent.copy(alpha = pulseAlpha)
+        summary.totalActive > 0 -> colors.accent
         else -> colors.border
     }
 
     val iconColor = when {
-        summary.isAnyBlocked -> QueuePalette.Blocked
-        summary.hasError -> QueuePalette.Error
-        summary.isAnyWorking -> QueuePalette.Working
+        summary.isAnyBlocked -> colors.warning
+        summary.hasError -> colors.error
+        summary.isAnyWorking -> colors.accent
         else -> colors.textMuted
     }
 
@@ -111,48 +110,34 @@ fun QueuePulsingFab(
 
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(4.dp))
-            .background(colors.surface.copy(alpha = 0.95f))
-            .border(
-                BorderStroke(
-                    width = if (summary.isAnyWorking || summary.isAnyBlocked) 1.5.dp else 1.dp,
-                    color = borderColor,
-                ),
-                RoundedCornerShape(4.dp),
-            )
-            .combinedClickable(
-                onClick = onClick,
-                onLongClick = {
-                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                    onLongClick()
-                },
-            )
-            .padding(horizontal = 10.dp, vertical = 7.dp),
+            .clip(RoundedCornerShape(6.dp))
+            .background(colors.surface)
+            .border(BorderStroke(1.dp, borderColor), RoundedCornerShape(6.dp))
+            .clickable {
+                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                onClick()
+            }
+            .padding(horizontal = 8.dp, vertical = 5.dp),
         contentAlignment = Alignment.Center,
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(3.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            ChuText("[", style = typography.label, color = borderColor)
             ChuText(
                 labelText,
-                style = typography.label.copy(
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace,
-                ),
+                style = typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace),
                 color = iconColor,
             )
             if (summary.isAnyBlocked) {
-                ChuText("!", style = typography.label.copy(fontWeight = FontWeight.Bold), color = QueuePalette.Blocked)
+                ChuText("!", style = typography.label.copy(fontWeight = FontWeight.Bold), color = colors.warning)
             }
-            ChuText("]", style = typography.label, color = borderColor)
         }
     }
 }
 
 /**
- * Thanh capsule Live Ticker thanh mảnh nổi ở đỉnh màn hình Terminal.
+ * Thanh capsule Live Ticker nổi ở đỉnh màn hình Terminal.
  */
 @Composable
 fun QueueAmbientTickerPill(
@@ -173,9 +158,9 @@ fun QueueAmbientTickerPill(
         modifier = modifier,
     ) {
         val pillColor = when {
-            summary.isAnyBlocked -> QueuePalette.Blocked
-            summary.isPaused -> QueuePalette.FgMuted
-            else -> QueuePalette.Working
+            summary.isAnyBlocked -> colors.warning
+            summary.isPaused -> colors.textMuted
+            else -> colors.accent
         }
 
         Box(
@@ -187,7 +172,7 @@ fun QueueAmbientTickerPill(
             Row(
                 modifier = Modifier
                     .clip(RoundedCornerShape(4.dp))
-                    .background(colors.surface.copy(alpha = 0.92f))
+                    .background(colors.surface.copy(alpha = 0.95f))
                     .border(BorderStroke(1.dp, pillColor.copy(alpha = 0.7f)), RoundedCornerShape(4.dp))
                     .clickable(onClick = onClick)
                     .padding(horizontal = 10.dp, vertical = 4.dp),
@@ -237,7 +222,7 @@ fun QueueAmbientTickerPill(
 }
 
 /**
- * Micro-Queue Quick Peek Bottom Sheet hiển thị 3 task quan trọng nhất không rời Terminal.
+ * Micro-Queue Quick Peek Bottom Sheet.
  */
 @Composable
 fun QueueQuickPeekBottomSheet(
@@ -289,9 +274,9 @@ fun QueueQuickPeekBottomSheet(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
-                        ChuText("⚡", style = typography.headline, color = QueuePalette.Working)
-                        ChuText("HÀNG ĐỢI NHANH", style = typography.headline)
-                        TuiBadge("${summary.totalActive} việc", QueuePalette.Working)
+                        ChuText("⚡", style = typography.headline, color = colors.accent)
+                        ChuText("quick queue", style = typography.headline)
+                        TuiBadge("${summary.totalActive}", colors.accent)
                     }
 
                     ChuButton(
@@ -303,11 +288,11 @@ fun QueueQuickPeekBottomSheet(
                         bracketed = true,
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 3.dp),
                     ) {
-                        ChuText("toàn màn hình ↗", style = typography.labelSmall, color = QueuePalette.Working)
+                        ChuText("fullscreen ↗", style = type.labelSmall, color = colors.accent)
                     }
                 }
 
-                // Danh sách 3 task gần nhất
+                // Top tasks
                 if (summary.topTasks.isEmpty()) {
                     Box(
                         modifier = Modifier
@@ -315,7 +300,7 @@ fun QueueQuickPeekBottomSheet(
                             .padding(24.dp),
                         contentAlignment = Alignment.Center,
                     ) {
-                        ChuText("Hàng đợi đang trống", style = typography.bodySmall, color = colors.textMuted)
+                        ChuText("queue is empty", style = typography.bodySmall, color = colors.textMuted)
                     }
                 } else {
                     summary.topTasks.forEach { task ->
@@ -339,11 +324,11 @@ private fun QuickPeekTaskItem(
     val colors = ChuColors.current
     val typography = ChuTypography.current
     val isRunning = task.state == "sent" || task.state == "sending" || task.state == "working"
-    val taskColor = task.tone.resolveColor(task.state)
+    val taskColor = task.tone.color()
 
     ChuCard(
         background = colors.surfaceVariant,
-        border = if (isRunning) QueuePalette.Working else colors.border,
+        border = if (isRunning) colors.accent else colors.border,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(
@@ -362,7 +347,7 @@ private fun QuickPeekTaskItem(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     ChuText(task.glyph, style = typography.label, color = taskColor)
-                    ChuText("#${task.id}", style = typography.label.copy(fontWeight = FontWeight.Bold), color = QueuePalette.Working)
+                    ChuText("#${task.id}", style = typography.label.copy(fontWeight = FontWeight.Bold), color = colors.accent)
                     if (task.target.isNotBlank()) {
                         ChuText("@${task.target}", style = typography.labelSmall, color = colors.textSecondary)
                     }
@@ -390,13 +375,13 @@ private fun QuickPeekTaskItem(
                             onClick = { onAction(action) },
                             variant = ChuButtonVariant.Ghost,
                             bracketed = true,
-                            borderColor = if (action.danger) QueuePalette.Error else colors.border,
+                            borderColor = if (action.danger) colors.error else colors.border,
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
                         ) {
                             ChuText(
                                 action.label,
                                 style = typography.labelSmall,
-                                color = if (action.danger) QueuePalette.Error else colors.textPrimary,
+                                color = if (action.danger) colors.error else colors.textPrimary,
                             )
                         }
                     }
