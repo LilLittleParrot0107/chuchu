@@ -69,16 +69,16 @@ fun DbtopScreen(
     val typography = ChuTypography.current
     val haptics = LocalHapticFeedback.current
 
-    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val ui by viewModel.ui.collectAsStateWithLifecycle()
 
     BackHandler {
         onClose()
     }
 
     LifecycleResumeEffect(Unit) {
-        viewModel.onScreenVisible()
+        viewModel.startPolling()
         onPauseOrDispose {
-            viewModel.onScreenHidden()
+            viewModel.stopPolling()
         }
     }
 
@@ -93,17 +93,17 @@ fun DbtopScreen(
         ) {
             // ==================== TOP BAR ====================
             DbtopTopBar(
-                freshness = uiState.freshness,
-                isRefreshing = uiState.isRefreshing,
+                freshness = ui.freshness,
+                isRefreshing = ui.isRefreshing,
                 onRefresh = {
                     haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                    viewModel.refresh()
+                    viewModel.refreshNow()
                 },
                 onClose = onClose,
             )
 
             // Error Banner
-            if (uiState.error != null && !uiState.everLoaded) {
+            if (ui.error != null && !ui.everLoaded) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -111,7 +111,7 @@ fun DbtopScreen(
                         .padding(horizontal = 14.dp, vertical = 6.dp),
                 ) {
                     ChuText(
-                        uiState.error ?: "",
+                        ui.error ?: "",
                         style = typography.labelSmall,
                         color = colors.error,
                     )
@@ -128,11 +128,11 @@ fun DbtopScreen(
             ) {
                 // SUMMARY OVERVIEW CARD
                 item(key = "overview_card") {
-                    val totalDebt = uiState.state.rows.sumOf { it.debt ?: 0.0 }
+                    val totalDebt = ui.state.rows.sumOf { it.debt ?: 0.0 }
                     SummaryOverviewCard(
-                        netWorth = uiState.state.netWorth,
-                        wallet = uiState.state.wallet,
-                        perday = uiState.state.perday,
+                        netWorth = ui.state.netWorth,
+                        wallet = ui.state.wallet,
+                        perday = ui.state.perday,
                         debt = totalDebt,
                     )
                 }
@@ -140,8 +140,8 @@ fun DbtopScreen(
                 // CATEGORY FILTER CHIPS
                 item(key = "filter_chips") {
                     DbtopFilterChipsBar(
-                        selected = uiState.selectedFilter,
-                        counts = uiState.categoryCounts,
+                        selected = ui.selectedFilter,
+                        counts = ui.categoryCounts,
                         onSelect = { filter ->
                             haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             viewModel.setFilter(filter)
@@ -150,7 +150,7 @@ fun DbtopScreen(
                 }
 
                 // VIEW: CHARTS
-                if (uiState.selectedFilter == DbtopFilter.CHARTS) {
+                if (ui.selectedFilter == DbtopFilter.CHARTS) {
                     item(key = "charts_curve") {
                         ChuCard(
                             background = colors.surfaceVariant,
@@ -169,10 +169,10 @@ fun DbtopScreen(
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     ChuText("NET WORTH CURVE", style = typography.labelSmall, color = colors.textMuted)
-                                    ChuText(DeFiFormatter.formatUsd(uiState.state.netWorth), style = typography.labelSmall.copy(fontWeight = FontWeight.Bold), color = colors.accent)
+                                    ChuText(DeFiFormatter.formatUsd(ui.state.netWorth), style = typography.labelSmall.copy(fontWeight = FontWeight.Bold), color = colors.accent)
                                 }
                                 NetWorthCurveChart(
-                                    points = uiState.state.curve,
+                                    points = ui.state.curve,
                                     lineColor = colors.accent,
                                     height = 180.dp,
                                 )
@@ -198,10 +198,10 @@ fun DbtopScreen(
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     ChuText("DAILY YIELD", style = typography.labelSmall, color = colors.textMuted)
-                                    ChuText("+${DeFiFormatter.formatUsd(uiState.state.perday)}/d", style = typography.labelSmall.copy(fontWeight = FontWeight.Bold), color = colors.success)
+                                    ChuText("+${DeFiFormatter.formatUsd(ui.state.perday)}/d", style = typography.labelSmall.copy(fontWeight = FontWeight.Bold), color = colors.success)
                                 }
                                 DailyYieldBarChart(
-                                    dailyData = uiState.state.daily,
+                                    dailyData = ui.state.daily,
                                     primaryColor = colors.accent,
                                     accentColor = colors.success,
                                     height = 160.dp,
@@ -209,14 +209,14 @@ fun DbtopScreen(
                             }
                         }
                     }
-                } else if (uiState.selectedFilter == DbtopFilter.WALLET) {
+                } else if (ui.selectedFilter == DbtopFilter.WALLET) {
                     // VIEW: WALLET TOKENS
-                    items(uiState.state.walletTokens, key = { "${it.sym}_${it.amt}" }) { token ->
+                    items(ui.state.walletTokens, key = { "${it.sym}_${it.amt}" }) { token ->
                         WalletTokenCard(token = token)
                     }
                 } else {
                     // VIEW: DAPP POSITION CARDS
-                    val rows = uiState.filteredRows
+                    val rows = ui.filteredRows
                     if (rows.isEmpty()) {
                         item(key = "empty_state") {
                             Box(
@@ -230,7 +230,7 @@ fun DbtopScreen(
                         }
                     } else {
                         items(rows, key = { "${it.name}_${it.proto}" }) { row ->
-                            val isExpanded = uiState.expandedRowName == row.name
+                            val isExpanded = ui.expandedRowName == row.name
                             DappPositionCard(
                                 row = row,
                                 isExpanded = isExpanded,
