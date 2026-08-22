@@ -145,7 +145,7 @@ internal fun TaskDetailDialog(
 }
 
 @Composable
-private fun ScrollableTextPanel(text: String, maxHeight: Int, monospace: Boolean, markdown: Boolean = false) {
+private fun ScrollableTextPanel(text: String, maxHeight: Int, monospace: Boolean = false, markdown: Boolean = false) {
     val colors = ChuColors.current
     val type = ChuTypography.current
     Box(
