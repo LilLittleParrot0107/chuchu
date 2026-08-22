@@ -4,23 +4,18 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Mô hình cho màn hình hàng đợi task (qsrv `GET /state?view=app`).
+ * Defensive models for qsrv `GET /state?view=app`.
  *
- * Nguyên tắc: **app không đoán nghĩa**. Biểu tượng, màu, nhãn và danh sách thao
- * tác hợp lệ đều do qsrv gửi xuống — vì mỗi lần sửa phía app là 15 phút build CI,
- * còn sửa phía server là sửa xong dùng ngay. Trong một ngày (20/8) qd/qq/qsrv đã
- * lệch nghĩa ba lần; giữ bảng trạng thái ở một chỗ là cách duy nhất không tái diễn.
- *
- * Hệ quả cho việc parse: **không bao giờ ném lỗi vì thiếu hoặc lạ trường**.
- * Trường lạ thì bỏ qua, trường thiếu thì lấy mặc định — server mới nói chuyện
- * được với app cũ và ngược lại.
+ * Presentation metadata comes from qsrv. The parser only translates known
+ * legacy labels and tolerates missing or future fields so server and app can
+ * be upgraded independently.
  */
 
 enum class QueueTone {
     Dim, Accent, Ok, Warn, Error;
 
     companion object {
-        /** Tông lạ → Dim: nhạt nhưng vẫn đọc được, không bao giờ vô hình. */
+        /** Unknown tones stay readable without pretending to carry meaning. */
         fun from(raw: String?): QueueTone = when (raw) {
             "accent" -> Accent
             "ok" -> Ok
@@ -40,7 +35,7 @@ data class QueueAction(
 
 data class QueueTask(
     val id: Int,
-    /** Pane của agent nhận việc — dùng để lọc việc theo agent, y như qq. */
+    /** Agent pane used for the same scoped task view as qq. */
     val target: String,
     val text: String,
     val state: String,
@@ -50,8 +45,26 @@ data class QueueTask(
     val sub: String,
     val actions: List<QueueAction>,
     val hasResp: Boolean = false,
-    val respPreview: String = "",
 )
+
+internal val QueueTask.isCompleted: Boolean
+    get() = state.equals("done", ignoreCase = true) || state.equals("completed", ignoreCase = true)
+
+internal val QueueTask.isRunning: Boolean
+    get() = state.equals("sent", ignoreCase = true) ||
+        state.equals("sending", ignoreCase = true) ||
+        state.equals("working", ignoreCase = true) ||
+        state.equals("busy", ignoreCase = true)
+
+internal fun QueueAction.operationKey(taskId: Int?): String = "$op:${taskId ?: "-"}"
+
+internal object QueueOperationKey {
+    const val ADD = "add"
+    private const val CLEAR_DONE_PREFIX = "clear-done:"
+
+    fun clearDone(targetPane: String?): String = "$CLEAR_DONE_PREFIX${targetPane ?: "*"}"
+    fun isClearDone(key: String): Boolean = key.startsWith(CLEAR_DONE_PREFIX)
+}
 
 data class QueueAgent(
     val pane: String,
@@ -59,7 +72,7 @@ data class QueueAgent(
     val glyph: String,
     val tone: QueueTone,
     val label: String,
-    /** Chữ ngắn hiện cạnh tên khi cần chú ý ("cần anh", "còn job"); qq gọi là word. */
+    /** Short attention marker from qsrv; qq calls this the agent word. */
     val word: String,
 )
 
@@ -68,11 +81,64 @@ data class QueueBanner(
     val text: String,
 )
 
+/** Transient action result; connection failures remain durable UI errors. */
+enum class QueueFeedbackTone { Info, Success, Warning, Error }
+
+data class QueueFeedback(
+    val id: Long,
+    val text: String,
+    val tone: QueueFeedbackTone,
+)
+
+private val queueFeedbackWhitespace = Regex("\\s+")
+private val justNowLegacy = Regex("\\bvua xong\\b", RegexOption.IGNORE_CASE)
+private val minutesAgoLegacy = Regex("\\b(\\d+) phut truoc\\b", RegexOption.IGNORE_CASE)
+private val hoursAgoLegacy = Regex("\\b(\\d+) gio truoc\\b", RegexOption.IGNORE_CASE)
+private val daysAgoLegacy = Regex("\\b(\\d+) ngay truoc\\b", RegexOption.IGNORE_CASE)
+
+/** Keep legacy qsrv payloads from leaking Vietnamese labels into the app. */
+private fun englishQueueLabel(raw: String): String = when (raw.trim().lowercase()) {
+    "dang cho" -> "waiting"
+    "dang gui" -> "sending"
+    "da gui", "dang chay" -> "running"
+    "xong" -> "done"
+    "that bai" -> "failed"
+    "khong ro", "chua ro" -> "unknown"
+    "con job" -> "busy"
+    "cho duyet", "can anh" -> "needs approval"
+    "ranh" -> "idle"
+    "hang doi dang tam dung" -> "Queue is paused"
+    else -> raw
+}
+
+private fun englishQueueActionLabel(op: String): String = when (op.lowercase()) {
+    "top" -> "Move first"
+    "up" -> "Move up"
+    "del", "delete", "rm" -> "Delete"
+    "retry" -> "Retry"
+    "pause" -> "Pause"
+    "resume" -> "Resume"
+    "cancel" -> "Cancel"
+    else -> op.replace('_', ' ').ifBlank { "Action" }
+}
+
+private fun englishQueueSub(raw: String): String = raw
+    .replace(justNowLegacy, "just now")
+    .replace(minutesAgoLegacy, "$1m ago")
+    .replace(hoursAgoLegacy, "$1h ago")
+    .replace(daysAgoLegacy, "$1d ago")
+
+/** Keep transient feedback compact; full details remain in logs/responses. */
+internal fun normalizeQueueFeedbackText(raw: String, fallback: String): String {
+    val compact = raw.trim().replace(queueFeedbackWhitespace, " ").ifBlank { fallback.trim() }
+    if (compact.length <= 160) return compact
+    return compact.take(159).trimEnd() + "…"
+}
+
 data class QueueState(
     val rev: String,
     val paused: Boolean,
     val banner: QueueBanner?,
-    val summary: String,
     val globalActions: List<QueueAction>,
     val agents: List<QueueAgent>,
     val tasks: List<QueueTask>,
@@ -82,7 +148,6 @@ data class QueueState(
             rev = "",
             paused = false,
             banner = null,
-            summary = "",
             globalActions = emptyList(),
             agents = emptyList(),
             tasks = emptyList(),
@@ -94,20 +159,24 @@ data class QueueState(
             rev = o.optString("rev"),
             paused = o.optBoolean("paused", false),
             banner = o.optJSONObject("banner")?.let {
-                QueueBanner(QueueTone.from(it.optString("tone")), it.optString("text"))
+                QueueBanner(QueueTone.from(it.optString("tone")), englishQueueLabel(it.optString("text")))
             },
-            summary = o.optString("summary"),
             globalActions = o.optJSONArray("global_actions").mapObjects(::parseAction),
-            agents = o.optJSONArray("agents").mapObjects(::parseAgent),
-            // Bỏ task không có id: mọi thao tác đều cần id nên nó vô dụng, mà
-            // giữ lại thì hai task như thế cùng thành id -1 → trùng key trong
-            // LazyColumn → văng app. Parser dễ tính không được đẻ ra key trùng.
-            tasks = o.optJSONArray("tasks").mapObjects(::parseTask).filter { it.id >= 0 },
+            agents = o.optJSONArray("agents")
+                .mapObjects(::parseAgent)
+                .filter { it.pane.isNotBlank() }
+                .distinctBy(QueueAgent::pane),
+            // Every action needs an id, and placeholder ids would collide in
+            // LazyColumn keys. Invalid rows are safer to omit.
+            tasks = o.optJSONArray("tasks")
+                .mapObjects(::parseTask)
+                .filter { it.id >= 0 }
+                .distinctBy(QueueTask::id),
         )
 
         private fun parseAction(o: JSONObject) = QueueAction(
             op = o.optString("op"),
-            label = o.optString("label").ifEmpty { o.optString("op") },
+            label = englishQueueActionLabel(o.optString("op")),
             needsRev = o.optBoolean("needs_rev", false),
             danger = o.optBoolean("danger", false),
         )
@@ -117,8 +186,8 @@ data class QueueState(
             name = o.optString("name").ifEmpty { o.optString("pane") },
             glyph = o.optString("glyph").ifEmpty { "•" },
             tone = QueueTone.from(o.optString("tone")),
-            label = o.optString("label"),
-            word = o.optString("word"),
+            label = englishQueueLabel(o.optString("label")),
+            word = englishQueueLabel(o.optString("word")),
         )
 
         private fun parseTask(o: JSONObject) = QueueTask(
@@ -128,16 +197,14 @@ data class QueueState(
             state = o.optString("state"),
             glyph = o.optString("glyph").ifEmpty { "•" },
             tone = QueueTone.from(o.optString("tone")),
-            // Thiếu nhãn thì hiện tên trạng thái thô, KHÔNG để trống: trạng thái
-            // qd mới nghĩ ra phải nhìn thấy được, đừng lặng lẽ giống pending.
-            stateLabel = o.optString("state_label").ifEmpty { o.optString("state") },
-            sub = o.optString("sub"),
+            // Preserve an unknown raw state instead of silently looking pending.
+            stateLabel = englishQueueLabel(o.optString("state_label").ifEmpty { o.optString("state") }),
+            sub = englishQueueSub(o.optString("sub")),
             actions = o.optJSONArray("actions").mapObjects(::parseAction),
             hasResp = o.optBoolean("has_resp", false),
-            respPreview = o.optString("resp_preview", ""),
         )
 
-        /** Bỏ qua phần tử không phải object thay vì làm hỏng cả danh sách. */
+        /** A malformed row must not hide the rest of a valid queue. */
         private fun <T> JSONArray?.mapObjects(f: (JSONObject) -> T): List<T> {
             if (this == null) return emptyList()
             val out = ArrayList<T>(length())
@@ -148,57 +215,3 @@ data class QueueState(
         }
     }
 }
-
-/** Tóm tắt trạng thái phục vụ hiển thị ngoài màn hình Terminal / Accessory Bar / ServerList. */
-data class QueueAmbientSummary(
-    val totalActive: Int = 0,
-    val runningCount: Int = 0,
-    val pendingCount: Int = 0,
-    val blockedCount: Int = 0,
-    val isAnyWorking: Boolean = false,
-    val isAnyBlocked: Boolean = false,
-    val isPaused: Boolean = false,
-    val activeTaskId: Int? = null,
-    val primaryAgentName: String? = null,
-    val statusText: String = "",
-    val topTasks: List<QueueTask> = emptyList(),
-    val hasError: Boolean = false,
-) {
-    companion object {
-        val Empty = QueueAmbientSummary()
-
-        fun from(state: QueueState, error: String?): QueueAmbientSummary {
-            val nonDoneTasks = state.tasks.filter {
-                !it.state.equals("done", ignoreCase = true) && !it.state.equals("completed", ignoreCase = true)
-            }
-            val running = state.tasks.filter { it.state == "sent" || it.state == "sending" || it.state == "working" || it.state == "busy" }
-            val blocked = state.agents.filter { it.tone == QueueTone.Warn || it.word.contains("cần anh", ignoreCase = true) }
-            val workingAgents = state.agents.filter { it.tone == QueueTone.Accent }
-
-            val primaryRunningTask = running.firstOrNull()
-            val primaryAgent = workingAgents.firstOrNull() ?: state.agents.firstOrNull()
-
-            return QueueAmbientSummary(
-                totalActive = nonDoneTasks.size,
-                runningCount = running.size,
-                pendingCount = (nonDoneTasks.size - running.size).coerceAtLeast(0),
-                blockedCount = blocked.size,
-                isAnyWorking = running.isNotEmpty() || workingAgents.isNotEmpty(),
-                isAnyBlocked = blocked.isNotEmpty(),
-                isPaused = state.paused,
-                activeTaskId = primaryRunningTask?.id,
-                primaryAgentName = primaryRunningTask?.target?.takeIf { it.isNotBlank() } ?: primaryAgent?.name,
-                statusText = when {
-                    blocked.isNotEmpty() -> "cần bạn duyệt"
-                    running.isNotEmpty() -> "đang chạy"
-                    state.paused -> "tạm dừng"
-                    nonDoneTasks.isNotEmpty() -> "đang chờ"
-                    else -> "sẵn sàng"
-                },
-                topTasks = nonDoneTasks.take(3),
-                hasError = error != null || state.banner?.tone == QueueTone.Error,
-            )
-        }
-    }
-}
-

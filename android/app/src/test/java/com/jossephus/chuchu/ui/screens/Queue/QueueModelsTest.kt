@@ -36,7 +36,7 @@ class QueueModelsTest {
 
         val first = s.tasks[0]
         assertEquals(3, first.id)
-        assertEquals("dang cho", first.stateLabel)
+        assertEquals("waiting", first.stateLabel)
         assertEquals(QueueTone.Dim, first.tone)
         assertEquals(2, first.actions.size)
         assertTrue(first.actions[0].needsRev)
@@ -44,6 +44,8 @@ class QueueModelsTest {
 
         assertEquals(1, s.globalActions.size)
         assertEquals("pause", s.globalActions[0].op)
+        assertEquals("Pause", s.globalActions[0].label)
+        assertEquals("5m ago", first.sub.substringAfterLast(" · "))
     }
 
     /**
@@ -118,7 +120,54 @@ class QueueModelsTest {
     @Test
     fun `action thieu nhan thi lay ten op`() {
         val s = QueueState.parse("""{"global_actions":[{"op":"pause"}]}""")
-        assertEquals("pause", s.globalActions.single().label)
+        assertEquals("Pause", s.globalActions.single().label)
+    }
+
+    @Test
+    fun `task status helpers keep state rules in one place`() {
+        val tasks = QueueState.parse(
+            """{"tasks":[
+                {"id":1,"state":"completed"},
+                {"id":2,"state":"working"},
+                {"id":3,"state":"pending"}
+            ]}""",
+        ).tasks
+
+        assertTrue(tasks[0].isCompleted)
+        assertTrue(tasks[1].isRunning)
+        assertEquals(false, tasks[2].isCompleted)
+        assertEquals(false, tasks[2].isRunning)
+    }
+
+    @Test
+    fun `operation keys are canonical`() {
+        val action = QueueAction("retry", "Retry", needsRev = false, danger = false)
+
+        assertEquals("retry:9", action.operationKey(9))
+        assertEquals("retry:-", action.operationKey(null))
+        assertEquals("clear-done:*", QueueOperationKey.clearDone(null))
+        assertTrue(QueueOperationKey.isClearDone("clear-done:w3:p1"))
+    }
+
+    @Test
+    fun `ambient summary derives counts from canonical task states`() {
+        val state = QueueState.parse(
+            """{
+                "agents":[{"pane":"p1","name":"agent","tone":"accent","label":"working"}],
+                "tasks":[
+                    {"id":1,"target":"p1","state":"working"},
+                    {"id":2,"target":"p1","state":"pending"},
+                    {"id":3,"target":"p1","state":"done"}
+                ]
+            }""",
+        )
+
+        val summary = QueueAmbientSummary.from(state, error = null)
+        assertEquals(2, summary.totalActive)
+        assertEquals(1, summary.runningCount)
+        assertEquals(1, summary.pendingCount)
+        assertEquals(1, summary.activeTaskId)
+        assertEquals("running", summary.statusText)
     }
 
     /**
@@ -129,10 +178,48 @@ class QueueModelsTest {
     @Test
     fun `task khong co id bi bo de khong trung key`() {
         val s = QueueState.parse(
-            """{"tasks":[{"text":"khong id"},{"text":"cung khong id"},{"id":8,"text":"co id"}]}"""
+            """{"tasks":[
+                {"text":"khong id"},
+                {"text":"cung khong id"},
+                {"id":8,"text":"co id"},
+                {"id":8,"text":"trung id"}
+            ]}"""
         )
         assertEquals(1, s.tasks.size)
         assertEquals(8, s.tasks.single().id)
         assertEquals(s.tasks.size, s.tasks.map { it.id }.distinct().size)
+    }
+
+    @Test
+    fun `agent without a unique pane is omitted`() {
+        val state = QueueState.parse(
+            """{"agents":[
+                {"pane":"","name":"invalid"},
+                {"pane":"p1","name":"first"},
+                {"pane":"p1","name":"duplicate"}
+            ]}""",
+        )
+
+        assertEquals(listOf("first"), state.agents.map(QueueAgent::name))
+    }
+
+    @Test
+    fun `feedback duoc rut gon thanh mot dong`() {
+        assertEquals(
+            "Đã thêm task #12 vào hàng đợi",
+            normalizeQueueFeedbackText("  Đã thêm task #12\n  vào   hàng đợi  ", "fallback"),
+        )
+    }
+
+    @Test
+    fun `feedback rong dung noi dung du phong`() {
+        assertEquals("Đã cập nhật hàng đợi", normalizeQueueFeedbackText("  \n ", "Đã cập nhật hàng đợi"))
+    }
+
+    @Test
+    fun `feedback qua dai bi gioi han`() {
+        val normalized = normalizeQueueFeedbackText("a".repeat(200), "fallback")
+        assertEquals(160, normalized.length)
+        assertTrue(normalized.endsWith("…"))
     }
 }

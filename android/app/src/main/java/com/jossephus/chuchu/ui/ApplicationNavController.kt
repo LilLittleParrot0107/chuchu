@@ -14,6 +14,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
@@ -24,6 +25,9 @@ import androidx.navigation.navArgument
 import com.jossephus.chuchu.data.repository.SettingsRepository
 import com.jossephus.chuchu.ui.screens.AddServer.AddServerScreen
 import com.jossephus.chuchu.ui.screens.AddServer.AddServerViewModel
+import com.jossephus.chuchu.ui.screens.Dbtop.DbtopScreen
+import com.jossephus.chuchu.ui.screens.Queue.QueueScreen
+import com.jossephus.chuchu.ui.screens.Queue.QueueViewModel
 import com.jossephus.chuchu.ui.screens.ServerList.ServerListScreen
 import com.jossephus.chuchu.ui.screens.ServerList.ServerListViewModel
 import com.jossephus.chuchu.ui.screens.Settings.SettingsBackupViewModel
@@ -96,13 +100,12 @@ fun ApplicationNavController() {
         return
     }
 
-    val sharedQueueVm: com.jossephus.chuchu.ui.screens.Queue.QueueViewModel =
-        viewModel(factory = com.jossephus.chuchu.ui.screens.Queue.QueueViewModel.factory(application))
+    val sharedQueueVm: QueueViewModel = viewModel(factory = QueueViewModel.factory(application))
     val queueAmbientSummary by sharedQueueVm.ambientSummary.collectAsStateWithLifecycle()
 
-    androidx.lifecycle.compose.LifecycleResumeEffect(Unit) {
-        sharedQueueVm.startAmbientPolling()
-        onPauseOrDispose { sharedQueueVm.stopPolling() }
+    LifecycleResumeEffect(Unit) {
+        sharedQueueVm.setAppActive(true)
+        onPauseOrDispose { sharedQueueVm.setAppActive(false) }
     }
 
     NavHost(navController = navController, startDestination = "servers") {
@@ -158,10 +161,12 @@ fun ApplicationNavController() {
                 onOpenSettings = { navController.navigate("settings") },
                 onOpenWeb = { navController.navigate("web") },
                 onOpenDashboard = { navController.navigate("dashboard") },
+                onOpenQueue = { navController.navigate("queue") },
+                queueSummary = queueAmbientSummary,
             )
         }
         composable("dashboard") {
-            com.jossephus.chuchu.ui.screens.Dbtop.DbtopScreen(
+            DbtopScreen(
                 onClose = { navController.popBackStack() },
             )
         }
@@ -169,18 +174,19 @@ fun ApplicationNavController() {
             val ui by sharedQueueVm.ui.collectAsStateWithLifecycle()
             val qUrl by sharedQueueVm.queueUrl.collectAsStateWithLifecycle()
             val qToken by sharedQueueVm.queueToken.collectAsStateWithLifecycle()
-            androidx.lifecycle.compose.LifecycleResumeEffect(Unit) {
-                sharedQueueVm.startPolling()
-                onPauseOrDispose { sharedQueueVm.startAmbientPolling() }
+            DisposableEffect(sharedQueueVm) {
+                sharedQueueVm.setQueueVisible(true)
+                onDispose { sharedQueueVm.setQueueVisible(false) }
             }
-            com.jossephus.chuchu.ui.screens.Queue.QueueScreen(
+            QueueScreen(
                 ui = ui,
                 onAction = sharedQueueVm::runAction,
                 onAdd = sharedQueueVm::addTask,
                 onClearDone = sharedQueueVm::clearDoneTasks,
                 onRefresh = sharedQueueVm::refreshNow,
                 onFetchLogs = sharedQueueVm::fetchLogs,
-                onConsumeToast = sharedQueueVm::consumeToast,
+                onShowFeedback = sharedQueueVm::showFeedback,
+                onConsumeFeedback = sharedQueueVm::consumeFeedback,
                 currentUrl = qUrl,
                 currentToken = qToken,
                 onSaveConfig = sharedQueueVm::saveConfig,
@@ -197,7 +203,7 @@ fun ApplicationNavController() {
                 onClose = { navController.popBackStack() },
             )
         }
-                composable("settings") {
+        composable("settings") {
             val settingsRepo = SettingsRepository.getInstance(application)
             val backupViewModel: SettingsBackupViewModel = viewModel(
                 factory = SettingsBackupViewModel.factory(application),

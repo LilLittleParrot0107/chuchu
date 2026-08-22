@@ -13,11 +13,14 @@ import java.net.UnknownHostException
 /**
  * Client HTTP cho dbtop (lấy file state.json qua dufs/tailscale serve).
  *
+ * Route này dựa vào danh tính Tailscale và cố ý không gửi Queue Bearer token.
+ * dufs diễn giải mọi Authorization header như credential của chính dufs; gửi
+ * queueToken tới đây làm một request hợp lệ biến thành HTTP 401.
+ *
  * Chạy blocking I/O — yêu cầu gọi từ Dispatchers.IO.
  */
 class DbtopClient(
     private val endpointUrl: String,
-    private val authToken: String? = null,
     private val connectTimeoutMs: Int = 5000,
     private val readTimeoutMs: Int = 10000,
 ) {
@@ -57,7 +60,7 @@ class DbtopClient(
     fun fetch(forceRefresh: Boolean = false): FetchResult {
         val targetUrl = endpointUrl.trim()
         if (targetUrl.isBlank()) {
-            return FetchResult.Failed("Chưa cấu hình URL dbtop", isNetworkError = false)
+            return FetchResult.Failed("DBTOP URL is not configured", isNetworkError = false)
         }
 
         return try {
@@ -68,10 +71,6 @@ class DbtopClient(
                 instanceFollowRedirects = true
                 requestMethod = "GET"
                 setRequestProperty("Accept", "application/json, text/plain, */*")
-
-                if (!authToken.isNullOrBlank()) {
-                    setRequestProperty("Authorization", "Bearer $authToken")
-                }
 
                 // Gửi điều kiện cache nếu không ép refresh
                 if (!forceRefresh) {
@@ -99,10 +98,16 @@ class DbtopClient(
 
                         val body = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
                         if (body.isBlank()) {
-                            return FetchResult.Failed("Server trả về nội dung rỗng (0 bytes)")
+                            return FetchResult.Failed("The server returned an empty response (0 bytes)")
                         }
 
                         val parsedState = DbtopJson.decodeFromString<DbtopState>(body)
+                        if (parsedState.ts <= 0L) {
+                            return FetchResult.Failed(
+                                "The response is not a valid dbtop snapshot (missing ts)",
+                                isNetworkError = false,
+                            )
+                        }
                         val freshness = parsedState.freshness()
 
                         FetchResult.Fresh(
@@ -113,41 +118,39 @@ class DbtopClient(
                     }
 
                     HttpURLConnection.HTTP_UNAUTHORIZED -> {
-                        FetchResult.Failed("Yêu cầu xác thực hoặc token không hợp lệ (401)", needsAuth = true)
+                        FetchResult.Failed(
+                            "The dbtop route requires authentication (401) — check the /home/debank/state.json URL",
+                            needsAuth = true,
+                        )
                     }
 
                     HttpURLConnection.HTTP_FORBIDDEN -> {
-                        FetchResult.Failed("Bị từ chối (403) — kiểm tra kết nối mạng Tailscale", needsAuth = true)
+                        FetchResult.Failed("Access denied (403) — check the Tailscale connection", needsAuth = true)
                     }
 
                     HttpURLConnection.HTTP_NOT_FOUND -> {
-                        FetchResult.Failed("Không tìm thấy state.json (404) tại $targetUrl")
+                        FetchResult.Failed("state.json was not found (404) at $targetUrl")
                     }
 
                     else -> {
                         val errText = conn.errorStream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
-                        FetchResult.Failed("Lỗi server ($code): ${errText?.take(120) ?: "Không có phản hồi"}")
+                        FetchResult.Failed("Server error ($code): ${errText?.take(120) ?: "No response"}")
                     }
                 }
             } finally {
                 conn.disconnect()
             }
         } catch (e: SocketTimeoutException) {
-            FetchResult.Failed("Quá thời gian kết nối (Timeout) — kiểm tra máy chủ hoặc Tailscale")
+            FetchResult.Failed("Connection timed out — check the host or Tailscale")
         } catch (e: ConnectException) {
-            FetchResult.Failed("Không thể kết nối — dufs/web portal chưa bật hoặc sai cổng")
+            FetchResult.Failed("Could not connect — the dufs/web portal may be offline or using another port")
         } catch (e: UnknownHostException) {
-            FetchResult.Failed("Không tìm thấy host Tailscale — kiểm tra lại VPN Tailscale")
+            FetchResult.Failed("Tailscale host not found — check the Tailscale VPN")
         } catch (e: IOException) {
-            FetchResult.Failed("Lỗi I/O mạng: ${e.localizedMessage ?: "Mạng chập chờn"}")
+            FetchResult.Failed("Network I/O error: ${e.localizedMessage ?: "Unstable network"}")
         } catch (e: Exception) {
-            FetchResult.Failed("Lỗi phân tích state.json: ${e.localizedMessage ?: "Dữ liệu JSON không hợp lệ"}", isNetworkError = false)
+            FetchResult.Failed("Could not parse state.json: ${e.localizedMessage ?: "Invalid JSON"}", isNetworkError = false)
         }
     }
 
-    /** Xóa bộ nhớ đệm cache ETag khi cần reset */
-    fun clearCache() {
-        cachedEtag = null
-        cachedLastModified = null
-    }
 }

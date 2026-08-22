@@ -37,9 +37,9 @@ import androidx.compose.foundation.layout.imeAnimationTarget
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.isImeVisible
 import com.jossephus.chuchu.ui.screens.Queue.QueueAction
+import com.jossephus.chuchu.ui.screens.Queue.QueueAmbientFab
 import com.jossephus.chuchu.ui.screens.Queue.QueueAmbientSummary
 import com.jossephus.chuchu.ui.screens.Queue.QueueAmbientTickerPill
-import com.jossephus.chuchu.ui.screens.Queue.QueuePulsingFab
 import com.jossephus.chuchu.ui.screens.Queue.QueueQuickPeekBottomSheet
 
 import androidx.compose.foundation.layout.defaultMinSize
@@ -1722,7 +1722,7 @@ fun TerminalScreen(
                                     verticalArrangement = Arrangement.spacedBy(8.dp),
                                 ) {
                                     if (showQueueFab) {
-                                        QueuePulsingFab(
+                                        QueueAmbientFab(
                                             summary = queueSummary,
                                             onClick = onOpenQueue,
                                             onLongClick = { showQueueQuickPeek = true },

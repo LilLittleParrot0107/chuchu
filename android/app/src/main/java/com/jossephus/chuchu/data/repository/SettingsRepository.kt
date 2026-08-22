@@ -2,6 +2,7 @@ package com.jossephus.chuchu.data.repository
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.jossephus.chuchu.data.network.normalizeQueueBaseUrl
 import com.jossephus.chuchu.ui.screens.Terminal.TerminalTabMode
 import com.jossephus.chuchu.ui.terminal.BuiltinShortcutStore
 import com.jossephus.chuchu.ui.terminal.TerminalAccessoryLayoutStore
@@ -72,10 +73,10 @@ class SettingsRepository(context: Context) {
         _dbtopUrl.value = v
     }
 
-    private val _queueUrl = MutableStateFlow(prefs.getString(KEY_QUEUE_URL, DEFAULT_QUEUE_URL) ?: DEFAULT_QUEUE_URL)
+    private val _queueUrl = MutableStateFlow(loadQueueUrl())
     val queueUrl: StateFlow<String> = _queueUrl.asStateFlow()
 
-    private val _queueToken = MutableStateFlow(prefs.getString(KEY_QUEUE_TOKEN, "") ?: "")
+    private val _queueToken = MutableStateFlow(loadQueueToken())
     val queueToken: StateFlow<String> = _queueToken.asStateFlow()
 
     private val _appLockEnabled = MutableStateFlow(prefs.getBoolean(KEY_APP_LOCK_ENABLED, false))
@@ -157,15 +158,44 @@ class SettingsRepository(context: Context) {
     }
 
     fun setQueueUrl(value: String) {
-        val v = value.trim().trimEnd('/')
+        val v = normalizeQueueBaseUrl(value)
         prefs.edit().putString(KEY_QUEUE_URL, v).apply()
         _queueUrl.value = v
     }
 
+    /** Migrate browser/API URLs copied into the old Queue settings field. */
+    private fun loadQueueUrl(): String {
+        val stored = prefs.getString(KEY_QUEUE_URL, DEFAULT_QUEUE_URL) ?: DEFAULT_QUEUE_URL
+        val normalized = normalizeQueueBaseUrl(stored)
+        if (normalized != stored) {
+            prefs.edit().putString(KEY_QUEUE_URL, normalized).apply()
+        }
+        return normalized
+    }
+
     fun setQueueToken(value: String) {
-        val v = value.trim()
+        val v = normalizeQueueToken(value)
         prefs.edit().putString(KEY_QUEUE_TOKEN, v).apply()
         _queueToken.value = v
+    }
+
+    /** Accept both a raw token and a pasted `Bearer …` header value. */
+    private fun loadQueueToken(): String {
+        val stored = prefs.getString(KEY_QUEUE_TOKEN, "").orEmpty()
+        val normalized = normalizeQueueToken(stored)
+        if (normalized != stored) {
+            prefs.edit().putString(KEY_QUEUE_TOKEN, normalized).apply()
+        }
+        return normalized
+    }
+
+    private fun normalizeQueueToken(value: String): String {
+        val trimmed = value.trim()
+        return if (trimmed.startsWith("Bearer ", ignoreCase = true)) {
+            trimmed.substring(7).trim()
+        } else {
+            trimmed
+        }
     }
 
     /** Doi duong dufs cu (goc tailnet) sang duong moi mot lan, ngay khi mo app. */

@@ -1,10 +1,14 @@
 package com.jossephus.chuchu.ui.screens.Queue
 
+import com.jossephus.chuchu.data.network.normalizeQueueBaseUrl
 import org.json.JSONObject
 import java.io.IOException
 import java.net.HttpURLConnection
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 import java.net.URL
 import java.net.URLEncoder
+import javax.net.ssl.SSLException
 
 /**
  * Client HTTP cho qsrv. Chặn luồng — gọi từ Dispatchers.IO.
@@ -19,6 +23,20 @@ class QueueClient(
     private val connectTimeoutMs: Int = 4000,
     private val readTimeoutMs: Int = 8000,
 ) {
+    @Volatile
+    private var omitConfiguredToken = token.isBlank()
+
+    /**
+     * `qsrv` accepts the authenticated Tailscale identity without a token. If
+     * an old token is still stored on the phone, it deliberately returns 401
+     * so a broken configuration is visible. The native app can safely recover
+     * by retrying without that token: Tailscale identity is still checked by
+     * the server before the request reaches any queue operation.
+     */
+    @Volatile
+    var recoveredWithoutToken: Boolean = false
+        private set
+
     sealed interface Fetch {
         data class Fresh(val state: QueueState) : Fetch
         /** Server báo rev không đổi (304) — giữ nguyên state đang hiển thị. */
@@ -27,7 +45,7 @@ class QueueClient(
     }
 
     sealed interface Act {
-        data class Ok(val note: String, val rev: String) : Act
+        data class Ok(val rev: String, val taskId: Int? = null) : Act
         /** Hàng đợi đã đổi từ lúc đọc — phải tải lại rồi thao tác lại. */
         data class Conflict(val rev: String) : Act
         data class Failed(val message: String, val needsAuth: Boolean = false) : Act
@@ -50,17 +68,37 @@ class QueueClient(
             val (code, body) = request("/state?view=app$q", null)
             when {
                 code == HttpURLConnection.HTTP_NOT_MODIFIED -> Fetch.Unchanged
-                code == HttpURLConnection.HTTP_OK -> Fetch.Fresh(QueueState.parse(body))
+                code == HttpURLConnection.HTTP_OK -> {
+                    val state = QueueState.parse(body)
+                    if (state.rev.isBlank()) {
+                        Fetch.Failed(
+                            "This URL does not point to qsrv — use the base URL ending in /q",
+                            needsAuth = false,
+                        )
+                    } else {
+                        Fetch.Fresh(state)
+                    }
+                }
                 code == HttpURLConnection.HTTP_UNAUTHORIZED ->
-                    Fetch.Failed("Token sai hoặc đã đổi", needsAuth = true)
+                    Fetch.Failed("The token is invalid or has changed", needsAuth = true)
                 code == HttpURLConnection.HTTP_FORBIDDEN ->
-                    Fetch.Failed("Bị từ chối — request không đi qua tailnet", needsAuth = true)
-                else -> Fetch.Failed(serverMessage(body) ?: "Server trả lỗi $code")
+                    Fetch.Failed("Queue access denied (403) — open Tailscale and verify the account", needsAuth = true)
+                code == HttpURLConnection.HTTP_NOT_FOUND ->
+                    Fetch.Failed("QSRV was not found (404) — the URL must end in /q")
+                else -> Fetch.Failed("Queue server error ($code)")
             }
+        } catch (e: SocketTimeoutException) {
+            Fetch.Failed("Queue timed out — check Tailscale")
+        } catch (e: UnknownHostException) {
+            Fetch.Failed("Queue host not found — check Tailscale VPN/DNS")
+        } catch (e: SSLException) {
+            Fetch.Failed("Could not establish HTTPS to Queue (${e.javaClass.simpleName})")
         } catch (e: IOException) {
             Fetch.Failed(offlineMessage(e))
         } catch (e: Exception) {
-            Fetch.Failed("Không đọc được dữ liệu hàng đợi")
+            Fetch.Failed(
+                "Could not read Queue data (${e.javaClass.simpleName}: ${e.localizedMessage ?: "unknown error"})",
+            )
         }
     }
 
@@ -97,12 +135,12 @@ class QueueClient(
                     }
                     FetchLogs.Success(list)
                 }
-                else -> FetchLogs.Failed(serverMessage(body) ?: "Lỗi tải log ($code)")
+                else -> FetchLogs.Failed("Could not load logs ($code)")
             }
         } catch (e: IOException) {
             FetchLogs.Failed(offlineMessage(e))
         } catch (e: Exception) {
-            FetchLogs.Failed("Không đọc được log")
+            FetchLogs.Failed("Could not read logs")
         }
     }
 
@@ -116,14 +154,14 @@ class QueueClient(
                     FetchResponse.Success(md)
                 }
                 HttpURLConnection.HTTP_NOT_FOUND -> {
-                    FetchResponse.Failed("Chưa có kết quả cho task này")
+                    FetchResponse.Failed("This task does not have a response yet")
                 }
-                else -> FetchResponse.Failed(serverMessage(body) ?: "Lỗi tải kết quả ($code)")
+                else -> FetchResponse.Failed("Could not load the response ($code)")
             }
         } catch (e: IOException) {
             FetchResponse.Failed(offlineMessage(e))
         } catch (e: Exception) {
-            FetchResponse.Failed("Không đọc được kết quả")
+            FetchResponse.Failed("Could not read the response")
         }
     }
 
@@ -132,28 +170,55 @@ class QueueClient(
         val o = runCatching { JSONObject(body) }.getOrNull()
         when (code) {
             HttpURLConnection.HTTP_OK -> Act.Ok(
-                note = o?.optString("note").orEmpty(),
                 rev = o?.optString("rev").orEmpty(),
+                taskId = o?.takeIf { it.has("id") }?.optInt("id"),
             )
             HttpURLConnection.HTTP_CONFLICT -> Act.Conflict(o?.optString("rev").orEmpty())
             HttpURLConnection.HTTP_UNAUTHORIZED ->
-                Act.Failed("Token sai hoặc đã đổi", needsAuth = true)
+                Act.Failed("The token is invalid or has changed", needsAuth = true)
             HttpURLConnection.HTTP_FORBIDDEN ->
-                Act.Failed("Bị từ chối — request không đi qua tailnet", needsAuth = true)
-            else -> Act.Failed(serverMessage(body) ?: "Server trả lỗi $code")
+                Act.Failed("Access denied — the request did not come through the tailnet", needsAuth = true)
+            else -> Act.Failed("Queue command failed ($code)")
         }
     } catch (e: IOException) {
         Act.Failed(offlineMessage(e))
     } catch (e: Exception) {
-        Act.Failed("Không gửi được lệnh")
+        Act.Failed("Could not send the command")
     }
 
     private fun request(path: String, body: ByteArray?): Pair<Int, String> {
-        val conn = (URL(baseUrl.trimEnd('/') + path).openConnection() as HttpURLConnection).apply {
+        val configuredToken = token.takeUnless { omitConfiguredToken || it.isBlank() }
+        val first = requestOnce(path, body, configuredToken)
+        if (first.first != HttpURLConnection.HTTP_UNAUTHORIZED || configuredToken == null) {
+            return first
+        }
+
+        // A 401 is produced before qsrv mutates state, so retrying POST here
+        // cannot duplicate an add/action. Custom servers that require a token
+        // simply return 401 again and retain the original auth failure.
+        val withoutToken = requestOnce(path, body, null)
+        if (withoutToken.first in 200..299 ||
+            withoutToken.first == HttpURLConnection.HTTP_NOT_MODIFIED
+        ) {
+            omitConfiguredToken = true
+            recoveredWithoutToken = true
+        }
+        return withoutToken
+    }
+
+    private fun requestOnce(
+        path: String,
+        body: ByteArray?,
+        bearerToken: String?,
+    ): Pair<Int, String> {
+        val endpoint = normalizeQueueBaseUrl(baseUrl)
+        val conn = (URL(endpoint + path).openConnection() as HttpURLConnection).apply {
             connectTimeout = connectTimeoutMs
             readTimeout = readTimeoutMs
-            instanceFollowRedirects = false
-            setRequestProperty("Authorization", "Bearer $token")
+            instanceFollowRedirects = true
+            if (!bearerToken.isNullOrBlank()) {
+                setRequestProperty("Authorization", "Bearer $bearerToken")
+            }
             setRequestProperty("Accept", "application/json")
             if (body != null) {
                 requestMethod = "POST"
@@ -174,18 +239,14 @@ class QueueClient(
         }
     }
 
-    /** qsrv trả `{"error": "..."}`; chỉ lấy khi thực sự là chuỗi có nội dung. */
-    private fun serverMessage(body: String): String? =
-        runCatching { JSONObject(body).optString("error").takeIf { it.isNotBlank() } }.getOrNull()
-
     private fun offlineMessage(e: IOException): String {
         val why = e.message.orEmpty()
         return when {
             why.contains("ECONNREFUSED", true) || why.contains("refused", true) ->
-                "qsrv không chạy trên máy chủ"
+                "QSRV is not running on the host"
             why.contains("timed out", true) || why.contains("timeout", true) ->
-                "Máy chủ không trả lời — kiểm tra Tailscale"
-            else -> "Không kết nối được tới hàng đợi"
+                "The host did not respond — check Tailscale"
+            else -> "Could not connect to Queue (${e.javaClass.simpleName}: ${why.ifBlank { "unknown error" }})"
         }
     }
 }

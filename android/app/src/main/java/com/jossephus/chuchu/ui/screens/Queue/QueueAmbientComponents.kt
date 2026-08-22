@@ -1,20 +1,16 @@
 package com.jossephus.chuchu.ui.screens.Queue
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -56,6 +52,7 @@ import com.jossephus.chuchu.ui.theme.ChuTypography
  * FAB nhỏ gọn đặt tại góc màn hình Terminal.
  */
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 fun QueueAmbientFab(
     summary: QueueAmbientSummary,
     onClick: () -> Unit,
@@ -70,24 +67,10 @@ fun QueueAmbientFab(
     val typography = ChuTypography.current
     val haptics = LocalHapticFeedback.current
 
-    val infiniteTransition = rememberInfiniteTransition(label = "queue_fab_pulse")
-    val pulseAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.35f,
-        targetValue = 1.0f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(
-                durationMillis = if (summary.isAnyBlocked) 600 else 1200,
-                easing = FastOutSlowInEasing,
-            ),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "glow_alpha",
-    )
-
     val borderColor = when {
-        summary.isAnyBlocked -> colors.warning.copy(alpha = pulseAlpha)
+        summary.isAnyBlocked -> colors.warning
         summary.hasError -> colors.error
-        summary.isAnyWorking -> colors.accent.copy(alpha = pulseAlpha)
+        summary.isAnyWorking -> colors.accent
         summary.totalActive > 0 -> colors.accent
         else -> colors.border
     }
@@ -113,10 +96,13 @@ fun QueueAmbientFab(
             .clip(RoundedCornerShape(6.dp))
             .background(colors.surface)
             .border(BorderStroke(1.dp, borderColor), RoundedCornerShape(6.dp))
-            .clickable {
-                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                onClick()
-            }
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onLongClick()
+                },
+            )
             .padding(horizontal = 8.dp, vertical = 5.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -135,14 +121,6 @@ fun QueueAmbientFab(
         }
     }
 }
-
-@Composable
-fun QueuePulsingFab(
-    summary: QueueAmbientSummary,
-    onClick: () -> Unit,
-    onLongClick: () -> Unit = onClick,
-    modifier: Modifier = Modifier,
-) = QueueAmbientFab(summary, onClick, onLongClick, modifier)
 
 /**
  * Thanh capsule Live Ticker nổi ở đỉnh màn hình Terminal.
@@ -203,7 +181,7 @@ fun QueueAmbientTickerPill(
                     }
                     append(summary.statusText)
                     if (summary.pendingCount > 0) {
-                        append(" · ${summary.pendingCount} chờ")
+                        append(" · ${summary.pendingCount} waiting")
                     }
                 }
 
@@ -331,7 +309,7 @@ private fun QuickPeekTaskItem(
 ) {
     val colors = ChuColors.current
     val typography = ChuTypography.current
-    val isRunning = task.state == "sent" || task.state == "sending" || task.state == "working"
+    val isRunning = task.isRunning
     val taskColor = task.tone.color()
 
     ChuCard(
