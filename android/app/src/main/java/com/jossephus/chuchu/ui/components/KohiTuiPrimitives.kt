@@ -1,6 +1,7 @@
 package com.jossephus.chuchu.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -8,6 +9,7 @@ import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -85,7 +87,7 @@ fun KohiCommandBand(
         }
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
             content = actions,
         )
     }
@@ -106,16 +108,18 @@ fun KohiCompactAction(
         variant = ChuButtonVariant.Ghost,
         bracketed = true,
         borderColor = if (danger) colors.error else colors.border,
-        contentPadding = PaddingValues(horizontal = 5.dp, vertical = 2.dp),
-        modifier = modifier,
+        contentPadding = PaddingValues(horizontal = 9.dp, vertical = 4.dp),
+        modifier = modifier.defaultMinSize(minHeight = 32.dp),
     ) {
         ChuText(
             label,
             style = ChuTypography.current.labelSmall,
+            // Enabled phai SANG hon disabled — truoc day ca hai deu xam nen nut
+            // bat nhin nhu bi vo hieu hoa.
             color = when {
                 !enabled -> colors.textMuted
                 danger -> colors.error
-                else -> colors.textSecondary
+                else -> colors.textPrimary
             },
         )
     }
@@ -251,6 +255,12 @@ fun KohiSelectableRow(
             .fillMaxWidth()
             .height(IntrinsicSize.Min)
             .background(if (selected) colors.surface else colors.surfaceVariant)
+            // Selection phai thay bang BACKGROUND + BORDER, khong dung dot/icon —
+            // dot chi danh cho runtime status de khong luong tuong selected.
+            .border(
+                width = 1.dp,
+                color = if (selected) tone.copy(alpha = 0.6f) else Color.Transparent,
+            )
             .clickable(onClick = onClick),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -272,6 +282,8 @@ fun KohiSelectableRow(
         modifier = Modifier
             .fillMaxWidth()
             .height(1.dp)
-            .background(colors.border.copy(alpha = 0.65f)),
+            // Divider phai im lang hon selection border — truoc day alpha 0.65
+            // canh tranh voi duong vien cua row dang chon.
+            .background(colors.border.copy(alpha = 0.32f)),
     )
 }

@@ -32,9 +32,13 @@ val ChuDarkColors: ChuColorPalette = ChuColorPalette(
     surface = Color(0xFF313244),
     surfaceVariant = Color(0xFF181825),
     border = Color(0xFF45475A),
-    textPrimary = Color(0xFFCDD6F4),
-    textSecondary = Color(0xFFA6ADC8),
-    textMuted = Color(0xFF6C7086),
+    // Ba cap text phan biet ro: primary gan trang-lavender cho noi dung chinh,
+    // secondary xam sang cho metadata, muted tim-xam TOI nhat chi cho trang thai
+    // vo hieu hoa. Truoc day secondary (#A6ADC8) va muted (#6C7086) qua giong nhau
+    // nen khong biet dau la thong tin chinh.
+    textPrimary = Color(0xFFE4E8FC),
+    textSecondary = Color(0xFFAEB4D6),
+    textMuted = Color(0xFF666C92),
     accent = Color(0xFFB4BEFE),
     accentSecondary = Color(0xFF89B4FA),
     error = Color(0xFFF38BA8),
@@ -42,7 +46,7 @@ val ChuDarkColors: ChuColorPalette = ChuColorPalette(
     warning = Color(0xFFFAB387),
     onAccent = Color(0xFF1E1E2E),
     disabledSurface = Color(0xFF585B70),
-    disabledText = Color(0xFF6C7086),
+    disabledText = Color(0xFF585D80),
 )
 
 val LocalChuColors = staticCompositionLocalOf { ChuDarkColors }

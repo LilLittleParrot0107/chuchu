@@ -21,6 +21,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -30,7 +31,9 @@ import com.jossephus.chuchu.ui.components.KohiCompactAction
 import com.jossephus.chuchu.ui.components.KohiFeedbackBand
 import com.jossephus.chuchu.ui.components.KohiNoticeBand
 import com.jossephus.chuchu.ui.components.KohiSectionBand
+import com.jossephus.chuchu.ui.components.ChuText
 import com.jossephus.chuchu.ui.theme.ChuColors
+import com.jossephus.chuchu.ui.theme.ChuTypography
 import kotlinx.coroutines.delay
 
 @Composable
@@ -115,19 +118,23 @@ fun QueueScreen(
             .imePadding(),
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
+            // Status ngan de title QUEUE khong bi ep thanh "QU…"; so luong agent
+            // da co o band AGENTS, khong lap lai o day.
+            val pendingCount = ui.state.tasks.count { !it.isCompleted && !it.isRunning }
             val status = when {
                 ui.loading -> "SCANNING"
                 ui.error != null -> "OFFLINE"
                 ui.state.paused -> "PAUSED"
-                ui.everLoaded -> "${agents.size} AGENTS · ${ui.state.tasks.count { !it.isCompleted }} ACTIVE"
-                else -> "NOT SCANNED"
+                !ui.everLoaded -> "NOT SCANNED"
+                pendingCount > 0 -> "$pendingCount PENDING"
+                else -> "LIVE"
             }
             val statusColor = when {
                 ui.error != null -> colors.error
                 ui.state.paused -> colors.warning
-                ui.loading -> colors.accent
-                ui.everLoaded -> colors.success
-                else -> colors.textMuted
+                ui.loading || !ui.everLoaded -> colors.textMuted
+                pendingCount > 0 -> colors.accent
+                else -> colors.success
             }
             KohiCommandBand(
                 title = "QUEUE",
@@ -145,14 +152,16 @@ fun QueueScreen(
                     )
                 }
                 KohiCompactAction(
-                    label = "LOG",
+                    label = "LOGS",
                     onClick = {
                         logsOpen = true
                         onFetchLogs(DEFAULT_LOG_LINES)
                     },
                 )
-                KohiCompactAction(label = "↻", onClick = onRefresh)
-                KohiCompactAction(label = "⚙", onClick = { configOpen = true })
+                // Chu cai ngan doc duoc hon icon rieng le (↻/⚙ truoc day khong
+                // ai giai thich duoc ma van giu dung do rong terminal).
+                KohiCompactAction(label = "SYNC", onClick = onRefresh)
+                KohiCompactAction(label = "CFG", onClick = { configOpen = true })
             }
 
             val notice = ui.error ?: ui.state.banner?.text
@@ -174,9 +183,14 @@ fun QueueScreen(
                 },
             )
 
+            // Header vung content phai tu tra loi "duoi day thuoc ve agent nao":
+            // TEN · STATUS · N TASKS tren mot dong duy nhat.
             KohiSectionBand(
                 label = selectedAgent?.name ?: "ALL TASKS",
-                meta = "${visibleTasks.size} TASKS",
+                meta = buildString {
+                    selectedAgent?.let { append(it.label.uppercase()).append(" · ") }
+                    append("${visibleTasks.size} TASKS")
+                },
                 accent = selectedAgent?.tone?.color() ?: colors.accent,
             ) {
                 if (doneCount > 0) {
@@ -195,11 +209,24 @@ fun QueueScreen(
                     .weight(1f),
             ) {
                 when {
-                    visibleTasks.isEmpty() && ui.everLoaded -> EmptyQueueMessage("QUEUE IS EMPTY")
-                    !ui.everLoaded && ui.loading -> EmptyQueueMessage("LOADING QUEUE…")
+                    visibleTasks.isEmpty() && ui.everLoaded -> EmptyQueueInspector(
+                        agent = selectedAgent,
+                        scopeLabel = selectedAgent?.name ?: "ALL AGENTS",
+                        tasks = visibleTasks,
+                    )
+                    !ui.everLoaded && ui.loading -> Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        ChuText(
+                            "LOADING QUEUE…",
+                            style = ChuTypography.current.label,
+                            color = colors.textMuted,
+                        )
+                    }
                     else -> LazyColumn(
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(bottom = 4.dp),
+                        contentPadding = PaddingValues(bottom = 6.dp),
                     ) {
                         items(visibleTasks, key = QueueTask::id) { task ->
                             QueueTaskRow(
@@ -224,11 +251,6 @@ fun QueueScreen(
                     onAction = { action -> onAction(action, task.id) },
                 )
             }
-
-            QueueHintBand(
-                if (selectedTask == null) "SELECT A TASK FOR DETAILS · SELECT AN AGENT TO CHANGE SCOPE"
-                else "#${selectedTask.id} SELECTED · ACTIONS APPLY TO THIS TASK",
-            )
 
             ui.feedback?.let { feedback ->
                 KohiFeedbackBand(
