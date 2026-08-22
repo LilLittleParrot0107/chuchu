@@ -128,11 +128,12 @@ fun DbtopScreen(
             ) {
                 // SUMMARY OVERVIEW CARD
                 item(key = "overview_card") {
+                    val totalDebt = uiState.state.rows.sumOf { it.debt ?: 0.0 }
                     SummaryOverviewCard(
                         netWorth = uiState.state.netWorth,
                         wallet = uiState.state.wallet,
                         perday = uiState.state.perday,
-                        debt = uiState.state.rows.mapNotNull { it.debt }.sum(),
+                        debt = totalDebt,
                     )
                 }
 
@@ -210,7 +211,7 @@ fun DbtopScreen(
                     }
                 } else if (uiState.selectedFilter == DbtopFilter.WALLET) {
                     // VIEW: WALLET TOKENS
-                    items(uiState.state.walletTokens, key = { it.sym + it.amt.toString() }) { token ->
+                    items(uiState.state.walletTokens, key = { "${it.sym}_${it.amt}" }) { token ->
                         WalletTokenCard(token = token)
                     }
                 } else {
@@ -228,7 +229,7 @@ fun DbtopScreen(
                             }
                         }
                     } else {
-                        items(rows, key = { it.name + it.proto }) { row ->
+                        items(rows, key = { "${it.name}_${it.proto}" }) { row ->
                             val isExpanded = uiState.expandedRowName == row.name
                             DappPositionCard(
                                 row = row,
