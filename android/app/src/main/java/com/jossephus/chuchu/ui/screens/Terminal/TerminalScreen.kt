@@ -36,6 +36,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imeAnimationTarget
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.isImeVisible
+import com.jossephus.chuchu.ui.screens.Queue.QueueAction
+import com.jossephus.chuchu.ui.screens.Queue.QueueAmbientSummary
+import com.jossephus.chuchu.ui.screens.Queue.QueueAmbientTickerPill
+import com.jossephus.chuchu.ui.screens.Queue.QueuePulsingFab
+import com.jossephus.chuchu.ui.screens.Queue.QueueQuickPeekBottomSheet
+
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -295,12 +301,17 @@ fun TerminalScreen(
     hostId: Long?,
     onOpenSettings: () -> Unit,
     onOpenWeb: () -> Unit = {},
+    onOpenDashboard: () -> Unit = {},
     onOpenQueue: () -> Unit = {},
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     openLocalShell: Boolean = false,
+    queueSummary: QueueAmbientSummary = QueueAmbientSummary.Empty,
+    onQueueAction: (QueueAction, Int) -> Unit = { _, _ -> },
 ) {
+    var showQueueQuickPeek by remember { mutableStateOf(false) }
     val sessionState by vm.sessionState.collectAsStateWithLifecycle()
+
     val tabs by vm.tabs.collectAsStateWithLifecycle()
     val activeTabId by vm.activeTabId.collectAsStateWithLifecycle()
     val activeTab by vm.activeTab.collectAsStateWithLifecycle()
@@ -1446,7 +1457,14 @@ fun TerminalScreen(
                                     }
                                 }
 
+                                QueueAmbientTickerPill(
+                                    summary = queueSummary,
+                                    onClick = { showQueueQuickPeek = true },
+                                    modifier = Modifier.align(Alignment.TopCenter),
+                                )
+
                                 val selState = selectionState
+
                                 if (selState != null) {
                                     val sel = selection
                                     val isAnchorStart = sel != null && sel.anchorIndex <= sel.focusIndex
@@ -1704,16 +1722,11 @@ fun TerminalScreen(
                                     verticalArrangement = Arrangement.spacedBy(8.dp),
                                 ) {
                                     if (showQueueFab) {
-                                        ChuButton(
+                                        QueuePulsingFab(
+                                            summary = queueSummary,
                                             onClick = onOpenQueue,
-                                            variant = ChuButtonVariant.Filled,
-                                            bracketed = true,
-                                            backgroundColor = colors.surface,
-                                            borderColor = colors.accent,
-                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
-                                        ) {
-                                            ChuText("⚡", style = typography.label, color = colors.accent)
-                                        }
+                                            onLongClick = { showQueueQuickPeek = true },
+                                        )
                                     }
 
                                     if (currentTerminalCustomKeyGroups.isNotEmpty() &&
@@ -2159,7 +2172,20 @@ fun TerminalScreen(
             },
         )
     }
+
+    if (showQueueQuickPeek) {
+        QueueQuickPeekBottomSheet(
+            summary = queueSummary,
+            onAction = onQueueAction,
+            onOpenFullQueue = {
+                showQueueQuickPeek = false
+                onOpenQueue()
+            },
+            onDismiss = { showQueueQuickPeek = false },
+        )
+    }
 }
+
 
 @Composable
 private fun TerminalRecoveryActions(

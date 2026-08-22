@@ -50,6 +50,28 @@ class SettingsRepository(context: Context) {
     private val _webPortalUrl = MutableStateFlow(migrateWebPortalUrl())
     val webPortalUrl: StateFlow<String> = _webPortalUrl.asStateFlow()
 
+    private val _dbtopUrl = MutableStateFlow(prefs.getString(KEY_DBTOP_URL, "") ?: "")
+    val dbtopUrl: StateFlow<String> = _dbtopUrl.asStateFlow()
+
+    /**
+     * Trả về URL dbtop hiệu dụng:
+     * 1. Nếu dbtopUrl được set thủ công -> dùng dbtopUrl.
+     * 2. Ngược lại tự động dẫn xuất từ webPortalUrl + "/debank/state.json".
+     */
+    val resolvedDbtopUrl: String
+        get() {
+            val custom = _dbtopUrl.value.trim()
+            if (custom.isNotEmpty()) return custom
+            val portal = _webPortalUrl.value.trim().trimEnd('/')
+            return if (portal.isNotEmpty()) "$portal/debank/state.json" else DEFAULT_DBTOP_URL
+        }
+
+    fun setDbtopUrl(value: String) {
+        val v = value.trim()
+        prefs.edit().putString(KEY_DBTOP_URL, v).apply()
+        _dbtopUrl.value = v
+    }
+
     private val _queueUrl = MutableStateFlow(prefs.getString(KEY_QUEUE_URL, DEFAULT_QUEUE_URL) ?: DEFAULT_QUEUE_URL)
     val queueUrl: StateFlow<String> = _queueUrl.asStateFlow()
 
@@ -254,6 +276,8 @@ class SettingsRepository(context: Context) {
         // qsrv nam sau `tailscale serve` cung host voi cong web portal.
         private const val DEFAULT_QUEUE_URL = "https://the-real-witch.tail26a258.ts.net/q"
         private const val KEY_WEB_PORTAL_URL = "web_portal_url"
+        private const val KEY_DBTOP_URL = "dbtop_url"
+        private const val DEFAULT_DBTOP_URL = "https://the-real-witch.tail26a258.ts.net/home/debank/state.json"
         // dufs khong con serve o goc: 20/8 thu pham vi ve /home/a/chuchu va
         // gan vao `tailscale serve --set-path /chuchu` (goc phoi ca $HOME ra
         // tailnet, ke ca ~/.ssh). Duong cu gio khong co gi ánh xa -> 404.

@@ -49,6 +49,8 @@ data class QueueTask(
     val stateLabel: String,
     val sub: String,
     val actions: List<QueueAction>,
+    val hasResp: Boolean = false,
+    val respPreview: String = "",
 )
 
 data class QueueAgent(
@@ -131,6 +133,8 @@ data class QueueState(
             stateLabel = o.optString("state_label").ifEmpty { o.optString("state") },
             sub = o.optString("sub"),
             actions = o.optJSONArray("actions").mapObjects(::parseAction),
+            hasResp = o.optBoolean("has_resp", false),
+            respPreview = o.optString("resp_preview", ""),
         )
 
         /** Bỏ qua phần tử không phải object thay vì làm hỏng cả danh sách. */
@@ -144,3 +148,57 @@ data class QueueState(
         }
     }
 }
+
+/** Tóm tắt trạng thái phục vụ hiển thị ngoài màn hình Terminal / Accessory Bar / ServerList. */
+data class QueueAmbientSummary(
+    val totalActive: Int = 0,
+    val runningCount: Int = 0,
+    val pendingCount: Int = 0,
+    val blockedCount: Int = 0,
+    val isAnyWorking: Boolean = false,
+    val isAnyBlocked: Boolean = false,
+    val isPaused: Boolean = false,
+    val activeTaskId: Int? = null,
+    val primaryAgentName: String? = null,
+    val statusText: String = "",
+    val topTasks: List<QueueTask> = emptyList(),
+    val hasError: Boolean = false,
+) {
+    companion object {
+        val Empty = QueueAmbientSummary()
+
+        fun from(state: QueueState, error: String?): QueueAmbientSummary {
+            val nonDoneTasks = state.tasks.filter {
+                !it.state.equals("done", ignoreCase = true) && !it.state.equals("completed", ignoreCase = true)
+            }
+            val running = state.tasks.filter { it.state == "sent" || it.state == "sending" || it.state == "working" || it.state == "busy" }
+            val blocked = state.agents.filter { it.tone == QueueTone.Warn || it.word.contains("cần anh", ignoreCase = true) }
+            val workingAgents = state.agents.filter { it.tone == QueueTone.Accent }
+
+            val primaryRunningTask = running.firstOrNull()
+            val primaryAgent = workingAgents.firstOrNull() ?: state.agents.firstOrNull()
+
+            return QueueAmbientSummary(
+                totalActive = nonDoneTasks.size,
+                runningCount = running.size,
+                pendingCount = (nonDoneTasks.size - running.size).coerceAtLeast(0),
+                blockedCount = blocked.size,
+                isAnyWorking = running.isNotEmpty() || workingAgents.isNotEmpty(),
+                isAnyBlocked = blocked.isNotEmpty(),
+                isPaused = state.paused,
+                activeTaskId = primaryRunningTask?.id,
+                primaryAgentName = primaryRunningTask?.target?.takeIf { it.isNotBlank() } ?: primaryAgent?.name,
+                statusText = when {
+                    blocked.isNotEmpty() -> "cần bạn duyệt"
+                    running.isNotEmpty() -> "đang chạy"
+                    state.paused -> "tạm dừng"
+                    nonDoneTasks.isNotEmpty() -> "đang chờ"
+                    else -> "sẵn sàng"
+                },
+                topTasks = nonDoneTasks.take(3),
+                hasError = error != null || state.banner?.tone == QueueTone.Error,
+            )
+        }
+    }
+}
+

@@ -96,6 +96,15 @@ fun ApplicationNavController() {
         return
     }
 
+    val sharedQueueVm: com.jossephus.chuchu.ui.screens.Queue.QueueViewModel =
+        viewModel(factory = com.jossephus.chuchu.ui.screens.Queue.QueueViewModel.factory(application))
+    val queueAmbientSummary by sharedQueueVm.ambientSummary.collectAsStateWithLifecycle()
+
+    androidx.lifecycle.compose.LifecycleResumeEffect(Unit) {
+        sharedQueueVm.startAmbientPolling()
+        onPauseOrDispose { sharedQueueVm.stopPolling() }
+    }
+
     NavHost(navController = navController, startDestination = "servers") {
         composable("servers") {
             val vm: ServerListViewModel = viewModel(factory = ServerListViewModel.factory(application))
@@ -148,34 +157,38 @@ fun ApplicationNavController() {
                 onDeleteServer = vm::deleteServer,
                 onOpenSettings = { navController.navigate("settings") },
                 onOpenWeb = { navController.navigate("web") },
+                onOpenDashboard = { navController.navigate("dashboard") },
+            )
+        }
+        composable("dashboard") {
+            com.jossephus.chuchu.ui.screens.Dbtop.DbtopScreen(
+                onClose = { navController.popBackStack() },
             )
         }
         composable("queue") {
-            val vm: com.jossephus.chuchu.ui.screens.Queue.QueueViewModel =
-                viewModel(factory = com.jossephus.chuchu.ui.screens.Queue.QueueViewModel.factory(application))
-            val ui by vm.ui.collectAsStateWithLifecycle()
-            val qUrl by vm.queueUrl.collectAsStateWithLifecycle()
-            val qToken by vm.queueToken.collectAsStateWithLifecycle()
-            // Poll chi chay khi man hinh dang hien: roi nen la ngung han, khong
-            // de mot vong 2 giay chay ngam an pin va giu song WiFi.
+            val ui by sharedQueueVm.ui.collectAsStateWithLifecycle()
+            val qUrl by sharedQueueVm.queueUrl.collectAsStateWithLifecycle()
+            val qToken by sharedQueueVm.queueToken.collectAsStateWithLifecycle()
             androidx.lifecycle.compose.LifecycleResumeEffect(Unit) {
-                vm.startPolling()
-                onPauseOrDispose { vm.stopPolling() }
+                sharedQueueVm.startPolling()
+                onPauseOrDispose { sharedQueueVm.startAmbientPolling() }
             }
             com.jossephus.chuchu.ui.screens.Queue.QueueScreen(
                 ui = ui,
-                onAction = vm::runAction,
-                onAdd = vm::addTask,
-                onClearDone = vm::clearDoneTasks,
-                onRefresh = vm::refreshNow,
-                onFetchLogs = vm::fetchLogs,
-                onConsumeToast = vm::consumeToast,
+                onAction = sharedQueueVm::runAction,
+                onAdd = sharedQueueVm::addTask,
+                onClearDone = sharedQueueVm::clearDoneTasks,
+                onRefresh = sharedQueueVm::refreshNow,
+                onFetchLogs = sharedQueueVm::fetchLogs,
+                onConsumeToast = sharedQueueVm::consumeToast,
                 currentUrl = qUrl,
                 currentToken = qToken,
-                onSaveConfig = vm::saveConfig,
+                onSaveConfig = sharedQueueVm::saveConfig,
+                onFetchResponse = sharedQueueVm::loadTaskResponse,
                 onBack = { navController.popBackStack() },
             )
         }
+
         composable("web") {
             val settingsRepo = SettingsRepository.getInstance(application)
             val webUrl by settingsRepo.webPortalUrl.collectAsStateWithLifecycle()
@@ -277,8 +290,11 @@ fun ApplicationNavController() {
                     vm = vm,
                     hostId = null,
                     openLocalShell = true,
+                    queueSummary = queueAmbientSummary,
+                    onQueueAction = sharedQueueVm::runAction,
                     onOpenSettings = { navController.navigate("settings") },
                     onOpenWeb = { navController.navigate("web") },
+                    onOpenDashboard = { navController.navigate("dashboard") },
                     onOpenQueue = { navController.navigate("queue") },
                     onBack = { navController.popBackStack() },
                 )
@@ -300,12 +316,16 @@ fun ApplicationNavController() {
             TerminalScreen(
                 vm = vm,
                 hostId = id,
+                queueSummary = queueAmbientSummary,
+                onQueueAction = sharedQueueVm::runAction,
                 onOpenSettings = { navController.navigate("settings") },
                 onOpenWeb = { navController.navigate("web") },
+                onOpenDashboard = { navController.navigate("dashboard") },
                 onOpenQueue = { navController.navigate("queue") },
                 onBack = { navController.popBackStack() },
             )
         }
+
     }
 
     if (!appLockEnabled) {

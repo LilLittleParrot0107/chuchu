@@ -38,6 +38,11 @@ class QueueClient(
         data class Failed(val message: String) : FetchLogs
     }
 
+    sealed interface FetchResponse {
+        data class Success(val markdown: String) : FetchResponse
+        data class Failed(val message: String) : FetchResponse
+    }
+
     fun fetch(sinceRev: String?): Fetch {
         val q = if (sinceRev.isNullOrEmpty()) "" else
             "&since=" + URLEncoder.encode(sinceRev, "UTF-8")
@@ -98,6 +103,27 @@ class QueueClient(
             FetchLogs.Failed(offlineMessage(e))
         } catch (e: Exception) {
             FetchLogs.Failed("Không đọc được log")
+        }
+    }
+
+    fun fetchResponse(id: Int): FetchResponse {
+        return try {
+            val (code, body) = request("/response?id=$id", null)
+            when (code) {
+                HttpURLConnection.HTTP_OK -> {
+                    val o = JSONObject(body)
+                    val md = o.optString("markdown", "")
+                    FetchResponse.Success(md)
+                }
+                HttpURLConnection.HTTP_NOT_FOUND -> {
+                    FetchResponse.Failed("Chưa có kết quả cho task này")
+                }
+                else -> FetchResponse.Failed(serverMessage(body) ?: "Lỗi tải kết quả ($code)")
+            }
+        } catch (e: IOException) {
+            FetchResponse.Failed(offlineMessage(e))
+        } catch (e: Exception) {
+            FetchResponse.Failed("Không đọc được kết quả")
         }
     }
 

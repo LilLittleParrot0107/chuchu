@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlin.math.roundToInt
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.jossephus.chuchu.model.HostProfile
 import com.jossephus.chuchu.model.Transport
@@ -58,6 +59,7 @@ import com.jossephus.chuchu.ui.components.ChuCard
 import com.jossephus.chuchu.ui.components.ChuDialog
 import com.jossephus.chuchu.ui.components.ChuText
 import com.jossephus.chuchu.ui.components.ChuTextField
+import com.jossephus.chuchu.ui.components.KohiActionMenu
 import com.jossephus.chuchu.ui.components.TuiBadge
 import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTypography
@@ -75,6 +77,7 @@ fun ServerListScreen(
     onDeleteServer: (Long) -> Unit,
     onOpenSettings: () -> Unit,
     onOpenWeb: () -> Unit = {},
+    onOpenDashboard: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -84,6 +87,7 @@ fun ServerListScreen(
     val openTabs by sessionRepo.tabs.collectAsStateWithLifecycle()
     val hasOpenLocalShell = openTabs.any { it.spec.transport == Transport.LocalShell }
 
+    var showKohiMenu by remember { mutableStateOf(false) }
     var selectedHostId by remember { mutableStateOf<Long?>(null) }
     var pendingDisconnectHostId by remember { mutableStateOf<Long?>(null) }
     var pendingConnectHostId by remember { mutableStateOf<Long?>(null) }
@@ -143,10 +147,10 @@ fun ServerListScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                // Bam "kohi" mo thang web portal / file manager (dufs)
+                // Bam "kohi" mo Kohi Action Menu (File / Dashboard)
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.clickable { onOpenWeb() },
+                    modifier = Modifier.clickable { showKohiMenu = true },
                 ) {
                     ChuText("$ ", style = typography.headline, color = colors.textMuted)
                     ChuText("kohi", style = typography.headline)
@@ -267,6 +271,13 @@ fun ServerListScreen(
         ) {
             ChuText("+ add server", style = typography.label, color = colors.onAccent)
         }
+
+        KohiActionMenu(
+            isOpen = showKohiMenu,
+            onDismiss = { showKohiMenu = false },
+            onOpenFileBrowser = onOpenWeb,
+            onOpenDashboard = onOpenDashboard,
+        )
 
         val pendingDisconnectHost = hosts.firstOrNull { it.id == pendingDisconnectHostId }
         if (pendingDisconnectHost != null) {

@@ -42,17 +42,15 @@ class QueueViewModel(
     private val _ui = MutableStateFlow(QueueUiState())
     val ui: StateFlow<QueueUiState> = _ui.asStateFlow()
 
+    private val _ambientSummary = MutableStateFlow(QueueAmbientSummary.Empty)
+    val ambientSummary: StateFlow<QueueAmbientSummary> = _ambientSummary.asStateFlow()
+
     private var pollJob: Job? = null
     private val actionJobs = mutableMapOf<String, Job>()
 
     private fun client(): QueueClient? {
         val url = settings.queueUrl.value
         if (url.isBlank()) return null
-        // Token la TUY CHON. Di qua `tailscale serve` thi qsrv da biet chac day
-        // la chinh chu tailnet qua header ma client khong bia duoc — chung thuc
-        // do manh hon token. Bat go 44 ky tu tren dien thoai chi de lap lai mot
-        // dieu server da biet la hanh nguoi dung, khong them an toan.
-        // Van gui neu co, cho truong hop chay qsrv KHONG nam sau serve.
         return QueueClient(url, settings.queueToken.value)
     }
 
@@ -69,6 +67,24 @@ class QueueViewModel(
         }
     }
 
+    /** Polling thích ứng tiết kiệm pin cho Terminal/AccessoryBar. */
+    fun startAmbientPolling() {
+        if (pollJob?.isActive == true) return
+        pollJob = viewModelScope.launch {
+            while (isActive) {
+                val failed = refreshOnce()
+                val summary = _ambientSummary.value
+                val nextDelay = when {
+                    failed -> 15_000L
+                    summary.isAnyWorking || summary.isAnyBlocked -> 3_500L
+                    summary.totalActive > 0 -> 8_000L
+                    else -> 15_000L
+                }
+                delay(nextDelay)
+            }
+        }
+    }
+
     fun stopPolling() {
         pollJob?.cancel()
         pollJob = null
@@ -78,13 +94,10 @@ class QueueViewModel(
     private suspend fun refreshOnce(): Boolean {
         val c = client() ?: run {
             _ui.update { it.copy(needsSetup = true, loading = false, error = null) }
+            _ambientSummary.value = QueueAmbientSummary.from(_ui.value.state, null)
             return true
         }
         val since = _ui.value.state.rev.takeIf { _ui.value.everLoaded }
-        // KHONG xoa needsSetup o day. Truoc day xoa lac quan truoc khi biet ket
-        // qua, nen dang go dia chi trong bang cau hinh thi vong poll ke tiep tat
-        // panel, `remember(currentUrl)` mat sach chu, request lai hong, panel
-        // hien lai voi o trong — lap vo han theo nhip backoff.
         _ui.update { it.copy(loading = !it.everLoaded) }
 
         return when (val r = withContext(Dispatchers.IO) { c.fetch(since) }) {
@@ -93,6 +106,7 @@ class QueueViewModel(
                     it.copy(state = r.state, loading = false, everLoaded = true,
                             error = null, needsSetup = false)
                 }
+                _ambientSummary.value = QueueAmbientSummary.from(r.state, null)
                 false
             }
             QueueClient.Fetch.Unchanged -> {
@@ -103,6 +117,7 @@ class QueueViewModel(
                 _ui.update {
                     it.copy(loading = false, error = r.message, needsSetup = r.needsAuth)
                 }
+                _ambientSummary.value = QueueAmbientSummary.from(_ui.value.state, r.message)
                 true
             }
         }
@@ -111,6 +126,7 @@ class QueueViewModel(
     fun refreshNow() {
         viewModelScope.launch { refreshOnce() }
     }
+
 
     /**
      * Chạy một thao tác trên task. Một khoá = một job: bấm nhanh hai lần vào
@@ -221,6 +237,22 @@ class QueueViewModel(
         settings.setQueueToken(token)
         _ui.update { it.copy(error = null, needsSetup = false, everLoaded = false) }
         refreshNow()
+    }
+
+    private val responseCache = mutableMapOf<Int, String>()
+
+    suspend fun loadTaskResponse(taskId: Int): String? {
+        responseCache[taskId]?.let { return it }
+        val c = client() ?: return null
+        return withContext(Dispatchers.IO) {
+            when (val r = c.fetchResponse(taskId)) {
+                is QueueClient.FetchResponse.Success -> {
+                    responseCache[taskId] = r.markdown
+                    r.markdown
+                }
+                is QueueClient.FetchResponse.Failed -> null
+            }
+        }
     }
 
     fun consumeToast() = _ui.update { it.copy(toast = null) }
