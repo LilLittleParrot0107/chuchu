@@ -43,7 +43,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.jossephus.chuchu.data.model.dbtop.DappRow
 import com.jossephus.chuchu.data.model.dbtop.DataFreshness
 import com.jossephus.chuchu.data.model.dbtop.DeFiFormatter
-import com.jossephus.chuchu.data.model.dbtop.OptionPosition
+import com.jossephus.chuchu.data.model.dbtop.OptionDetail
+import com.jossephus.chuchu.data.model.dbtop.TokenPosition
 import com.jossephus.chuchu.data.model.dbtop.WalletToken
 import com.jossephus.chuchu.ui.components.ChuButton
 import com.jossephus.chuchu.ui.components.ChuButtonVariant
@@ -102,7 +103,7 @@ fun DbtopScreen(
             )
 
             // Error Banner
-            if (uiState.errorMessage != null && !uiState.state.hasData) {
+            if (uiState.error != null && !uiState.everLoaded) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -110,7 +111,7 @@ fun DbtopScreen(
                         .padding(horizontal = 14.dp, vertical = 6.dp),
                 ) {
                     ChuText(
-                        uiState.errorMessage ?: "",
+                        uiState.error ?: "",
                         style = typography.labelSmall,
                         color = colors.error,
                     )
@@ -131,7 +132,7 @@ fun DbtopScreen(
                         netWorth = uiState.state.netWorth,
                         wallet = uiState.state.wallet,
                         perday = uiState.state.perday,
-                        debt = uiState.state.debt,
+                        debt = uiState.state.rows.mapNotNull { it.debt }.sum(),
                     )
                 }
 
@@ -139,7 +140,7 @@ fun DbtopScreen(
                 item(key = "filter_chips") {
                     DbtopFilterChipsBar(
                         selected = uiState.selectedFilter,
-                        counts = uiState.filterCounts,
+                        counts = uiState.categoryCounts,
                         onSelect = { filter ->
                             haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             viewModel.setFilter(filter)
@@ -214,7 +215,8 @@ fun DbtopScreen(
                     }
                 } else {
                     // VIEW: DAPP POSITION CARDS
-                    if (uiState.filteredRows.isEmpty()) {
+                    val rows = uiState.filteredRows
+                    if (rows.isEmpty()) {
                         item(key = "empty_state") {
                             Box(
                                 modifier = Modifier
@@ -226,7 +228,7 @@ fun DbtopScreen(
                             }
                         }
                     } else {
-                        items(uiState.filteredRows, key = { it.name + it.proto }) { row ->
+                        items(rows, key = { it.name + it.proto }) { row ->
                             val isExpanded = uiState.expandedRowName == row.name
                             DappPositionCard(
                                 row = row,
@@ -526,24 +528,11 @@ private fun DappPositionCard(
                         OptionDetailView(opt = opt)
                     }
 
-                    if (row.tokens.isNotEmpty()) {
-                        ChuText("tokens:", style = typography.labelSmall, color = colors.textMuted)
-                        row.tokens.forEach { tok ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                            ) {
-                                ChuText(
-                                    "${String.format(Locale.US, "%.4f", tok.amt)} ${tok.sym}",
-                                    style = typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                                    color = colors.textSecondary,
-                                )
-                                ChuText(
-                                    DeFiFormatter.formatUsd(tok.valUsd),
-                                    style = typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                                    color = colors.textPrimary,
-                                )
-                            }
+                    val positions = (row.detail?.supply ?: emptyList()) + (row.detail?.borrow ?: emptyList()) + (row.detail?.collateral ?: emptyList())
+                    if (positions.isNotEmpty()) {
+                        ChuText("positions:", style = typography.labelSmall, color = colors.textMuted)
+                        positions.forEach { tok ->
+                            TokenPositionRow(tok = tok)
                         }
                     }
                 }
@@ -553,7 +542,30 @@ private fun DappPositionCard(
 }
 
 @Composable
-private fun OptionDetailView(opt: OptionPosition) {
+private fun TokenPositionRow(tok: TokenPosition) {
+    val colors = ChuColors.current
+    val typography = ChuTypography.current
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        ChuText(
+            "${String.format(Locale.US, "%.4f", tok.amt)} ${tok.sym}",
+            style = typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+            color = colors.textSecondary,
+        )
+        ChuText(
+            DeFiFormatter.formatUsd(tok.usd),
+            style = typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+            color = colors.textPrimary,
+        )
+    }
+}
+
+@Composable
+private fun OptionDetailView(opt: OptionDetail) {
     val colors = ChuColors.current
     val typography = ChuTypography.current
 
@@ -563,15 +575,19 @@ private fun OptionDetailView(opt: OptionPosition) {
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             ChuText("type: ${opt.type.uppercase()}", style = typography.labelSmall, color = colors.accent)
-            ChuText("strike: ${DeFiFormatter.formatUsd(opt.strike)}", style = typography.labelSmall, color = colors.textSecondary)
+            opt.strike?.let {
+                ChuText("strike: ${DeFiFormatter.formatUsd(it)}", style = typography.labelSmall, color = colors.textSecondary)
+            }
         }
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            ChuText("expiry: ${opt.expiry}", style = typography.labelSmall, color = colors.textMuted)
-            if (opt.iv != null) {
-                ChuText("IV: ${String.format(Locale.US, "%.1f%%", opt.iv * 100)}", style = typography.labelSmall, color = colors.textSecondary)
+            opt.dte?.let {
+                ChuText("dte: ${String.format(Locale.US, "%.1fd", it)}", style = typography.labelSmall, color = colors.textMuted)
+            }
+            opt.apr?.let {
+                ChuText("apr: ${DeFiFormatter.formatPercent(it, showPlusSign = false)}", style = typography.labelSmall, color = colors.success)
             }
         }
     }
@@ -595,24 +611,16 @@ private fun WalletTokenCard(token: WalletToken) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    ChuText(token.sym, style = typography.title.copy(fontWeight = FontWeight.Bold))
-                    if (token.chain.isNotBlank()) {
-                        TuiBadge(token.chain, colors.accentSecondary)
-                    }
-                }
+                ChuText(token.sym, style = typography.title.copy(fontWeight = FontWeight.Bold))
                 ChuText(
-                    "${String.format(Locale.US, "%.4f", token.amt)} @ ${DeFiFormatter.formatUsd(token.price)}",
+                    "${String.format(Locale.US, "%.4f", token.amt)} @ ${DeFiFormatter.formatUsd(token.px)}",
                     style = typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
                     color = colors.textMuted,
                 )
             }
 
             ChuText(
-                DeFiFormatter.formatUsd(token.valUsd),
+                DeFiFormatter.formatUsd(token.usd),
                 style = typography.title.copy(fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace),
                 color = colors.textPrimary,
             )

@@ -136,6 +136,14 @@ fun QueueAmbientFab(
     }
 }
 
+@Composable
+fun QueuePulsingFab(
+    summary: QueueAmbientSummary,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit = onClick,
+    modifier: Modifier = Modifier,
+) = QueueAmbientFab(summary, onClick, onLongClick, modifier)
+
 /**
  * Thanh capsule Live Ticker nổi ở đỉnh màn hình Terminal.
  */
@@ -288,7 +296,7 @@ fun QueueQuickPeekBottomSheet(
                         bracketed = true,
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 3.dp),
                     ) {
-                        ChuText("fullscreen ↗", style = type.labelSmall, color = colors.accent)
+                        ChuText("fullscreen ↗", style = typography.labelSmall, color = colors.accent)
                     }
                 }
 

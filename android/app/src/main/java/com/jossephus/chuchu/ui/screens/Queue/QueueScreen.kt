@@ -204,7 +204,7 @@ fun QueueScreen(
                         ChuText("←", style = type.label, color = colors.textSecondary)
                     }
                     ChuText("queue", style = type.title.copy(fontWeight = FontWeight.Bold))
-                    if (ui.state.isPaused) {
+                    if (ui.state.paused) {
                         TuiBadge("paused", colors.warning)
                     }
                 }
