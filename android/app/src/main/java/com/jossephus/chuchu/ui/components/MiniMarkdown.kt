@@ -20,8 +20,8 @@ import com.jossephus.chuchu.ui.theme.ChuTypography
  * markdown vao BasicText -> nguoi doc thay so '**', '#', '`' xuyen tac.
  *
  * Phu dung phan markdown agent thuong tra loi: heading #..####, **bold**,
- * *italic*, `code`, fence ``` (khoi mono), list -/*/so., blockquote >,
- * ngang --- , link [t](u) (hien nhan, khong bat su kien mo link).
+ * *italic*, `code`, fence ba-dau-nhay (khoi mono), list gach-ngoang hoac so,
+ * blockquote >, ngang --- , link [t](u) (hien nhan, khong bat su kien mo link).
  * Nhan nhung gi khong hieu la chu thuong — khong mat chu.
  */
 
