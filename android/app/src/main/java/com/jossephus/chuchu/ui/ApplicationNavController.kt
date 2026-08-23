@@ -161,7 +161,9 @@ fun ApplicationNavController() {
                 onOpenSettings = { navController.navigate("settings") },
                 onOpenWeb = { navController.navigate("web") },
                 onOpenDashboard = { navController.navigate("dashboard") },
-                onOpenQueue = { navController.navigate("queue") },
+                onOpenQueue = { pane ->
+                    navController.navigate(if (pane != null) "queue?pane=$pane" else "queue")
+                },
                 queueSummary = queueAmbientSummary,
             )
         }
@@ -170,7 +172,15 @@ fun ApplicationNavController() {
                 onClose = { navController.popBackStack() },
             )
         }
-        composable("queue") {
+        composable(
+            route = "queue?pane={pane}",
+            arguments = listOf(navArgument("pane") {
+                type = NavType.StringType
+                nullable = true
+                defaultValue = null
+            }),
+        ) { backStackEntry ->
+            val initialPane = backStackEntry.arguments?.getString("pane")
             val ui by sharedQueueVm.ui.collectAsStateWithLifecycle()
             val qUrl by sharedQueueVm.queueUrl.collectAsStateWithLifecycle()
             val qToken by sharedQueueVm.queueToken.collectAsStateWithLifecycle()
@@ -180,6 +190,7 @@ fun ApplicationNavController() {
             }
             QueueScreen(
                 ui = ui,
+                initialPane = initialPane,
                 onAction = sharedQueueVm::runAction,
                 onAdd = sharedQueueVm::addTask,
                 onClearDone = sharedQueueVm::clearDoneTasks,
@@ -301,7 +312,9 @@ fun ApplicationNavController() {
                     onOpenSettings = { navController.navigate("settings") },
                     onOpenWeb = { navController.navigate("web") },
                     onOpenDashboard = { navController.navigate("dashboard") },
-                    onOpenQueue = { navController.navigate("queue") },
+                    onOpenQueue = { pane ->
+                        navController.navigate(if (pane != null) "queue?pane=$pane" else "queue")
+                    },
                     onBack = { navController.popBackStack() },
                 )
             } else {
@@ -327,7 +340,9 @@ fun ApplicationNavController() {
                 onOpenSettings = { navController.navigate("settings") },
                 onOpenWeb = { navController.navigate("web") },
                 onOpenDashboard = { navController.navigate("dashboard") },
-                onOpenQueue = { navController.navigate("queue") },
+                onOpenQueue = { pane ->
+                    navController.navigate(if (pane != null) "queue?pane=$pane" else "queue")
+                },
                 onBack = { navController.popBackStack() },
             )
         }

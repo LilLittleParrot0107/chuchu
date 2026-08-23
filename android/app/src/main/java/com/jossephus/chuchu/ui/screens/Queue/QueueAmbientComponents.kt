@@ -1,6 +1,7 @@
 package com.jossephus.chuchu.ui.screens.Queue
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -19,11 +20,15 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -44,9 +49,9 @@ import com.jossephus.chuchu.ui.components.ChuButton
 import com.jossephus.chuchu.ui.components.ChuButtonVariant
 import com.jossephus.chuchu.ui.components.ChuCard
 import com.jossephus.chuchu.ui.components.ChuText
-import com.jossephus.chuchu.ui.components.TuiBadge
 import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTypography
+import kotlinx.coroutines.delay
 
 /**
  * FAB nhỏ gọn đặt tại góc màn hình Terminal.
@@ -124,6 +129,12 @@ fun QueueAmbientFab(
 
 /**
  * Thanh capsule Live Ticker nổi ở đỉnh màn hình Terminal.
+ *
+ * HÀNH VI (23/8): mở ĐỦ nội dung mỗi lần TRẠNG THÁI ĐỔI; sau 5 giây không có gì
+ * thay đổi thì thu về một chip nhỏ VẪN NẰM GIỮA — chỉ còn chấm màu trạng thái
+ * (và số việc đang chờ nếu có). Chấm màu là kênh truyền trạng thái khi đã thu:
+ * xanh lá = đang chạy, vàng = bị chặn, đỏ = queue offline, xám sáng = paused.
+ * Bấm ở dạng nào cũng mở QuickPeek. ✕ chỉ ẩn cho tới khi nội dung thay đổi.
  */
 @Composable
 fun QueueAmbientTickerPill(
@@ -133,9 +144,32 @@ fun QueueAmbientTickerPill(
 ) {
     val colors = ChuColors.current
     val typography = ChuTypography.current
-    var dismissedManually by remember(summary.activeTaskId) { mutableStateOf(false) }
 
-    val shouldShow = (summary.isAnyWorking || summary.isAnyBlocked || summary.isPaused) && !dismissedManually
+    // Chữ ký nội dung: mọi thay đổi đáng kể đều bật lại dạng đầy đủ, reset đồng
+    // hồ 5s và ân xá cho lệnh ✕ cũ — người dùng tắt thông báo CỦA NỘI DUNG ĐÓ,
+    // không phải tắt vĩnh viễn. Trước đây key là activeTaskId nên khi paused
+    // (id == null) bấm ✕ xong pill vẫn sống sót qua recomposition.
+    val signature = buildString {
+        append(summary.activeTaskId); append('|')
+        append(summary.statusText); append('|')
+        append(summary.pendingCount); append('|')
+        append(summary.primaryAgentName); append('|')
+        append(summary.isPaused); append('|')
+        append(summary.hasError)
+    }
+    var dismissedSignature by remember { mutableStateOf<String?>(null) }
+    var expanded by remember { mutableStateOf(true) }
+
+    LaunchedEffect(signature) {
+        expanded = true
+        delay(COLLAPSE_AFTER_MS)
+        expanded = false
+    }
+
+    // hasError phải nằm trong điều kiện hiện: trước đây qsrv chết thì pill im
+    // lặng biến mất, người đang chờ kết quả không hề hay biết queue ngắt.
+    val shouldShow = (summary.isAnyWorking || summary.isAnyBlocked ||
+        summary.isPaused || summary.hasError) && dismissedSignature != signature
 
     AnimatedVisibility(
         visible = shouldShow,
@@ -143,10 +177,13 @@ fun QueueAmbientTickerPill(
         exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
         modifier = modifier,
     ) {
-        val pillColor = when {
+        // Đang chạy dùng XANH LÁ chứ không dùng accent: accent tím trùng với
+        // màu selection của hàng agent, lại gây nhầm "đang được chọn".
+        val statusColor = when {
+            summary.hasError -> colors.error
             summary.isAnyBlocked -> colors.warning
-            summary.isPaused -> colors.textMuted
-            else -> colors.accent
+            summary.isPaused -> colors.textSecondary
+            else -> colors.success
         }
 
         Box(
@@ -159,67 +196,88 @@ fun QueueAmbientTickerPill(
                 modifier = Modifier
                     .clip(RoundedCornerShape(4.dp))
                     .background(colors.surface.copy(alpha = 0.95f))
-                    .border(BorderStroke(1.dp, pillColor.copy(alpha = 0.7f)), RoundedCornerShape(4.dp))
+                    .border(BorderStroke(1.dp, statusColor.copy(alpha = 0.7f)), RoundedCornerShape(4.dp))
                     .clickable(onClick = onClick)
-                    .padding(horizontal = 10.dp, vertical = 4.dp),
+                    .padding(horizontal = 10.dp, vertical = 4.dp)
+                    .animateContentSize(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
             ) {
-                val glyph = when {
-                    summary.isAnyBlocked -> "▲"
-                    summary.isPaused -> "⏸"
-                    else -> "●"
+                ChuText("●", style = typography.labelSmall, color = statusColor)
+
+                if (expanded) {
+                    val message = buildString {
+                        if (!summary.primaryAgentName.isNullOrBlank()) {
+                            append("@${summary.primaryAgentName}: ")
+                        }
+                        if (summary.activeTaskId != null) {
+                            append("#${summary.activeTaskId} ")
+                        }
+                        append(summary.statusText)
+                        if (summary.pendingCount > 0) {
+                            append(" · ${summary.pendingCount} waiting")
+                        }
+                    }
+
+                    ChuText(
+                        text = message,
+                        style = typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                        color = colors.textPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+
+                    ChuText(
+                        text = "✕",
+                        style = typography.labelSmall,
+                        color = colors.textMuted,
+                        modifier = Modifier
+                            .clickable { dismissedSignature = signature }
+                            .padding(start = 4.dp),
+                    )
+                } else if (summary.totalActive > 0) {
+                    // Dạng thu gọn: chấm màu + số việc. Vẫn giữa màn hình.
+                    ChuText(
+                        "${summary.totalActive}",
+                        style = typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                        color = colors.textPrimary,
+                    )
                 }
-                ChuText(glyph, style = typography.labelSmall, color = pillColor)
-
-                val message = buildString {
-                    if (!summary.primaryAgentName.isNullOrBlank()) {
-                        append("@${summary.primaryAgentName}: ")
-                    }
-                    if (summary.activeTaskId != null) {
-                        append("#${summary.activeTaskId} ")
-                    }
-                    append(summary.statusText)
-                    if (summary.pendingCount > 0) {
-                        append(" · ${summary.pendingCount} waiting")
-                    }
-                }
-
-                ChuText(
-                    text = message,
-                    style = typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                    color = colors.textPrimary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false),
-                )
-
-                ChuText(
-                    text = "✕",
-                    style = typography.labelSmall,
-                    color = colors.textMuted,
-                    modifier = Modifier
-                        .clickable { dismissedManually = true }
-                        .padding(start = 4.dp),
-                )
             }
         }
     }
 }
 
+private const val COLLAPSE_AFTER_MS = 5_000L
+
 /**
  * Micro-Queue Quick Peek Bottom Sheet.
+ *
+ * Ngữ pháp hình ảnh bám theo màn Queue đầy đủ sau đợn tinh chỉnh 22/8:
+ * band tiêu đề "▌ QUICK QUEUE · N ACTIVE", chấm runtime ● ○, nhãn trạng thái
+ * in hoa đậm màu tone thay vì badge nền.
+ *
+ * Task mà pill đang nhắc tới (summary.activeTaskId) được PIN lên đầu với con
+ * trỏ ">" và rail màu accent — người dùng bấm pill để xem đúng việc đó, không
+ * bị lạc giữa danh sách.
+ *
+ * [OPEN … IN QUEUE] ở chân sheet mở màn Queue đã chọn sẵn agent của task pin
+ * (pane được truyền qua điều hướng); không có task pin thì mở Queue tổng.
  */
 @Composable
 fun QueueQuickPeekBottomSheet(
     summary: QueueAmbientSummary,
     onAction: (QueueAction, Int) -> Unit,
-    onOpenFullQueue: () -> Unit,
+    onOpenInQueue: (String?) -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = ChuColors.current
     val typography = ChuTypography.current
+
+    val orderedTasks = summary.topTasks.sortedByDescending { it.id == summary.activeTaskId }
+    val pinnedTask = orderedTasks.firstOrNull { it.id == summary.activeTaskId }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -250,7 +308,7 @@ fun QueueQuickPeekBottomSheet(
                         .background(colors.border),
                 )
 
-                // Header
+                // Band tiêu đề — cùng họ với band section trên màn Queue
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -260,38 +318,46 @@ fun QueueQuickPeekBottomSheet(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
-                        ChuText("⚡", style = typography.headline, color = colors.accent)
-                        ChuText("quick queue", style = typography.headline)
-                        TuiBadge("${summary.totalActive}", colors.accent)
+                        ChuText("▌", style = typography.headline, color = colors.accent)
+                        ChuText("QUICK QUEUE", style = typography.headline.copy(fontFamily = FontFamily.Monospace))
+                        ChuText(
+                            "· ${summary.totalActive} ACTIVE",
+                            style = typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                            color = colors.textMuted,
+                        )
                     }
 
                     ChuButton(
                         onClick = {
                             onDismiss()
-                            onOpenFullQueue()
+                            onOpenInQueue(pinnedTask?.takeIf { it.target.isNotBlank() }?.target)
                         },
                         variant = ChuButtonVariant.Outlined,
                         bracketed = true,
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 3.dp),
                     ) {
-                        ChuText("fullscreen ↗", style = typography.labelSmall, color = colors.accent)
+                        ChuText("[FULLSCREEN ↗]", style = typography.labelSmall, color = colors.accent)
                     }
                 }
 
-                // Top tasks
-                if (summary.topTasks.isEmpty()) {
+                if (orderedTasks.isEmpty()) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(24.dp),
+                            .padding(vertical = 20.dp),
                         contentAlignment = Alignment.Center,
                     ) {
-                        ChuText("queue is empty", style = typography.bodySmall, color = colors.textMuted)
+                        ChuText(
+                            "▌ NO ACTIVE TASKS · ALL CLEAR",
+                            style = typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                            color = colors.textMuted,
+                        )
                     }
                 } else {
-                    summary.topTasks.forEach { task ->
+                    orderedTasks.forEach { task ->
                         QuickPeekTaskItem(
                             task = task,
+                            pinned = task.id == summary.activeTaskId,
                             onAction = { action -> onAction(action, task.id) },
                         )
                     }
@@ -305,70 +371,88 @@ fun QueueQuickPeekBottomSheet(
 @Composable
 private fun QuickPeekTaskItem(
     task: QueueTask,
+    pinned: Boolean,
     onAction: (QueueAction) -> Unit,
 ) {
     val colors = ChuColors.current
     val typography = ChuTypography.current
-    val isRunning = task.isRunning
     val taskColor = task.tone.color()
 
     ChuCard(
         background = colors.surfaceVariant,
-        border = if (isRunning) colors.accent else colors.border,
+        border = if (pinned) colors.accent else colors.border,
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(10.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
+        Row(modifier = Modifier.height(IntrinsicSize.Min)) {
+            if (pinned) {
+                // Rail accent đánh dấu task mà pill đang nhắc tới
+                Box(
+                    modifier = Modifier
+                        .width(3.dp)
+                        .fillMaxHeight()
+                        .background(colors.accent),
+                )
+            }
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(10.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    ChuText(task.glyph, style = typography.label, color = taskColor)
-                    ChuText("#${task.id}", style = typography.label.copy(fontWeight = FontWeight.Bold), color = colors.accent)
-                    if (task.target.isNotBlank()) {
-                        ChuText("@${task.target}", style = typography.labelSmall, color = colors.textSecondary)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        if (pinned) {
+                            ChuText(">", style = typography.label.copy(fontWeight = FontWeight.Bold), color = colors.accent)
+                        }
+                        ChuText(task.glyph, style = typography.label, color = taskColor)
+                        ChuText("#${task.id}", style = typography.label.copy(fontWeight = FontWeight.Bold), color = colors.accent)
+                        if (task.target.isNotBlank()) {
+                            ChuText("@${task.target}", style = typography.labelSmall, color = colors.textSecondary)
+                        }
                     }
+                    ChuText(
+                        text = task.stateLabel.uppercase(),
+                        style = typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace),
+                        color = taskColor,
+                    )
                 }
-                TuiBadge(task.stateLabel, taskColor)
-            }
 
-            ChuText(
-                text = task.text.replace('\n', ' '),
-                style = typography.bodySmall,
-                color = colors.textPrimary,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
+                ChuText(
+                    text = task.text.replace('\n', ' '),
+                    style = typography.bodySmall,
+                    color = colors.textPrimary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
 
-            // Micro-action buttons
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    task.actions.forEach { action ->
-                        ChuButton(
-                            onClick = { onAction(action) },
-                            variant = ChuButtonVariant.Ghost,
-                            bracketed = true,
-                            borderColor = if (action.danger) colors.error else colors.border,
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                        ) {
-                            ChuText(
-                                action.label,
-                                style = typography.labelSmall,
-                                color = if (action.danger) colors.error else colors.textPrimary,
-                            )
+                // Micro-action buttons
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        task.actions.forEach { action ->
+                            ChuButton(
+                                onClick = { onAction(action) },
+                                variant = ChuButtonVariant.Ghost,
+                                bracketed = true,
+                                borderColor = if (action.danger) colors.error else colors.border,
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                            ) {
+                                ChuText(
+                                    action.label,
+                                    style = typography.labelSmall,
+                                    color = if (action.danger) colors.error else colors.textPrimary,
+                                )
+                            }
                         }
                     }
                 }

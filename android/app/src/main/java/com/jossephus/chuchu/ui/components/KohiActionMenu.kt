@@ -37,7 +37,7 @@ fun KohiActionMenu(
     onDismiss: () -> Unit,
     onOpenFileBrowser: () -> Unit,
     onOpenDashboard: () -> Unit,
-    onOpenQueue: () -> Unit,
+    onOpenQueue: (String?) -> Unit,
     modifier: Modifier = Modifier,
     queueStatus: String = "ready",
     queueStatusColor: Color? = null,
@@ -116,7 +116,7 @@ fun KohiActionMenu(
                 tone = queueStatusColor ?: colors.accent,
                 onClick = {
                     onDismiss()
-                    onOpenQueue()
+                    onOpenQueue(null)
                 },
             )
 

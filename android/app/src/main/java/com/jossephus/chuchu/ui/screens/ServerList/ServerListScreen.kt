@@ -80,7 +80,7 @@ fun ServerListScreen(
     onOpenSettings: () -> Unit,
     onOpenWeb: () -> Unit,
     onOpenDashboard: () -> Unit,
-    onOpenQueue: () -> Unit,
+    onOpenQueue: (String?) -> Unit,
     queueSummary: QueueAmbientSummary,
     modifier: Modifier = Modifier,
 ) {

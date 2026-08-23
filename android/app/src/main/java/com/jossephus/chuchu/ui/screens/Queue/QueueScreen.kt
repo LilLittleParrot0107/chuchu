@@ -55,6 +55,7 @@ fun QueueTone.color(): Color {
 @Composable
 fun QueueScreen(
     ui: QueueUiState,
+    initialPane: String? = null,
     onAction: (QueueAction, Int?) -> Unit,
     onAdd: (String, String?, String?) -> Unit,
     onClearDone: (String?) -> Unit,
@@ -76,7 +77,7 @@ fun QueueScreen(
     var setupPromptDismissed by remember { mutableStateOf(false) }
     var logsOpen by remember { mutableStateOf(false) }
     var inspectedTask by remember { mutableStateOf<QueueTask?>(null) }
-    var selectedPane by remember { mutableStateOf<String?>(null) }
+    var selectedPane by remember(initialPane) { mutableStateOf(initialPane) }
     var selectedTaskId by remember { mutableStateOf<Int?>(null) }
     var prompt by remember { mutableStateOf("") }
 

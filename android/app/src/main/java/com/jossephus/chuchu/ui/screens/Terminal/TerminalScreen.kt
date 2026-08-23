@@ -302,7 +302,7 @@ fun TerminalScreen(
     onOpenSettings: () -> Unit,
     onOpenWeb: () -> Unit = {},
     onOpenDashboard: () -> Unit = {},
-    onOpenQueue: () -> Unit = {},
+    onOpenQueue: (String?) -> Unit = {},
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     openLocalShell: Boolean = false,
@@ -1724,7 +1724,7 @@ fun TerminalScreen(
                                     if (showQueueFab) {
                                         QueueAmbientFab(
                                             summary = queueSummary,
-                                            onClick = onOpenQueue,
+                                            onClick = { onOpenQueue(null) },
                                             onLongClick = { showQueueQuickPeek = true },
                                         )
                                     }
@@ -2069,7 +2069,7 @@ fun TerminalScreen(
                         },
                         onOpenQueue = {
                             showTabSheet = false
-                            onOpenQueue()
+                            onOpenQueue(null)
                         },
                         onOpenSettings = onOpenSettings,
                         useSingleRowAccessoryBar = useSingleRowAccessoryBar,
@@ -2177,9 +2177,9 @@ fun TerminalScreen(
         QueueQuickPeekBottomSheet(
             summary = queueSummary,
             onAction = onQueueAction,
-            onOpenFullQueue = {
+            onOpenInQueue = { pane ->
                 showQueueQuickPeek = false
-                onOpenQueue()
+                onOpenQueue(pane)
             },
             onDismiss = { showQueueQuickPeek = false },
         )

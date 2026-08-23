@@ -65,7 +65,7 @@ fun CommandPalette(
     onChuchuKey: () -> Unit,
     chuchuKeyActive: Boolean,
     onOpenFiles: () -> Unit,
-    onOpenQueue: (() -> Unit)? = null,
+    onOpenQueue: ((String?) -> Unit)? = null,
     onOpenSettings: () -> Unit,
     useSingleRowAccessoryBar: Boolean,
     onSelectTab: (String) -> Unit,
@@ -231,7 +231,7 @@ fun CommandPalette(
           PaletteHint("esc", "dismiss")
           if (onOpenQueue != null) {
             ChuButton(
-                onClick = { onDismiss(); onOpenQueue() },
+                onClick = { onDismiss(); onOpenQueue(null) },
                 variant = ChuButtonVariant.Ghost,
                 bracketed = true,
                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),

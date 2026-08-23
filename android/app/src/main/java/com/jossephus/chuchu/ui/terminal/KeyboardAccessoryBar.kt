@@ -63,7 +63,7 @@ fun KeyboardAccessoryBar(
     onChuchuKey: (() -> Unit)? = null,
     chuchuKeyActive: Boolean = false,
     onOpenFiles: (() -> Unit)? = null,
-    onOpenQueue: (() -> Unit)? = null,
+    onOpenQueue: ((String?) -> Unit)? = null,
     onComposeBox: (() -> Unit)? = null,
     onSummonKeyboard: (() -> Unit)? = null,
     useSingleRow: Boolean = false,
@@ -183,7 +183,7 @@ private fun RenderAccessoryItem(
     onChuchuKey: (() -> Unit)?,
     chuchuKeyActive: Boolean,
     onOpenFiles: (() -> Unit)?,
-    onOpenQueue: (() -> Unit)?,
+    onOpenQueue: ((String?) -> Unit)?,
     onComposeBox: (() -> Unit)?,
     onSummonKeyboard: (() -> Unit)?,
     buttonHeight: Dp,
@@ -444,7 +444,7 @@ private fun FilesButton(
 
 @Composable
 private fun QueueAccessoryButton(
-    onOpenQueue: (() -> Unit)?,
+    onOpenQueue: ((String?) -> Unit)?,
     buttonHeight: Dp,
     buttonPadding: PaddingValues,
 ) {
@@ -452,7 +452,7 @@ private fun QueueAccessoryButton(
     val colors = ChuColors.current
     if (onOpenQueue == null) return
     ChuButton(
-        onClick = onOpenQueue,
+        onClick = { onOpenQueue(null) },
         variant = ChuButtonVariant.Outlined,
         modifier = Modifier.height(buttonHeight),
         contentPadding = buttonPadding,
