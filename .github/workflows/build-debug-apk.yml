@@ -92,6 +92,17 @@ jobs:
       #
       # -x lintVitalRelease: lint chiếm ~50s và không bắt được gì mà CI này cần —
       # đây là bản sideload cho một người dùng, không phải bản lên store.
+      # Unit test (JVM) trước khi đốt 5 phút build: lỗi logic bị chặn tại đây.
+      # QueueLiveContractTest tự skip khi không set QSRV_LIVE_URL.
+      - name: unit tests
+        run: |
+          nix develop -c bash -c '
+            set -e
+            cd android
+            chmod +x ./gradlew
+            ./gradlew testReleaseUnitTest
+          '
+
       - name: build android release APK
         env:
           ANDROID_ABI_FILTERS: ${{ inputs.abi || 'arm64-v8a' }}
