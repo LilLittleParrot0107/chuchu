@@ -77,7 +77,7 @@ fun DailyYieldBarChart(
     }
 
     val labelStyle = remember(textColor) {
-        TextStyle
+        TextStyle(
             color = textColor,
             fontSize = 9.sp,
             fontFamily = FontFamily.Monospace,
