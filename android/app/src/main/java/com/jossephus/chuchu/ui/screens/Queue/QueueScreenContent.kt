@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -235,6 +236,9 @@ internal fun QueueTaskDetailPane(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            // IntrinsicSize.Min: khong thi rail fillMaxHeight keo ca pane
+            // den tran 220dp du cho content ngan — "thua khoang trong".
+            .height(IntrinsicSize.Min)
             .heightIn(max = 220.dp)
             .background(colors.surface),
     ) {
@@ -252,7 +256,7 @@ internal fun QueueTaskDetailPane(
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 ChuText(
