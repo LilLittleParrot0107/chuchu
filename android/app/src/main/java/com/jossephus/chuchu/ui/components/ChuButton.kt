@@ -49,6 +49,10 @@ fun ChuButtonSurface(
     backgroundColor: Color? = null,
     borderColor: Color? = null,
     contentPadding: PaddingValues = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+    // 23/8: hardcode 36dp tung lam MOI band chua nut no phinh to (band CLEAR
+    // DONE cao tu ~28dp len ~42dp). Cho truyen vao de hanh dong compact trong
+    // band giu dung ty le dong terminal.
+    minHeight: androidx.compose.ui.unit.Dp = 36.dp,
     content: @Composable () -> Unit,
 ) {
     val colors = ChuColors.current
@@ -74,7 +78,7 @@ fun ChuButtonSurface(
             .clip(shape)
             .background(background, shape)
             .then(if (border != null) Modifier.border(border, shape) else Modifier)
-            .defaultMinSize(minHeight = 36.dp)
+            .defaultMinSize(minHeight = minHeight)
             .alpha(if (pressed && enabled) 0.7f else 1f)
             .padding(contentPadding),
         contentAlignment = Alignment.Center,
@@ -93,6 +97,7 @@ fun ChuButton(
     borderColor: Color? = null,
     backgroundColor: Color? = null,
     contentPadding: PaddingValues = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+    minHeight: androidx.compose.ui.unit.Dp = 36.dp,
     testTag: String? = null,
     contentDescription: String? = null,
     content: @Composable () -> Unit,
@@ -133,6 +138,7 @@ fun ChuButton(
         backgroundColor = backgroundColor,
         borderColor = borderColor,
         contentPadding = contentPadding,
+        minHeight = minHeight,
     ) {
         if (bracketed) {
             Row(

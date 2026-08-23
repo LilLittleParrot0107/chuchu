@@ -10,6 +10,8 @@ data class QueueAmbientSummary(
     val isAnyBlocked: Boolean = false,
     val isPaused: Boolean = false,
     val activeTaskId: Int? = null,
+    /** Pane của task đang chạy — pill bấm là nhảy thẳng Queue đúng agent. */
+    val activeTaskPane: String? = null,
     val primaryAgentName: String? = null,
     val statusText: String = "",
     val topTasks: List<QueueTask> = emptyList(),
@@ -39,6 +41,7 @@ data class QueueAmbientSummary(
                 isAnyBlocked = blockedAgents.isNotEmpty(),
                 isPaused = state.paused,
                 activeTaskId = primaryTask?.id,
+                activeTaskPane = primaryTask?.target?.takeIf(String::isNotBlank),
                 primaryAgentName = primaryTask?.target?.takeIf(String::isNotBlank) ?: primaryAgent?.name,
                 statusText = when {
                     blockedAgents.isNotEmpty() -> "needs approval"

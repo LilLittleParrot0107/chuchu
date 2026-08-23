@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -108,8 +107,12 @@ fun KohiCompactAction(
         variant = ChuButtonVariant.Ghost,
         bracketed = true,
         borderColor = if (danger) colors.error else colors.border,
-        contentPadding = PaddingValues(horizontal = 9.dp, vertical = 4.dp),
-        modifier = modifier.defaultMinSize(minHeight = 32.dp),
+        // Compact THẬT SỰ: cao bằng một dòng terminal (~26dp), không phình
+        // band chứa nó. Trước đây 36dp của ChuButtonSurface đẩy band CLEAR
+        // DONE lên gần gấp rưỡi so với dòng chữ bên cạnh.
+        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 3.dp),
+        minHeight = 26.dp,
+        modifier = modifier,
     ) {
         ChuText(
             label,

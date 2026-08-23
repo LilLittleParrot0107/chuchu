@@ -405,11 +405,11 @@ internal fun QueueComposer(
         Row(
             modifier = Modifier
                 .weight(1f)
-                .defaultMinSize(minHeight = 44.dp)
+                .defaultMinSize(minHeight = 40.dp)
                 .background(colors.surfaceVariant)
                 .border(1.dp, if (canSend) colors.accent.copy(alpha = 0.45f) else colors.border)
-                .padding(horizontal = 9.dp),
-            verticalAlignment = Alignment.CenterVertically,
+                .padding(horizontal = 9.dp, vertical = 5.dp),
+            verticalAlignment = if (value.contains('\n')) Alignment.Top else Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             agent?.let {
@@ -423,14 +423,18 @@ internal fun QueueComposer(
                 )
             }
             ChuText("›", style = type.headline, color = if (canSend) colors.accent else colors.textMuted)
+            // Đa dòng như qq: gõ dài thì text WRAP để luôn nhìn thấy toàn bộ,
+            // tối đa 4 dòng rồi mới cuộn bên trong. Trước đây singleLine khiến
+            // đoạn dài trôi ngang khỏi màn — "typing không thấy snippet".
             BasicTextField(
                 value = value,
                 onValueChange = onValueChange,
-                singleLine = true,
+                singleLine = false,
+                maxLines = 4,
                 textStyle = type.body.copy(color = colors.textPrimary),
                 cursorBrush = SolidColor(colors.accent),
                 modifier = Modifier.weight(1f)
-                    .padding(vertical = 10.dp),
+                    .padding(vertical = 8.dp),
                 decorationBox = { inner ->
                     Box {
                         if (value.isEmpty()) {
@@ -454,7 +458,7 @@ internal fun QueueComposer(
             enabled = canSend,
             variant = ChuButtonVariant.Ghost,
             contentPadding = PaddingValues(horizontal = 7.dp, vertical = 4.dp),
-            modifier = Modifier.defaultMinSize(minHeight = 32.dp),
+            minHeight = 28.dp,
         ) {
             ChuText(
                 if (sending) "[…]" else "[SEND]",

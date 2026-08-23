@@ -25,7 +25,6 @@ import androidx.navigation.navArgument
 import com.jossephus.chuchu.data.repository.SettingsRepository
 import com.jossephus.chuchu.ui.screens.AddServer.AddServerScreen
 import com.jossephus.chuchu.ui.screens.AddServer.AddServerViewModel
-import com.jossephus.chuchu.ui.screens.Dbtop.DbtopScreen
 import com.jossephus.chuchu.ui.screens.Queue.QueueScreen
 import com.jossephus.chuchu.ui.screens.Queue.QueueViewModel
 import com.jossephus.chuchu.ui.screens.ServerList.ServerListScreen
@@ -160,16 +159,10 @@ fun ApplicationNavController() {
                 onDeleteServer = vm::deleteServer,
                 onOpenSettings = { navController.navigate("settings") },
                 onOpenWeb = { navController.navigate("web") },
-                onOpenDashboard = { navController.navigate("dashboard") },
                 onOpenQueue = { pane ->
                     navController.navigate(if (pane != null) "queue?pane=$pane" else "queue")
                 },
                 queueSummary = queueAmbientSummary,
-            )
-        }
-        composable("dashboard") {
-            DbtopScreen(
-                onClose = { navController.popBackStack() },
             )
         }
         composable(
@@ -308,11 +301,9 @@ fun ApplicationNavController() {
                     hostId = null,
                     openLocalShell = true,
                     queueSummary = queueAmbientSummary,
-                    onQueueAction = sharedQueueVm::runAction,
                     onOpenSettings = { navController.navigate("settings") },
                     onOpenWeb = { navController.navigate("web") },
-                    onOpenDashboard = { navController.navigate("dashboard") },
-                    onOpenQueue = { pane ->
+                        onOpenQueue = { pane ->
                         navController.navigate(if (pane != null) "queue?pane=$pane" else "queue")
                     },
                     onBack = { navController.popBackStack() },
@@ -336,10 +327,8 @@ fun ApplicationNavController() {
                 vm = vm,
                 hostId = id,
                 queueSummary = queueAmbientSummary,
-                onQueueAction = sharedQueueVm::runAction,
                 onOpenSettings = { navController.navigate("settings") },
                 onOpenWeb = { navController.navigate("web") },
-                onOpenDashboard = { navController.navigate("dashboard") },
                 onOpenQueue = { pane ->
                     navController.navigate(if (pane != null) "queue?pane=$pane" else "queue")
                 },

@@ -36,11 +36,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imeAnimationTarget
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.isImeVisible
-import com.jossephus.chuchu.ui.screens.Queue.QueueAction
 import com.jossephus.chuchu.ui.screens.Queue.QueueAmbientFab
 import com.jossephus.chuchu.ui.screens.Queue.QueueAmbientSummary
 import com.jossephus.chuchu.ui.screens.Queue.QueueAmbientTickerPill
-import com.jossephus.chuchu.ui.screens.Queue.QueueQuickPeekBottomSheet
 
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.offset
@@ -301,15 +299,12 @@ fun TerminalScreen(
     hostId: Long?,
     onOpenSettings: () -> Unit,
     onOpenWeb: () -> Unit = {},
-    onOpenDashboard: () -> Unit = {},
     onOpenQueue: (String?) -> Unit = {},
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     openLocalShell: Boolean = false,
     queueSummary: QueueAmbientSummary = QueueAmbientSummary.Empty,
-    onQueueAction: (QueueAction, Int) -> Unit = { _, _ -> },
 ) {
-    var showQueueQuickPeek by remember { mutableStateOf(false) }
     val sessionState by vm.sessionState.collectAsStateWithLifecycle()
 
     val tabs by vm.tabs.collectAsStateWithLifecycle()
@@ -1459,7 +1454,7 @@ fun TerminalScreen(
 
                                 QueueAmbientTickerPill(
                                     summary = queueSummary,
-                                    onClick = { showQueueQuickPeek = true },
+                                    onClick = { onOpenQueue(queueSummary.activeTaskPane) },
                                     modifier = Modifier.align(Alignment.TopCenter),
                                 )
 
@@ -1725,7 +1720,6 @@ fun TerminalScreen(
                                         QueueAmbientFab(
                                             summary = queueSummary,
                                             onClick = { onOpenQueue(null) },
-                                            onLongClick = { showQueueQuickPeek = true },
                                         )
                                     }
 
@@ -2173,17 +2167,6 @@ fun TerminalScreen(
         )
     }
 
-    if (showQueueQuickPeek) {
-        QueueQuickPeekBottomSheet(
-            summary = queueSummary,
-            onAction = onQueueAction,
-            onOpenInQueue = { pane ->
-                showQueueQuickPeek = false
-                onOpenQueue(pane)
-            },
-            onDismiss = { showQueueQuickPeek = false },
-        )
-    }
 }
 
 
