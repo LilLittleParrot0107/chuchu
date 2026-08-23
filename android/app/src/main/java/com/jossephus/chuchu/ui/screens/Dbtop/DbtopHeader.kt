@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -35,8 +36,10 @@ internal fun DbtopTopBar(
 ) {
     val colors = ChuColors.current
     val ageText = when (freshness) {
-        is DataFreshness.Fresh -> "UPDATED ${freshness.ageSeconds / 60}M AGO"
-        is DataFreshness.Warning -> "STALE ${freshness.ageSeconds / 60}M"
+        is DataFreshness.Fresh ->
+            if (freshness.ageSeconds < 60) "JUST NOW"
+            else "UPDATED ${freshness.ageSeconds / 60}M AGO"
+        is DataFreshness.Warning -> "STALE ${freshness.ageSeconds / 60}M AGO"
         is DataFreshness.Dead -> "OFFLINE ${freshness.ageSeconds / 3600}H"
     }
     val tone = when (freshness) {
@@ -77,8 +80,8 @@ internal fun DashboardSummary(
         modifier = Modifier
             .fillMaxWidth()
             .background(colors.surfaceVariant)
-            .padding(horizontal = 11.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         MetricCell(
@@ -89,27 +92,29 @@ internal fun DashboardSummary(
         )
         MetricCell(
             label = "YIELD / DAY",
-            value = perDay?.let { "+${DeFiFormatter.formatUsd(it)}" } ?: "—",
+            value = perDay?.let { (if (it >= 0) "+" else "") + DeFiFormatter.formatUsd(it) } ?: "—",
             color = if (perDay != null) colors.success else colors.textMuted,
             modifier = Modifier.weight(1f),
         )
         Column(
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(1f).heightIn(min = 50.dp),
             horizontalAlignment = Alignment.End,
         ) {
             ChuText("WALLET", style = type.labelSmall, color = colors.textMuted)
             ChuText(
                 DeFiFormatter.formatUsd(wallet),
-                style = type.label.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold),
+                style = type.label.copy(fontWeight = FontWeight.Bold),
                 color = colors.textPrimary,
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
             if (debt > 0.0) {
                 ChuText(
                     "DEBT ${DeFiFormatter.formatUsd(debt)}",
-                    style = type.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                    style = type.labelSmall,
                     color = colors.error,
                     maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }
@@ -141,14 +146,12 @@ private fun MetricCell(
 internal fun DashboardViewBand(
     selected: DbtopView,
     positionCount: Int,
-    walletCount: Int,
     onSelect: (DbtopView) -> Unit,
 ) {
     val colors = ChuColors.current
     val type = ChuTypography.current
     val counts = mapOf(
         DbtopView.POSITIONS to positionCount,
-        DbtopView.WALLET to walletCount,
         DbtopView.CHARTS to 2,
     )
     Row(
@@ -164,7 +167,8 @@ internal fun DashboardViewBand(
                 onClick = { onSelect(view) },
                 variant = if (active) ChuButtonVariant.Filled else ChuButtonVariant.Ghost,
                 bracketed = true,
-                contentPadding = PaddingValues(horizontal = 7.dp, vertical = 4.dp),
+                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 3.dp),
+                minHeight = 24.dp,
                 modifier = Modifier.weight(1f),
             ) {
                 ChuText(

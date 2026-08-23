@@ -14,6 +14,9 @@ class DbtopCacheManager(context: Context) {
         prefs.edit().putString(KEY_SNAPSHOT_JSON, rawJson).apply()
     }
 
+    /** Payload gan nhat da luu, hoac null — dung de bo qua lan ghi trung lap. */
+    fun lastRaw(): String? = prefs.getString(KEY_SNAPSHOT_JSON, null)
+
     fun loadSnapshot(): DbtopState? = prefs.getString(KEY_SNAPSHOT_JSON, null)
         ?.let { json -> runCatching { DbtopJson.decodeFromString<DbtopState>(json) }.getOrNull() }
 

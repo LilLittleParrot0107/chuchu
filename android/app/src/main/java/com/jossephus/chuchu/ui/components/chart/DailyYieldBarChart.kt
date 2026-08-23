@@ -76,8 +76,8 @@ fun DailyYieldBarChart(
         max(dailyData.maxOfOrNull { it.yieldUsd } ?: 1.0, 1.0)
     }
 
-    val labelStyle = remember {
-        TextStyle(
+    val labelStyle = remember(textColor) {
+        TextStyle
             color = textColor,
             fontSize = 9.sp,
             fontFamily = FontFamily.Monospace,
@@ -212,7 +212,7 @@ fun DailyYieldBarChart(
 
                 val barBrush = Brush.verticalGradient(
                     colors = listOf(
-                        (if (isSelected) Color(0xFF58FFAE) else primaryColor).copy(alpha = alpha),
+                        (if (isSelected) accentColor else primaryColor).copy(alpha = alpha),
                         accentColor.copy(alpha = alpha * 0.7f),
                     ),
                     startY = barTop,
@@ -228,10 +228,12 @@ fun DailyYieldBarChart(
 
                 val dateFormatted = item.date.takeLast(5) // "08-20"
                 val dateLayout = textMeasurer.measure(dateFormatted, labelStyle)
-                drawText(
-                    textLayoutResult = dateLayout,
-                    topLeft = Offset(barLeft + (barWidth - dateLayout.size.width) / 2f, canvasHeight - bottomPadding + 3.dp.toPx()),
-                )
+                if (dateLayout.size.width <= slotWidth * 0.9f) {
+                    drawText(
+                        textLayoutResult = dateLayout,
+                        topLeft = Offset(barLeft + (barWidth - dateLayout.size.width) / 2f, canvasHeight - bottomPadding + 3.dp.toPx()),
+                    )
+                }
             }
 
             // 3. Tooltip
@@ -251,8 +253,8 @@ fun DailyYieldBarChart(
                 val ttHeight = yieldLayout.size.height + subLayout.size.height + padV * 2
 
                 var ttLeft = barCenterX - ttWidth / 2f
-                if (ttLeft < leftPadding) ttLeft = leftPadding
                 if (ttLeft + ttWidth > canvasWidth - rightPadding) ttLeft = canvasWidth - rightPadding - ttWidth
+                if (ttLeft < leftPadding) ttLeft = leftPadding
 
                 val ttTop = topPadding + 2.dp.toPx()
 

@@ -145,9 +145,9 @@ fun ChuButton(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                ChuText("[", style = typography.label, color = bracketColor)
+                ChuText("[", style = typography.labelSmall, color = bracketColor)
                 content()
-                ChuText("]", style = typography.label, color = bracketColor)
+                ChuText("]", style = typography.labelSmall, color = bracketColor)
             }
         } else {
             content()

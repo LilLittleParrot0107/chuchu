@@ -18,13 +18,13 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.jossephus.chuchu.data.model.dbtop.DappRow
 import com.jossephus.chuchu.data.model.dbtop.DeFiFormatter
 import com.jossephus.chuchu.data.model.dbtop.OptionDetail
+import com.jossephus.chuchu.data.model.dbtop.RiskEvaluator
 import com.jossephus.chuchu.data.model.dbtop.TokenPosition
 import com.jossephus.chuchu.ui.components.ChuText
 import com.jossephus.chuchu.ui.components.KohiCompactAction
@@ -66,7 +66,7 @@ private fun DappPositionRow(
 ) {
     val colors = ChuColors.current
     val type = ChuTypography.current
-    val option = row.detail?.option != null || row.name.startsWith("Call", true) || row.name.startsWith("Put", true)
+    val option = row.detail?.option != null || row.expiry != null
     val lending = row.health != null || row.debt != null
     val glyph = when {
         option -> "◈"
@@ -90,10 +90,10 @@ private fun DappPositionRow(
         selected = selected,
         tone = tone,
         onClick = onClick,
-        contentPadding = PaddingValues(horizontal = 9.dp, vertical = 6.dp),
+        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
     ) {
-        ChuText(glyph, style = type.label, color = tone)
-        Spacer(Modifier.width(7.dp))
+        ChuText(glyph, style = type.labelSmall, color = tone)
+        Spacer(Modifier.width(6.dp))
         Column(modifier = Modifier.weight(1f)) {
             ChuText(
                 row.name,
@@ -104,18 +104,19 @@ private fun DappPositionRow(
             )
             ChuText(
                 metrics,
-                style = type.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                color = if (row.health != null && row.health < CRITICAL_HEALTH_FACTOR) colors.error else colors.textMuted,
+                style = type.labelSmall,
+                color = if (row.health != null && row.health < RiskEvaluator.HP_BAD) colors.error else colors.textMuted,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
         Spacer(Modifier.width(8.dp))
         ChuText(
-            DeFiFormatter.formatUsd(row.cap),
-            style = type.label.copy(fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace),
+            DeFiFormatter.formatUsdCompact(row.cap),
+            style = type.label.copy(fontWeight = FontWeight.Bold),
             color = colors.textPrimary,
             maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
@@ -140,9 +141,9 @@ internal fun PositionDetailPane(
             .fillMaxWidth()
             .heightIn(max = 220.dp)
             .background(colors.surface)
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 11.dp, vertical = 7.dp),
-        verticalArrangement = Arrangement.spacedBy(5.dp),
+            .padding(horizontal = 10.dp, vertical = 6.dp)
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -163,23 +164,35 @@ internal fun PositionDetailPane(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            ChuText("PROTOCOL ${row.proto.ifBlank { "—" }.uppercase()}", style = type.labelSmall, color = colors.textMuted)
-            ChuText("CAP ${DeFiFormatter.formatUsd(row.cap)}", style = type.labelSmall, color = colors.textPrimary)
+            ChuText(
+                "PROTOCOL ${row.proto.ifBlank { "—" }.uppercase()}",
+                style = type.labelSmall,
+                color = colors.textMuted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            ChuText(
+                "CAP ${DeFiFormatter.formatUsdCompact(row.cap)}",
+                style = type.labelSmall,
+                color = colors.textPrimary,
+            )
         }
         val metricLine = buildList {
             if (showYield && row.perday > 0) add("YIELD +${DeFiFormatter.formatUsd(row.perday)}/D")
             if (showYield && row.apr != null) add("APR ${DeFiFormatter.formatPercent(row.apr, false)}")
+            if (!showYield && (row.perday != 0.0 || row.apr != null)) add("YIELD HIDDEN (SCAN OFFLINE)")
             row.health?.let { add("HF ${String.format(Locale.US, "%.2fx", it)}") }
             row.debt?.let { add("DEBT ${DeFiFormatter.formatUsd(it)}") }
             row.coll?.let { add("COLLATERAL ${DeFiFormatter.formatUsd(it)}") }
         }.joinToString(" · ")
         if (metricLine.isNotBlank()) {
-            ChuText(metricLine, style = type.labelSmall.copy(fontFamily = FontFamily.Monospace), color = colors.textSecondary)
+            ChuText(metricLine, style = type.labelSmall, color = colors.textSecondary)
         }
         row.detail?.option?.let { OptionDetailLines(it) }
         positions.forEach { (kind, token) -> TokenPositionLine(kind, token) }
         if (row.detail?.option == null && positions.isEmpty()) {
-            ChuText("NO POSITION BREAKDOWN IN THIS SNAPSHOT", style = type.labelSmall, color = colors.textMuted)
+            ChuText("BREAKDOWN UNAVAILABLE IN THIS SNAPSHOT", style = type.labelSmall, color = colors.textMuted)
         }
     }
 }
@@ -191,10 +204,10 @@ private fun OptionDetailLines(option: OptionDetail) {
     val line = buildList {
         add("TYPE ${option.type.uppercase()}")
         option.strike?.let { add("STRIKE ${DeFiFormatter.formatUsd(it)}") }
-        option.dte?.let { add("DTE ${String.format(Locale.US, "%.1fD", it)}") }
+        option.dte?.let { add(if (it <= 0.0) "DTE EXPIRED" else "DTE ${String.format(Locale.US, "%.1fD", it)}") }
         option.apr?.let { add("APR ${DeFiFormatter.formatPercent(it, false)}") }
     }.joinToString(" · ")
-    ChuText(line, style = type.labelSmall.copy(fontFamily = FontFamily.Monospace), color = colors.warning)
+    ChuText(line, style = type.labelSmall, color = colors.warning)
 }
 
 @Composable
@@ -207,15 +220,16 @@ private fun TokenPositionLine(kind: String, token: TokenPosition) {
     ) {
         ChuText(
             "$kind · ${String.format(Locale.US, "%.4f", token.amt)} ${token.sym}",
-            style = type.labelSmall.copy(fontFamily = FontFamily.Monospace),
+            style = type.labelSmall,
             color = colors.textSecondary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
         )
         ChuText(
             DeFiFormatter.formatUsd(token.usd),
-            style = type.labelSmall.copy(fontFamily = FontFamily.Monospace),
+            style = type.labelSmall,
             color = colors.textPrimary,
         )
     }
 }
-
-private const val CRITICAL_HEALTH_FACTOR = 1.15

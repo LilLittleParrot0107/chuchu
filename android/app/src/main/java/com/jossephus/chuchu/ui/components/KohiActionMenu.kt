@@ -36,6 +36,7 @@ fun KohiActionMenu(
     isOpen: Boolean,
     onDismiss: () -> Unit,
     onOpenFileBrowser: () -> Unit,
+    onOpenDashboard: () -> Unit,
     onOpenQueue: (String?) -> Unit,
     modifier: Modifier = Modifier,
     queueStatus: String = "ready",
@@ -92,12 +93,21 @@ fun KohiActionMenu(
                 },
             )
 
-            // 23/8: bỏ mục "defi dashboard" (dbtop) — user không dùng, không
-            // hiểu nó để làm gì. Toàn bộ code Dbtop vẫn nằm trong tree nhưng
-            // đã không còn đường vào nào từ UI.
-
             KohiServiceRow(
                 index = "02",
+                glyph = "$",
+                badge = "dbtop",
+                title = "defi dashboard",
+                description = "positions · yield · risk · charts",
+                tone = colors.success,
+                onClick = {
+                    onDismiss()
+                    onOpenDashboard()
+                },
+            )
+
+            KohiServiceRow(
+                index = "03",
                 glyph = ">",
                 badge = "qsrv",
                 title = "agent queue",

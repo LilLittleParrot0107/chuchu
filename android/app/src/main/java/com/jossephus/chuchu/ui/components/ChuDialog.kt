@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.runtime.Composable
@@ -40,6 +41,7 @@ fun ChuDialog(
         Column(
             modifier = modifier
                 .fillMaxWidth()
+                .imePadding()
                 .background(colors.surfaceVariant, shape)
                 .border(BorderStroke(1.dp, colors.border), shape)
                 .padding(14.dp),

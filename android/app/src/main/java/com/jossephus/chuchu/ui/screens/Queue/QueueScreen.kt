@@ -169,7 +169,7 @@ fun QueueScreen(
                 // khi qq giu band muc thuan thong tin mot dong.
                 if (doneCount > 0) {
                     KohiCompactAction(
-                        label = if (isClearingDone) "CLEARING" else "CLEAR DONE",
+                        label = if (isClearingDone) "CLR…" else "CLR DONE",
                         enabled = !isClearingDone,
                         danger = true,
                         onClick = { onClearDone(if (pane == ALL_AGENTS) null else pane) },

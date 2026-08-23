@@ -54,7 +54,11 @@ fun DbtopScreen(
             .windowInsetsPadding(WindowInsets.safeDrawing),
     ) {
         DbtopTopBar(
-            freshness = ui.freshness,
+            // Suy lai tu ts SNAPSHOT moi lan ve: ui.freshness la gia tri dong
+            // bang tai luc fetch — server chet thi no bao "UPDATED 5M AGO"
+            // xanh mai mai. state.freshness(nowSec) tra Dead khi ts=0 (chua
+            // load) hoac qua lau, trung thuc hon.
+            freshness = ui.state.freshness(nowSec),
             isRefreshing = ui.isRefreshing,
             onRefresh = {
                 haptics.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -63,8 +67,8 @@ fun DbtopScreen(
             onClose = onClose,
         )
 
-        ui.error?.let { KohiNoticeBand(text = it, color = colors.error, urgent = true) }
-        if (ui.everLoaded && ui.freshness is DataFreshness.Dead) {
+        // Loi mang da do ca man roi thi khong xep them banner OFFLINE thu hai
+        if (ui.error == null && ui.everLoaded && ui.state.freshness(nowSec) is DataFreshness.Dead) {
             KohiNoticeBand(
                 text = "SCAN OFFLINE — YIELD AND APR ARE HIDDEN · RESTART DEBANK/RUN.SH",
                 color = colors.error,
@@ -87,7 +91,6 @@ fun DbtopScreen(
         DashboardViewBand(
             selected = ui.selectedView,
             positionCount = ui.state.rows.size,
-            walletCount = ui.state.walletTokens.size,
             onSelect = { nextView ->
                 haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                 viewModel.selectView(nextView)
@@ -111,7 +114,6 @@ fun DbtopScreen(
                     curve = ui.state.curve,
                     daily = ui.state.daily,
                 )
-                DbtopView.WALLET -> WalletView(tokens = ui.state.walletTokens)
                 DbtopView.POSITIONS -> PositionsView(
                     rows = ui.state.rows,
                     selectedKey = ui.selectedPositionKey,
@@ -138,7 +140,6 @@ fun DbtopScreen(
         DashboardHint(
             when {
                 ui.selectedView == DbtopView.CHARTS -> "CURVE AND DAILY YIELD FOLLOW THE LATEST DBTOP SNAPSHOT"
-                ui.selectedView == DbtopView.WALLET -> "WALLET BALANCES ARE READ-ONLY"
                 selectedRow != null -> "${selectedRow.name.uppercase()} SELECTED · TAP AGAIN TO CLOSE"
                 else -> "SELECT A POSITION TO INSPECT ITS BREAKDOWN"
             },
@@ -148,6 +149,5 @@ fun DbtopScreen(
 
 private fun DbtopUiState.itemCount(): Int = when (selectedView) {
     DbtopView.POSITIONS -> state.rows.size
-    DbtopView.WALLET -> state.walletTokens.size
     DbtopView.CHARTS -> 2
 }

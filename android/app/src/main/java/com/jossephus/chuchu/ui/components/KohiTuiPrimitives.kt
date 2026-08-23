@@ -47,7 +47,7 @@ fun KohiCommandBand(
         modifier = modifier
             .fillMaxWidth()
             .background(colors.surface)
-            .padding(horizontal = 10.dp, vertical = 4.dp),
+            .padding(horizontal = 10.dp, vertical = 2.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -61,8 +61,9 @@ fun KohiCommandBand(
                     onClick = onBack,
                     variant = ChuButtonVariant.Ghost,
                     bracketed = true,
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 3.dp),
-                    minHeight = 26.dp,
+                    borderColor = colors.border,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                    minHeight = 24.dp,
                 ) {
                     ChuText("←", style = type.labelSmall, color = colors.textSecondary)
                 }
@@ -111,8 +112,8 @@ fun KohiCompactAction(
         // Compact THẬT SỰ: cao bằng một dòng terminal (~26dp), không phình
         // band chứa nó. Trước đây 36dp của ChuButtonSurface đẩy band CLEAR
         // DONE lên gần gấp rưỡi so với dòng chữ bên cạnh.
-        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 3.dp),
-        minHeight = 26.dp,
+        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+        minHeight = 24.dp,
         modifier = modifier,
     ) {
         ChuText(
@@ -194,7 +195,8 @@ fun KohiFeedbackBand(
             onClick = onDismiss,
             variant = ChuButtonVariant.Ghost,
             bracketed = true,
-            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 3.dp),
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+            minHeight = 24.dp,
         ) {
             ChuText("×", style = type.labelSmall, color = colors.textMuted)
         }
@@ -231,14 +233,21 @@ fun KohiSectionBand(
                 color = colors.textSecondary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
             )
             if (!meta.isNullOrBlank()) {
-                ChuText("· $meta", style = type.labelSmall, color = colors.textMuted)
+                ChuText(
+                    "· $meta",
+                    style = type.labelSmall,
+                    color = colors.textMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
             content = trailing,
         )
     }

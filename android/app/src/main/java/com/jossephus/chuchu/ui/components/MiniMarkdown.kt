@@ -42,17 +42,21 @@ private class MdStyles(
 fun MiniMarkdownText(markdown: String) {
     val colors = ChuColors.current
     val type = ChuTypography.current
-    val styles = MdStyles(
-        code = SpanStyle(fontFamily = FontFamily.Monospace, background = colors.surfaceVariant),
-        bold = SpanStyle(fontWeight = FontWeight.Bold),
-        italic = SpanStyle(fontStyle = FontStyle.Italic),
-        link = SpanStyle(color = colors.accent),
-        quote = SpanStyle(color = colors.textSecondary, fontStyle = FontStyle.Italic),
-        muted = SpanStyle(color = colors.textMuted),
-        h1 = SpanStyle(fontWeight = FontWeight.Bold, fontSize = type.body.fontSize * 1.25f),
-        h2 = SpanStyle(fontWeight = FontWeight.Bold, fontSize = type.body.fontSize * 1.12f),
-        h3 = SpanStyle(fontWeight = FontWeight.Bold),
-    )
+    // Styles phai duoc remember: tao moi moi recompose lam key cua
+    // remember(markdown, styles) thay doi lien tuc -> parse lai toan bo text.
+    val styles = remember(colors, type) {
+        MdStyles(
+            code = SpanStyle(fontFamily = FontFamily.Monospace, background = colors.surfaceVariant),
+            bold = SpanStyle(fontWeight = FontWeight.Bold),
+            italic = SpanStyle(fontStyle = FontStyle.Italic),
+            link = SpanStyle(color = colors.accent),
+            quote = SpanStyle(color = colors.textSecondary, fontStyle = FontStyle.Italic),
+            muted = SpanStyle(color = colors.textMuted),
+            h1 = SpanStyle(fontWeight = FontWeight.Bold, fontSize = type.body.fontSize * 1.25f),
+            h2 = SpanStyle(fontWeight = FontWeight.Bold, fontSize = type.body.fontSize * 1.12f),
+            h3 = SpanStyle(fontWeight = FontWeight.Bold),
+        )
+    }
     val annotated = remember(markdown, styles) { buildMiniMarkdown(markdown, styles) }
     BasicText(text = annotated, style = TextStyle(color = colors.textPrimary, fontSize = type.body.fontSize))
 }
@@ -79,7 +83,8 @@ private fun buildMiniMarkdown(md: String, s: MdStyles): AnnotatedString = buildA
         val t = line.trim()
         when {
             t.isEmpty() -> append('\n')
-            t.startsWith("#") -> {
+            // Dau "#" troong thi bo qua chu tao khoang trong vo hinh.
+            t.startsWith("#") && !t.dropWhile { it == '#' }.isBlank() -> {
                 val level = t.takeWhile { it == '#' }.length.coerceAtMost(3)
                 val style = when (level) { 1 -> s.h1; 2 -> s.h2; else -> s.h3 }
                 withStyle(style) { appendInline(t.dropWhile { it == '#' || it == ' ' }, s) }
@@ -91,7 +96,7 @@ private fun buildMiniMarkdown(md: String, s: MdStyles): AnnotatedString = buildA
                 append('\n')
             }
             t.matches(Regex("(-{3,}|\\*{3,}|_{3,})")) -> {
-                withStyle(s.muted) { append("────────────") }
+                withStyle(s.muted) { append("────────────────────────────────────────") }
                 append('\n')
             }
             Regex("^([-*]|\\d+[.)])\\s").containsMatchIn(t.take(4)) -> {

@@ -23,16 +23,21 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
+// 23/8: bo view WALLET theo yeu cau user — no la vi tri crash, va thong tin
+// so du vi du trung voi cot WALLET trong Overview. Chi con POSITIONS/CHARTS.
 enum class DbtopView(val label: String) {
     POSITIONS("Positions"),
-    WALLET("Wallet"),
     CHARTS("Charts"),
 }
 
 internal const val DBTOP_HIGH_RISK_HEALTH_FACTOR = 1.25
 
 /** Names are not unique across protocols, so selection needs a composite key. */
-internal fun DappRow.positionKey(): String = "$proto\u0000$name\u0000$src"
+internal fun DappRow.positionKey(): String =
+    // Them hash gia tri de hai vi the GIONG HET nhau (cung proto/name/src —
+    // deban tra ve the) khong sinh key trung trong LazyColumn: truoc day
+    // crash "Key was already used".
+    "$proto\u0000$name\u0000$src\u0000${cap.hashCode() * 31 + perday.hashCode()}"
 
 /**
  * Trạng thái UI toàn diện của Dashboard dbtop.
@@ -51,7 +56,7 @@ data class DbtopUiState(
      */
     val criticalLendingRow: DappRow?
         get() = state.rows
-            .filter { it.health != null && it.health < DBTOP_HIGH_RISK_HEALTH_FACTOR }
+            .filter { it.health != null && it.health > 0.0 && it.health < DBTOP_HIGH_RISK_HEALTH_FACTOR }
             .minByOrNull { it.health ?: Double.MAX_VALUE }
 
     /**
@@ -59,7 +64,7 @@ data class DbtopUiState(
      * Không dùng thẳng state.perday: option có thể đáo hạn giữa hai lần scan.
      */
     fun currentPerDay(nowSec: Long = System.currentTimeMillis() / 1_000L): Double? {
-        if (freshness is DataFreshness.Dead) return null
+        if (!everLoaded || freshness is DataFreshness.Dead) return null
         return state.rows.sumOf { row ->
             if (row.expiry != null && row.expiry <= nowSec) 0.0 else row.perday
         }
@@ -170,7 +175,10 @@ class DbtopViewModel(
         when (val result = withContext(Dispatchers.IO) { httpClient.fetch(forceRefresh = !isBackgroundPoll) }) {
             is DbtopClient.FetchResult.Fresh -> {
                 withContext(Dispatchers.IO) {
-                    cacheManager.saveSnapshot(result.rawJson)
+                    // Chi ghi khi payload doi — truoc day ghi de XML moi 20s poll.
+                    if (cacheManager.lastRaw() != result.rawJson) {
+                        cacheManager.saveSnapshot(result.rawJson)
+                    }
                 }
                 _ui.update {
                     it.copy(

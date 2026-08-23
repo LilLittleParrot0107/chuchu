@@ -147,7 +147,7 @@ internal fun QueueAgentRoster(
                                 color = colors.textMuted,
                                 maxLines = 1,
                             )
-                            Spacer(Modifier.width(8.dp))
+                            Spacer(Modifier.width(6.dp))
                         }
                         // Chi dem task KHI co viec; khong thay bang dau '.' de ruot
                         // phai khong con dau trang tri du thua.
@@ -155,7 +155,7 @@ internal fun QueueAgentRoster(
                             if (taskCount > 0) taskCount.toString() else "",
                             style = type.labelSmall,
                             color = colors.accent,
-                            modifier = Modifier.width(14.dp),
+                            modifier = Modifier.width(16.dp),
                         )
                     }
                 }
@@ -235,7 +235,7 @@ internal fun QueueTaskDetailPane(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(max = 176.dp)
+            .heightIn(max = 220.dp)
             .background(colors.surface),
     ) {
         Box(
@@ -258,7 +258,7 @@ internal fun QueueTaskDetailPane(
                 ChuText(
                     "#${task.id} · ${task.stateLabel.uppercase()}",
                     style = type.labelSmall.copy(fontWeight = FontWeight.Bold),
-                    color = task.tone.color(),
+                    color = colors.textSecondary,
                 )
                 if (task.sub.isNotBlank()) {
                     ChuText(
@@ -280,7 +280,7 @@ internal fun QueueTaskDetailPane(
             )
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 KohiCompactAction(
                     label = if (task.hasResp || task.isCompleted) "VIEW RESPONSE" else "VIEW PROMPT",
@@ -323,7 +323,7 @@ internal fun EmptyQueueInspector(
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (agent != null) {
                 ChuText(runtimeDot(agent), style = type.label, color = agent.tone.color())
-                Spacer(Modifier.width(7.dp))
+                Spacer(Modifier.width(6.dp))
             }
             ChuText(
                 scopeLabel,
@@ -399,11 +399,11 @@ internal fun QueueComposer(
         Row(
             modifier = Modifier
                 .weight(1f)
-                .defaultMinSize(minHeight = 40.dp)
+                .defaultMinSize(minHeight = 48.dp)
                 .background(colors.surfaceVariant)
                 .border(1.dp, if (canSend) colors.accent.copy(alpha = 0.45f) else colors.border)
                 .padding(horizontal = 10.dp, vertical = 5.dp),
-            verticalAlignment = if (value.contains('\n')) Alignment.Top else Alignment.CenterVertically,
+            verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             agent?.let {
@@ -437,6 +437,7 @@ internal fun QueueComposer(
                                 style = type.body,
                                 color = colors.disabledText,
                                 maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
                             )
                         }
                         inner()

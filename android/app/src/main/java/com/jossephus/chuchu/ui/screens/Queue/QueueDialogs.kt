@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,6 +25,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -52,7 +54,7 @@ internal fun TaskDetailDialog(
     var responseText by remember { mutableStateOf<String?>(null) }
     var loadingResponse by remember { mutableStateOf(false) }
 
-    LaunchedEffect(task.id) {
+    LaunchedEffect(task.id, task.hasResp) {
         if (task.hasResp || task.isCompleted) {
             loadingResponse = true
             responseText = onFetchResponse?.invoke(task.id)
@@ -70,6 +72,7 @@ internal fun TaskDetailDialog(
                 .fillMaxWidth()
                 .heightIn(max = maxDialogH)
                 .background(colors.surface)
+                .border(1.dp, colors.border)
                 .padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -97,11 +100,13 @@ internal fun TaskDetailDialog(
                 ChuText("PROMPT", style = type.labelSmall, color = colors.textMuted)
                 ScrollableTextPanel(
                     text = task.text,
-                    maxHeight = if (responseText != null) 120 else 240,
+                    maxHeight = 240,
                 )
 
                 when {
                     loadingResponse -> ChuText("LOADING AGENT RESPONSE…", style = type.labelSmall, color = colors.accent)
+                    task.isCompleted && responseText.isNullOrBlank() && !loadingResponse ->
+                        ChuText("NO RESPONSE FETCHED — TRY AGAIN", style = type.labelSmall, color = colors.textMuted)
                     !responseText.isNullOrBlank() -> {
                         ChuText("AGENT RESPONSE", style = type.labelSmall, color = colors.accent)
                         ScrollableTextPanel(
@@ -191,6 +196,8 @@ internal fun QueueConfigDialog(
                 label = "AUTH TOKEN (OPTIONAL)",
                 placeholder = "Leave blank when using Tailscale",
                 singleLine = true,
+                autoFocus = false,
+                visualTransformation = PasswordVisualTransformation(),
             )
         }
     }
@@ -212,15 +219,34 @@ internal fun QueueLogsDialog(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(colors.surface)
+                .border(1.dp, colors.border)
                 .padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            // Header dung dung ngu phap band cua app: ▌ LABEL · META + actions
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                ChuText("DAEMON LOGS", style = type.title)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    ChuText("▌", style = type.labelSmall, color = colors.accent)
+                    ChuText(
+                        "DAEMON LOGS",
+                        style = type.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = colors.textSecondary,
+                    )
+                    if (logs.isNotEmpty()) {
+                        ChuText(
+                            "· ${logs.size} LINES",
+                            style = type.labelSmall,
+                            color = colors.textMuted,
+                        )
+                    }
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     KohiCompactAction(label = "↻", onClick = onRefresh)
                     KohiCompactAction(label = "✕", onClick = onDismiss)
@@ -240,14 +266,12 @@ internal fun QueueLogsDialog(
                     logs.isEmpty() -> ChuText("NO LOGS AVAILABLE", style = type.bodySmall, color = colors.textMuted)
                     else -> Column {
                         logs.forEach { line ->
+                            val isErr = Regex("\\b(error|fatal|panic|fail(ed|ure)s?)\\b", RegexOption.IGNORE_CASE)
+                                .containsMatchIn(line)
                             ChuText(
                                 line,
                                 style = type.bodySmall,
-                                color = if (line.contains("error", true) || line.contains("fail", true)) {
-                                    colors.error
-                                } else {
-                                    colors.textSecondary
-                                },
+                                color = if (isErr) colors.error else colors.textSecondary,
                             )
                         }
                     }

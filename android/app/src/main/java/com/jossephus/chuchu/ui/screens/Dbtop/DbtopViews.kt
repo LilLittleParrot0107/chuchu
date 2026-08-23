@@ -20,7 +20,6 @@ import androidx.compose.ui.unit.dp
 import com.jossephus.chuchu.data.model.dbtop.CurvePoint
 import com.jossephus.chuchu.data.model.dbtop.DailyYield
 import com.jossephus.chuchu.data.model.dbtop.DeFiFormatter
-import com.jossephus.chuchu.data.model.dbtop.WalletToken
 import com.jossephus.chuchu.ui.components.ChuText
 import com.jossephus.chuchu.ui.components.KohiSectionBand
 import com.jossephus.chuchu.ui.components.chart.DailyYieldBarChart
@@ -28,47 +27,6 @@ import com.jossephus.chuchu.ui.components.chart.NetWorthCurveChart
 import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTypography
 import java.util.Locale
-
-@Composable
-internal fun WalletView(tokens: List<WalletToken>) {
-    if (tokens.isEmpty()) {
-        DashboardEmpty("NO WALLET TOKENS")
-        return
-    }
-    LazyColumn(modifier = Modifier.fillMaxSize()) {
-        items(tokens, key = WalletToken::sym) { token ->
-            WalletTokenRow(token)
-        }
-    }
-}
-
-@Composable
-private fun WalletTokenRow(token: WalletToken) {
-    val colors = ChuColors.current
-    val type = ChuTypography.current
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(colors.surfaceVariant)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            ChuText(token.sym, style = type.label.copy(fontWeight = FontWeight.Bold), color = colors.textPrimary)
-            ChuText(
-                "${String.format(Locale.US, "%.4f", token.amt)} @ ${DeFiFormatter.formatUsd(token.px)}",
-                style = type.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                color = colors.textMuted,
-            )
-        }
-        ChuText(
-            DeFiFormatter.formatUsd(token.usd),
-            style = type.label.copy(fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace),
-            color = colors.textPrimary,
-        )
-    }
-}
 
 @Composable
 internal fun ChartsView(
@@ -88,7 +46,11 @@ internal fun ChartsView(
                     .background(colors.surfaceVariant)
                     .padding(10.dp),
             ) {
-                NetWorthCurveChart(points = curve, lineColor = colors.accent, height = 180.dp)
+                if (curve.isEmpty()) {
+                    ChuText("NO CURVE DATA", style = type.labelSmall, color = colors.textMuted)
+                } else {
+                    NetWorthCurveChart(points = curve, lineColor = colors.accent, height = 180.dp)
+                }
             }
         }
         item(key = "daily_yield") {

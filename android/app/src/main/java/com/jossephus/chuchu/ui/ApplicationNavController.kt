@@ -25,6 +25,7 @@ import androidx.navigation.navArgument
 import com.jossephus.chuchu.data.repository.SettingsRepository
 import com.jossephus.chuchu.ui.screens.AddServer.AddServerScreen
 import com.jossephus.chuchu.ui.screens.AddServer.AddServerViewModel
+import com.jossephus.chuchu.ui.screens.Dbtop.DbtopScreen
 import com.jossephus.chuchu.ui.screens.Queue.QueueScreen
 import com.jossephus.chuchu.ui.screens.Queue.QueueViewModel
 import com.jossephus.chuchu.ui.screens.ServerList.ServerListScreen
@@ -157,12 +158,18 @@ fun ApplicationNavController() {
                     }
                 },
                 onDeleteServer = vm::deleteServer,
+                onOpenDashboard = { navController.navigate("dashboard") },
                 onOpenSettings = { navController.navigate("settings") },
                 onOpenWeb = { navController.navigate("web") },
                 onOpenQueue = { pane ->
                     navController.navigate(if (pane != null) "queue?pane=$pane" else "queue")
                 },
                 queueSummary = queueAmbientSummary,
+            )
+        }
+        composable("dashboard") {
+            DbtopScreen(
+                onClose = { navController.popBackStack() },
             )
         }
         composable(

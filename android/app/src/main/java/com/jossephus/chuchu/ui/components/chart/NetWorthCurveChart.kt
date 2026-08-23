@@ -82,7 +82,7 @@ fun NetWorthCurveChart(
     val maxVal = remember(points) { points.maxOfOrNull { it.nw } ?: 1.0 }
     val valueRange = if (maxVal == minVal) 1.0 else (maxVal - minVal)
 
-    val labelTextStyle = remember {
+    val labelTextStyle = remember(textColor) {
         TextStyle(
             color = textColor,
             fontSize = 9.sp,
@@ -185,7 +185,7 @@ fun NetWorthCurveChart(
 
             for (i in 0 until pointCount) {
                 val normX = if (pointCount > 1) i.toFloat() / (pointCount - 1) else 0.5f
-                val normY = ((points[i].nw - minVal) / valueRange).toFloat().coerceIn(0f, 1f)
+                val normY = (if (maxVal == minVal) 0.5 else (points[i].nw - minVal) / valueRange).toFloat().coerceIn(0f, 1f)
 
                 xCoords[i] = leftPadding + normX * plotWidth
                 yCoords[i] = topPadding + (1f - normY) * plotHeight
@@ -308,6 +308,8 @@ fun NetWorthCurveChart(
                 var boxLeft = markerX - boxWidth / 2f
                 if (boxLeft < leftPadding) boxLeft = leftPadding
                 if (boxLeft + boxWidth > canvasWidth - rightPadding) boxLeft = canvasWidth - rightPadding - boxWidth
+                if (boxLeft < leftPadding) boxLeft = leftPadding
+                if (boxLeft < leftPadding) boxLeft = leftPadding
 
                 var boxTop = markerY - boxHeight - 10.dp.toPx()
                 if (boxTop < 4.dp.toPx()) boxTop = markerY + 10.dp.toPx()
