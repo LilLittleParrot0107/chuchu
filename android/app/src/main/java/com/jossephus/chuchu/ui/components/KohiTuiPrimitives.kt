@@ -47,23 +47,24 @@ fun KohiCommandBand(
         modifier = modifier
             .fillMaxWidth()
             .background(colors.surface)
-            .padding(horizontal = 10.dp, vertical = 6.dp),
+            .padding(horizontal = 10.dp, vertical = 4.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Row(
             modifier = Modifier.weight(1f),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(7.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             if (onBack != null) {
                 ChuButton(
                     onClick = onBack,
                     variant = ChuButtonVariant.Ghost,
                     bracketed = true,
-                    contentPadding = PaddingValues(horizontal = 5.dp, vertical = 2.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 3.dp),
+                    minHeight = 26.dp,
                 ) {
-                    ChuText("←", style = type.label, color = colors.textSecondary)
+                    ChuText("←", style = type.labelSmall, color = colors.textSecondary)
                 }
             }
             ChuText(
@@ -140,7 +141,7 @@ fun KohiNoticeBand(
         modifier = modifier
             .fillMaxWidth()
             .background(if (urgent) color else color.copy(alpha = 0.14f))
-            .padding(horizontal = 12.dp, vertical = 6.dp),
+            .padding(horizontal = 10.dp, vertical = 6.dp),
     ) {
         ChuText(
             text,
@@ -187,7 +188,7 @@ fun KohiFeedbackBand(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier
                 .weight(1f)
-                .padding(horizontal = 9.dp, vertical = 6.dp),
+                .padding(horizontal = 10.dp, vertical = 6.dp),
         )
         ChuButton(
             onClick = onDismiss,
@@ -249,7 +250,7 @@ fun KohiSelectableRow(
     tone: Color,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    contentPadding: PaddingValues = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+    contentPadding: PaddingValues = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
     content: @Composable RowScope.() -> Unit,
 ) {
     val colors = ChuColors.current

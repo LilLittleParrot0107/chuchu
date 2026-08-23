@@ -26,7 +26,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -76,8 +75,8 @@ internal fun QueueAgentRoster(
                 variant = ChuButtonVariant.Ghost,
                 bracketed = true,
                 borderColor = if (spreadMode) colors.accent else colors.border,
-                contentPadding = PaddingValues(horizontal = 9.dp, vertical = 4.dp),
-                modifier = Modifier.defaultMinSize(minHeight = 32.dp),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 3.dp),
+                minHeight = 26.dp,
             ) {
                 // Ten nut noi ra HANH DONG se lam (focus mot agent / tra ve all),
                 // mau accent khi dang o che do lan tay de che do nay khong bi lan
@@ -104,7 +103,8 @@ internal fun QueueAgentRoster(
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 200.dp),
+                    .heightIn(max = 232.dp),
+                verticalArrangement = Arrangement.spacedBy(3.dp),
             ) {
                 items(agents, key = QueueAgent::pane) { agent ->
                     val selected = selectedPane == agent.pane
@@ -114,42 +114,46 @@ internal fun QueueAgentRoster(
                         selected = selected,
                         tone = colors.accent,      // rail + border theo ACCENT, khong theo tone
                         onClick = { onSelect(agent.pane) },
-                        contentPadding = PaddingValues(horizontal = 9.dp, vertical = 7.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
                     ) {
                         // Slot con tro '>' co dinh: selection nhan mat ngay ca khi
                         // qua mau sac khong doc duoc.
                         ChuText(
                             if (selected) ">" else "",
-                            style = type.label.copy(fontWeight = FontWeight.Bold),
+                            style = type.labelSmall.copy(fontWeight = FontWeight.Bold),
                             color = colors.accent,
-                            modifier = Modifier.width(12.dp),
+                            modifier = Modifier.width(11.dp),
                         )
                         ChuText(
                             runtimeDot(agent),
-                            style = type.label,
+                            style = type.labelSmall,
                             color = if (working) colors.success else agent.tone.color(),
                         )
-                        Spacer(Modifier.width(7.dp))
+                        Spacer(Modifier.width(6.dp))
                         ChuText(
                             agent.name,
-                            style = type.label.copy(fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal),
+                            style = type.labelSmall.copy(fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal),
                             color = if (selected) colors.textPrimary else colors.textSecondary,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f),
                         )
-                        ChuText(
-                            agent.label.uppercase(),
-                            style = type.labelSmall,
-                            color = if (working) colors.success else colors.textMuted,
-                            maxLines = 1,
-                        )
-                        Spacer(Modifier.width(8.dp))
+                        // Dot ●○ da noi ro trang thai — tu trang thai dac biet
+                        // (▲ blocked, ? unknown) moi can chu di kem.
+                        if (runtimeDot(agent) !in listOf("●", "○")) {
+                            ChuText(
+                                agent.label.uppercase(),
+                                style = type.labelSmall,
+                                color = colors.textMuted,
+                                maxLines = 1,
+                            )
+                            Spacer(Modifier.width(8.dp))
+                        }
                         // Chi dem task KHI co viec; khong thay bang dau '.' de ruot
                         // phai khong con dau trang tri du thua.
                         ChuText(
                             if (taskCount > 0) taskCount.toString() else "",
-                            style = type.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                            style = type.labelSmall,
                             color = colors.accent,
                             modifier = Modifier.width(14.dp),
                         )
@@ -174,13 +178,20 @@ internal fun QueueTaskRow(
         selected = selected,
         tone = task.tone.color(),
         onClick = onClick,
-        contentPadding = PaddingValues(horizontal = 9.dp, vertical = 7.dp),
+        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
     ) {
+        // Con tro '>' dong nhat voi roster: task dang mo detail pane.
+        ChuText(
+            if (selected) ">" else "",
+            style = type.labelSmall.copy(fontWeight = FontWeight.Bold),
+            color = colors.accent,
+            modifier = Modifier.width(11.dp),
+        )
         ChuText(task.glyph, style = type.labelSmall, color = task.tone.color())
         Spacer(Modifier.width(6.dp))
         ChuText(
             "#${task.id}",
-            style = type.labelSmall.copy(fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace),
+            style = type.labelSmall.copy(fontWeight = FontWeight.Bold),
             color = colors.accentSecondary,
         )
         if (showTarget && task.target.isNotBlank()) {
@@ -194,7 +205,7 @@ internal fun QueueTaskRow(
                 modifier = Modifier.weight(0.28f, fill = false),
             )
         }
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(6.dp))
         ChuText(
             task.text.replace('\n', ' '),
             style = type.bodySmall.copy(
@@ -204,13 +215,6 @@ internal fun QueueTaskRow(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
-        )
-        Spacer(Modifier.width(8.dp))
-        ChuText(
-            if (task.isRunning) "ACTIVE" else task.stateLabel.uppercase(),
-            style = type.labelSmall.copy(fontWeight = FontWeight.Bold),
-            color = task.tone.color(),
-            maxLines = 1,
         )
     }
 }
@@ -243,7 +247,7 @@ internal fun QueueTaskDetailPane(
         Column(
             modifier = Modifier
                 .weight(1f)
-                .padding(horizontal = 10.dp, vertical = 7.dp),
+                .padding(horizontal = 10.dp, vertical = 6.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Row(
@@ -275,7 +279,7 @@ internal fun QueueTaskDetailPane(
                 overflow = TextOverflow.Ellipsis,
             )
             FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 KohiCompactAction(
@@ -315,57 +319,47 @@ internal fun EmptyQueueInspector(
     val done = tasks.count { it.isCompleted }
     val recent = tasks.lastOrNull { it.isCompleted }
 
-    Box(modifier = modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 12.dp)) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .border(1.dp, colors.border)
-                .background(colors.surfaceVariant)
-                .padding(horizontal = 12.dp, vertical = 11.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (agent != null) {
-                    ChuText(runtimeDot(agent), style = type.label, color = agent.tone.color())
-                    Spacer(Modifier.width(7.dp))
-                }
-                ChuText(
-                    scopeLabel,
-                    style = type.label.copy(fontWeight = FontWeight.Bold),
-                    color = colors.textPrimary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+    Column(modifier = modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (agent != null) {
+                ChuText(runtimeDot(agent), style = type.label, color = agent.tone.color())
+                Spacer(Modifier.width(7.dp))
             }
-            InspectorRow("STATUS", agent?.label?.uppercase() ?: "—", colors.textSecondary)
-            InspectorRow(
-                "QUEUE",
-                "$pending QUEUED · $done DONE",
-                if (pending > 0) colors.accent else colors.textMuted,
-            )
-            if (recent != null) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ChuText("RECENT", style = type.labelSmall, color = colors.textMuted, modifier = Modifier.width(52.dp))
-                    ChuText(
-                        "#${recent.id} ${recent.stateLabel.uppercase()} · ${recent.text.replace('\n', ' ')}",
-                        style = type.labelSmall,
-                        color = colors.textSecondary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-            }
-            Spacer(Modifier.heightIn(min = 2.dp))
             ChuText(
-                agent?.let { "› type below to send a task to @${it.name}" }
-                    ?: "› pick an agent above to send work",
-                style = type.labelSmall,
-                color = colors.textMuted,
+                scopeLabel,
+                style = type.label.copy(fontWeight = FontWeight.Bold),
+                color = colors.textPrimary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
+        InspectorRow("STATUS", agent?.label?.uppercase() ?: "—", colors.textSecondary)
+        InspectorRow(
+            "QUEUE",
+            "$pending QUEUED · $done DONE",
+            if (pending > 0) colors.accent else colors.textMuted,
+        )
+        if (recent != null) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ChuText("RECENT", style = type.labelSmall, color = colors.textMuted, modifier = Modifier.width(52.dp))
+                ChuText(
+                    "#${recent.id} ${recent.stateLabel.uppercase()} · ${recent.text.replace('\n', ' ')}",
+                    style = type.labelSmall,
+                    color = colors.textSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+        ChuText(
+            agent?.let { "› type below to send a task to @${it.name}" }
+                ?: "› pick an agent above to send work",
+            style = type.labelSmall,
+            color = colors.textMuted,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -374,7 +368,7 @@ private fun InspectorRow(key: String, value: String, valueColor: Color) {
     val type = ChuTypography.current
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         ChuText(key, style = type.labelSmall, color = ChuColors.current.textMuted, modifier = Modifier.width(52.dp))
-        ChuText(value, style = type.labelSmall.copy(fontFamily = FontFamily.Monospace), color = valueColor)
+        ChuText(value, style = type.labelSmall, color = valueColor)
     }
 }
 
@@ -408,7 +402,7 @@ internal fun QueueComposer(
                 .defaultMinSize(minHeight = 40.dp)
                 .background(colors.surfaceVariant)
                 .border(1.dp, if (canSend) colors.accent.copy(alpha = 0.45f) else colors.border)
-                .padding(horizontal = 9.dp, vertical = 5.dp),
+                .padding(horizontal = 10.dp, vertical = 5.dp),
             verticalAlignment = if (value.contains('\n')) Alignment.Top else Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
@@ -450,15 +444,15 @@ internal fun QueueComposer(
                 },
             )
         }
-        Spacer(Modifier.width(7.dp))
+        Spacer(Modifier.width(6.dp))
         // Send la hanh dong van ban trong terminal, KHONG phai block rieng;
         // disabled thi moi mo di chu khong bien thanh nut "co ve bi liet".
         ChuButton(
             onClick = onSend,
             enabled = canSend,
             variant = ChuButtonVariant.Ghost,
-            contentPadding = PaddingValues(horizontal = 7.dp, vertical = 4.dp),
-            minHeight = 28.dp,
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 3.dp),
+            minHeight = 26.dp,
         ) {
             ChuText(
                 if (sending) "[…]" else "[SEND]",

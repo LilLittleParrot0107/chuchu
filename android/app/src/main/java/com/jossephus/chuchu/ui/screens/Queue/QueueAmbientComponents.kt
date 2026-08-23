@@ -32,7 +32,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -87,7 +86,7 @@ fun QueueAmbientFab(
             .background(colors.surface)
             .border(BorderStroke(1.dp, borderColor), RoundedCornerShape(6.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 5.dp),
+            .padding(horizontal = 8.dp, vertical = 3.dp),
         contentAlignment = Alignment.Center,
     ) {
         Row(
@@ -96,7 +95,7 @@ fun QueueAmbientFab(
         ) {
             ChuText(
                 labelText,
-                style = typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace),
+                style = typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                 color = iconColor,
             )
             if (summary.isAnyBlocked) {
@@ -181,7 +180,7 @@ fun QueueAmbientTickerPill(
                     .padding(horizontal = 10.dp, vertical = 4.dp)
                     .animateContentSize(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(7.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 ChuText("●", style = typography.labelSmall, color = statusColor)
 
@@ -201,7 +200,7 @@ fun QueueAmbientTickerPill(
 
                     ChuText(
                         text = message,
-                        style = typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                        style = typography.labelSmall,
                         color = colors.textPrimary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -220,7 +219,7 @@ fun QueueAmbientTickerPill(
                     // Dạng thu gọn: chấm màu + số việc. Vẫn giữa màn hình.
                     ChuText(
                         "${summary.totalActive}",
-                        style = typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                        style = typography.labelSmall,
                         color = colors.textPrimary,
                     )
                 }

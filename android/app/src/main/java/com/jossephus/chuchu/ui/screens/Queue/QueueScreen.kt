@@ -93,7 +93,8 @@ fun QueueScreen(
     val selectedTask = visibleTasks.firstOrNull { it.id == selectedTaskId }
     val doneCount = visibleTasks.count { it.isCompleted }
     val isAdding = QueueOperationKey.ADD in ui.busyOps
-    val isClearingDone = ui.busyOps.any(QueueOperationKey::isClearDone)
+    val isClearingDone =
+        QueueOperationKey.clearDone(if (pane == ALL_AGENTS) null else pane) in ui.busyOps
 
     fun copyPrompt(task: QueueTask) {
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -163,9 +164,23 @@ fun QueueScreen(
                 // ai giai thich duoc ma van giu dung do rong terminal).
                 KohiCompactAction(label = "SYNC", onClick = onRefresh)
                 KohiCompactAction(label = "CFG", onClick = { configOpen = true })
+                // Clear done nam cung hang LOGS/SYNC chu khong o section band:
+                // chip 26dp keo band 26dp len 36dp dung luc co viec xong, trong
+                // khi qq giu band muc thuan thong tin mot dong.
+                if (doneCount > 0) {
+                    KohiCompactAction(
+                        label = if (isClearingDone) "CLEARING" else "CLEAR DONE",
+                        enabled = !isClearingDone,
+                        danger = true,
+                        onClick = { onClearDone(if (pane == ALL_AGENTS) null else pane) },
+                    )
+                }
             }
 
+            // Paused da hien trong status cua command band -> khong lap lai
+            // bang mot notice band 28dp nua.
             val notice = ui.error ?: ui.state.banner?.text
+                ?.takeUnless { ui.state.paused && it.contains("paused", ignoreCase = true) }
             if (!notice.isNullOrBlank()) {
                 KohiNoticeBand(
                     text = notice,
@@ -193,16 +208,7 @@ fun QueueScreen(
                     append("${visibleTasks.size} TASKS")
                 },
                 accent = selectedAgent?.tone?.color() ?: colors.accent,
-            ) {
-                if (doneCount > 0) {
-                    KohiCompactAction(
-                        label = if (isClearingDone) "CLEARING" else "CLEAR DONE",
-                        enabled = !isClearingDone,
-                        danger = true,
-                        onClick = { onClearDone(if (pane == ALL_AGENTS) null else pane) },
-                    )
-                }
-            }
+            )
 
             Box(
                 modifier = Modifier

@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -27,8 +26,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.jossephus.chuchu.ui.components.ChuDialog
@@ -74,7 +71,7 @@ internal fun TaskDetailDialog(
                 .heightIn(max = maxDialogH)
                 .background(colors.surface)
                 .padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(9.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -95,13 +92,12 @@ internal fun TaskDetailDialog(
                 modifier = Modifier
                     .weight(1f, fill = false)
                     .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(9.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 ChuText("PROMPT", style = type.labelSmall, color = colors.textMuted)
                 ScrollableTextPanel(
                     text = task.text,
                     maxHeight = if (responseText != null) 120 else 240,
-                    monospace = false,
                 )
 
                 when {
@@ -120,7 +116,7 @@ internal fun TaskDetailDialog(
             FlowRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalArrangement = Arrangement.spacedBy(5.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 KohiCompactAction(label = "COPY PROMPT", onClick = onCopy)
                 if (!responseText.isNullOrBlank()) {
@@ -145,7 +141,7 @@ internal fun TaskDetailDialog(
 }
 
 @Composable
-private fun ScrollableTextPanel(text: String, maxHeight: Int, monospace: Boolean = false, markdown: Boolean = false) {
+private fun ScrollableTextPanel(text: String, maxHeight: Int, markdown: Boolean = false) {
     val colors = ChuColors.current
     val type = ChuTypography.current
     Box(
@@ -156,13 +152,10 @@ private fun ScrollableTextPanel(text: String, maxHeight: Int, monospace: Boolean
             .padding(8.dp)
             .verticalScroll(rememberScrollState()),
     ) {
-        when {
-            markdown -> MiniMarkdownText(text)
-            monospace -> BasicText(
-                text = buildAnnotatedString { append(text) },
-                style = type.bodySmall.copy(color = colors.textPrimary, fontFamily = FontFamily.Monospace),
-            )
-            else -> ChuText(text, style = type.body, color = colors.textPrimary)
+        if (markdown) {
+            MiniMarkdownText(text)
+        } else {
+            ChuText(text, style = type.body, color = colors.textPrimary)
         }
     }
 }
@@ -236,7 +229,7 @@ internal fun QueueLogsDialog(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(280.dp)
+                    .heightIn(max = 280.dp)
                     .background(colors.surfaceVariant)
                     .padding(8.dp)
                     .verticalScroll(rememberScrollState()),
@@ -249,7 +242,7 @@ internal fun QueueLogsDialog(
                         logs.forEach { line ->
                             ChuText(
                                 line,
-                                style = type.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                                style = type.bodySmall,
                                 color = if (line.contains("error", true) || line.contains("fail", true)) {
                                     colors.error
                                 } else {
