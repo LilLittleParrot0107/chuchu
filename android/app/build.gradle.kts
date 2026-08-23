@@ -25,10 +25,13 @@ android {
         targetSdk = 36
 
         // kohi versioning: keep in step with the delivered APK name
-        // (kohi-v<major>.<minor>.<patch>.apk).
+        // (kohi-v<major>.<minor>.<patch>.apk). CI truyền VERSION_* qua input
+        // của build-debug-apk.yml; default dưới đây chỉ cho build tay, phải
+        // được nâng cùng phiên bản phát hành (23/8: từng quên -> versionCode
+        // tụt về 1.23.13 và máy từ chối cài vì downgrade).
         val major = (System.getenv("VERSION_MAJOR")?.toIntOrNull() ?: 1)
-        val minor = (System.getenv("VERSION_MINOR")?.toIntOrNull() ?: 23)
-        val patch = (System.getenv("VERSION_PATCH")?.toIntOrNull() ?: 13)
+        val minor = (System.getenv("VERSION_MINOR")?.toIntOrNull() ?: 50)
+        val patch = (System.getenv("VERSION_PATCH")?.toIntOrNull() ?: 0)
         // versionCode must never go backwards: Android refuses to install a
         // lower code over an existing build.
         val releaseBase = major * 10_000 + minor * 100 + patch

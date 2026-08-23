@@ -3,7 +3,17 @@
 name: Build debug APK
 
 on:
-  workflow_dispatch: {}
+on:
+  workflow_dispatch:
+    inputs:
+      minor:
+        description: 'VERSION_MINOR — phải tăng mỗi lần phát hành (kohi-v1.<minor>)'
+        required: false
+        default: '50'
+      patch:
+        description: 'VERSION_PATCH'
+        required: false
+        default: '0'
 
 # Bấm dispatch lần nữa thì huỷ lần trước: hôm 20/8 có 15 lần dispatch, nhiều
 # lần chỉ để sửa một chi tiết giao diện, và các run cũ vẫn chạy tới hết.
@@ -74,6 +84,13 @@ jobs:
       - name: build android release APK
         env:
           ANDROID_ABI_FILTERS: arm64-v8a
+          # 23/8: từng quên truyền VERSION_* nên mọi APK sau v1.47 đều mang
+          # versionCode 12.313.000 ("1.23.13") — cài lên máy đang có bản dòng
+          # 1.47 (14.700.000) bị Android từ chối vì downgrade. Từ đây minor
+          # phải tăng theo tên file phát hành.
+          VERSION_MAJOR: '1'
+          VERSION_MINOR: ${{ inputs.minor || '50' }}
+          VERSION_PATCH: ${{ inputs.patch || '0' }}
         run: |
           nix develop -c bash -c '
             set -e
