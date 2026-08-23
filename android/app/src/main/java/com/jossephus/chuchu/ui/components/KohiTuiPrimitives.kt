@@ -107,12 +107,12 @@ fun KohiCompactAction(
         onClick = onClick,
         enabled = enabled,
         variant = ChuButtonVariant.Ghost,
-        bracketed = true,
+        // Bỏ bracket: 5 chip trong command band (PAUSE LOGS SYNC CFG + CLEAR)
+        // mỗi cái mang "[ ]" tốn ~20dp đã đè title "QUEUE" thành "QU…".
+        // qq dùng từ trần cho micro-action — làm theo để vừa.
+        bracketed = false,
         borderColor = if (danger) colors.error else colors.border,
-        // Compact THẬT SỰ: cao bằng một dòng terminal (~26dp), không phình
-        // band chứa nó. Trước đây 36dp của ChuButtonSurface đẩy band CLEAR
-        // DONE lên gần gấp rưỡi so với dòng chữ bên cạnh.
-        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
         minHeight = 24.dp,
         modifier = modifier,
     ) {
