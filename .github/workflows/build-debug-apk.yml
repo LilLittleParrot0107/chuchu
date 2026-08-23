@@ -13,6 +13,10 @@ on:
         description: 'VERSION_PATCH'
         required: false
         default: '0'
+      abi:
+        description: 'arm64-v8a (dien thoai that) hoac x86_64 (emulator test)'
+        required: false
+        default: 'arm64-v8a'
 
 # Bấm dispatch lần nữa thì huỷ lần trước: hôm 20/8 có 15 lần dispatch, nhiều
 # lần chỉ để sửa một chi tiết giao diện, và các run cũ vẫn chạy tới hết.
@@ -67,11 +71,19 @@ jobs:
           restore-keys: gradle-
 
       - name: build chuchu_jni
+        env:
+          BUILD_ABI: ${{ inputs.abi || 'arm64-v8a' }}
         run: |
+          # Map ABI -> triple zig (x86_64 dung cho emulator test tren may PC)
+          case "$BUILD_ABI" in
+            arm64-v8a) ZIG_TARGET=aarch64-linux-android.24 ;;
+            x86_64)    ZIG_TARGET=x86_64-linux-android.24 ;;
+            *) echo "ABI khong duoc ho tro: $BUILD_ABI"; exit 1 ;;
+          esac
           nix develop -c bash -c '
             set -e
             cd zig-src
-            zig build -Doptimize=ReleaseSmall -Dtarget=aarch64-linux-android.24 jni
+            zig build -Doptimize=ReleaseSmall -Dtarget='"$ZIG_TARGET"' jni
           '
 
       # Release build (R8 minify + resource shrink — roughly the official
@@ -82,7 +94,7 @@ jobs:
       # đây là bản sideload cho một người dùng, không phải bản lên store.
       - name: build android release APK
         env:
-          ANDROID_ABI_FILTERS: arm64-v8a
+          ANDROID_ABI_FILTERS: ${{ inputs.abi || 'arm64-v8a' }}
           # 23/8: từng quên truyền VERSION_* nên mọi APK sau v1.47 đều mang
           # versionCode 12.313.000 ("1.23.13") — cài lên máy đang có bản dòng
           # 1.47 (14.700.000) bị Android từ chối vì downgrade. Từ đây minor
