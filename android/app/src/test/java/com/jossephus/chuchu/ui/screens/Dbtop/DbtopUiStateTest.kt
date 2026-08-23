@@ -63,6 +63,9 @@ class DbtopUiStateTest {
                 ),
             ),
             freshness = DataFreshness.Fresh(ageSeconds = 30L),
+            // currentPerDay an yield khi chua everLoaded (23/8) — test nay
+            // kiem tra logic tru/bo option het han nen phai gia lap da load.
+            everLoaded = true,
         )
 
         assertEquals(8.5, ui.currentPerDay(nowSec = 1_000L)!!, 0.001)
