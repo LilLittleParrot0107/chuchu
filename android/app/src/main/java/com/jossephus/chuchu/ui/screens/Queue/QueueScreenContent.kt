@@ -126,7 +126,7 @@ internal fun QueueAgentRoster(
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 232.dp),
+                    .heightIn(max = 280.dp),
                 verticalArrangement = Arrangement.spacedBy(3.dp),
             ) {
                 items(agents, key = QueueAgent::pane) { agent ->
@@ -140,25 +140,25 @@ internal fun QueueAgentRoster(
                         selected = selected,
                         tone = colors.accent,      // rail + border theo ACCENT, khong theo tone
                         onClick = { onSelect(agent.pane) },
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
                     ) {
                         // Slot con tro '>' co dinh: selection nhan mat ngay ca khi
                         // qua mau sac khong doc duoc.
                         ChuText(
                             if (selected) ">" else "",
-                            style = type.labelSmall.copy(fontWeight = FontWeight.Bold),
+                            style = type.label.copy(fontWeight = FontWeight.Bold),
                             color = colors.accent,
-                            modifier = Modifier.width(11.dp),
+                            modifier = Modifier.width(12.dp),
                         )
                         ChuText(
                             dot,
-                            style = type.labelSmall,
+                            style = type.label,
                             color = if (working) colors.success else agent.tone.color(),
                         )
                         Spacer(Modifier.width(6.dp))
                         ChuText(
                             agent.name,
-                            style = type.labelSmall.copy(fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal),
+                            style = type.label.copy(fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal),
                             color = if (selected) colors.textPrimary else colors.textSecondary,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -179,7 +179,7 @@ internal fun QueueAgentRoster(
                         // phai khong con dau trang tri du thua.
                         ChuText(
                             if (taskCount > 0) taskCount.toString() else "",
-                            style = type.labelSmall,
+                            style = type.label,
                             color = colors.accent,
                             // 20dp thay vi 16dp: so 3 chu so (100+) bi clip
                             // thanh 2 chu so o be rong cu.
@@ -206,20 +206,20 @@ internal fun QueueTaskRow(
         selected = selected,
         tone = task.tone.color(),
         onClick = onClick,
-        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
     ) {
         // Con tro '>' dong nhat voi roster: task dang mo detail pane.
         ChuText(
             if (selected) ">" else "",
-            style = type.labelSmall.copy(fontWeight = FontWeight.Bold),
+            style = type.label.copy(fontWeight = FontWeight.Bold),
             color = colors.accent,
-            modifier = Modifier.width(11.dp),
+            modifier = Modifier.width(12.dp),
         )
-        ChuText(task.glyph, style = type.labelSmall, color = task.tone.color())
+        ChuText(task.glyph, style = type.label, color = task.tone.color())
         Spacer(Modifier.width(6.dp))
         ChuText(
             "#${task.id}",
-            style = type.labelSmall.copy(fontWeight = FontWeight.Bold),
+            style = type.label.copy(fontWeight = FontWeight.Bold),
             color = colors.accentSecondary,
         )
         if (showTarget && task.target.isNotBlank()) {
@@ -237,7 +237,7 @@ internal fun QueueTaskRow(
         Spacer(Modifier.width(6.dp))
         ChuText(
             task.text.replace('\n', ' '),
-            style = type.bodySmall.copy(
+            style = type.body.copy(
                 textDecoration = if (task.isCompleted) TextDecoration.LineThrough else TextDecoration.None,
             ),
             color = if (task.isCompleted) colors.textMuted else colors.textPrimary,
@@ -279,7 +279,7 @@ internal fun QueueTaskDetailPane(
         Column(
             modifier = Modifier
                 .weight(1f)
-                .padding(horizontal = 10.dp, vertical = 6.dp),
+                .padding(horizontal = 10.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Row(
@@ -305,7 +305,7 @@ internal fun QueueTaskDetailPane(
             }
             ChuText(
                 task.text,
-                style = type.bodySmall,
+                style = type.body,
                 color = colors.textPrimary,
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
@@ -438,7 +438,7 @@ internal fun QueueComposer(
         Row(
             modifier = Modifier
                 .weight(1f)
-                .defaultMinSize(minHeight = 48.dp)
+                .defaultMinSize(minHeight = 56.dp)
                 .background(colors.surfaceVariant)
                 .border(1.dp, if (canSend) colors.accent.copy(alpha = 0.45f) else colors.border)
                 .padding(horizontal = 10.dp, vertical = 5.dp),
@@ -448,7 +448,7 @@ internal fun QueueComposer(
             agent?.let {
                 ChuText(
                     "@${it.name}",
-                    style = type.labelSmall,
+                    style = type.label,
                     color = colors.textMuted,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -472,7 +472,7 @@ internal fun QueueComposer(
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                 keyboardActions = KeyboardActions(onSend = { if (canSend) onSend() }),
                 modifier = Modifier.weight(1f)
-                    .padding(vertical = 8.dp),
+                    .padding(vertical = 10.dp),
                 decorationBox = { inner ->
                     Box {
                         if (value.isEmpty()) {
@@ -496,8 +496,8 @@ internal fun QueueComposer(
             onClick = onSend,
             enabled = canSend,
             variant = ChuButtonVariant.Ghost,
-            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 3.dp),
-            minHeight = 26.dp,
+            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 5.dp),
+            minHeight = 34.dp,
         ) {
             ChuText(
                 if (sending) "[…]" else "[SEND]",
