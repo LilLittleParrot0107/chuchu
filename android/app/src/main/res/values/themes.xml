@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <style name="Theme.Chuchu" parent="android:Theme.Material.Light.NoActionBar" />
+    <style name="Theme.Chuchu" parent="android:Theme.Material.Light.NoActionBar">
+        <!-- Nen cua so = mau nen dark-first cua app: het flash sang luc khoi
+             dong va het seam voi Compose background phia sau status bar. -->
+        <item name="android:windowBackground">#1E1E2E</item>
+    </style>
 </resources>

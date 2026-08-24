@@ -19,11 +19,14 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.jossephus.chuchu.data.repository.SettingsRepository
 import com.jossephus.chuchu.ui.screens.AddServer.AddServerScreen
+import com.jossephus.chuchu.ui.components.KohiNavShell
+import com.jossephus.chuchu.ui.components.KohiTab
 import com.jossephus.chuchu.ui.screens.AddServer.AddServerViewModel
 import com.jossephus.chuchu.ui.screens.Dbtop.DbtopScreen
 import com.jossephus.chuchu.ui.screens.Queue.QueueScreen
@@ -112,7 +115,24 @@ fun ApplicationNavController() {
         onPauseOrDispose { sharedQueueVm.setAppActive(false) }
     }
 
-    NavHost(navController = navController, startDestination = "servers") {
+    val backStackEntry by navController.currentBackStackEntryAsState()
+    // route pattern cua queue la "queue?pane={pane}" — cat phan query de khop tab.
+    val currentRoute = backStackEntry?.destination?.route?.substringBefore('?')
+
+    KohiNavShell(
+        selectedRoute = currentRoute,
+        queueBadge = queueAmbientSummary.takeIf { it.totalActive > 0 }?.totalActive,
+        onSelect = { tab ->
+            // Tab chuyen nhau NHO STATE: popUpTo goc + saveState/restoreState
+            // giu scroll/selection cua tung tab nhu bottom nav chuan.
+            navController.navigate(tab.route) {
+                popUpTo("servers") { saveState = true }
+                launchSingleTop = true
+                restoreState = true
+            }
+        },
+    ) {
+        NavHost(navController = navController, startDestination = "servers") {
         composable("servers") {
             val vm: ServerListViewModel = viewModel(factory = ServerListViewModel.factory(application))
             val settingsRepo = SettingsRepository.getInstance(application)
@@ -162,13 +182,7 @@ fun ApplicationNavController() {
                     }
                 },
                 onDeleteServer = vm::deleteServer,
-                onOpenDashboard = { navController.navigate("dashboard") },
                 onOpenSettings = { navController.navigate("settings") },
-                onOpenWeb = { navController.navigate("web") },
-                onOpenQueue = { pane ->
-                    navController.navigate(queueRoute(pane))
-                },
-                queueSummary = queueAmbientSummary,
             )
         }
         composable("dashboard") {
@@ -231,7 +245,6 @@ fun ApplicationNavController() {
             val accessoryBarSingleRow by settingsRepo.accessoryBarSingleRow.collectAsStateWithLifecycle()
             val customKeyGroups by settingsRepo.terminalCustomKeyGroups.collectAsStateWithLifecycle()
             val showCustomActionsFab by settingsRepo.showCustomActionsFab.collectAsStateWithLifecycle()
-            val showQueueFab by settingsRepo.showQueueFab.collectAsStateWithLifecycle()
             val builtinShortcuts by settingsRepo.builtinShortcuts.collectAsStateWithLifecycle()
             val tabMode by settingsRepo.terminalTabMode.collectAsStateWithLifecycle()
             val localShellEnabled by settingsRepo.localShellEnabled.collectAsStateWithLifecycle()
@@ -253,8 +266,6 @@ fun ApplicationNavController() {
                 currentTerminalCustomKeyGroups = customKeyGroups,
                 showCustomActionsFab = showCustomActionsFab,
                 onShowCustomActionsFabChanged = settingsRepo::setShowCustomActionsFab,
-                showQueueFab = showQueueFab,
-                onShowQueueFabChanged = settingsRepo::setShowQueueFab,
                 builtinShortcuts = builtinShortcuts,
                 onBuiltinShortcutsChanged = settingsRepo::setBuiltinShortcuts,
                 currentTabMode = tabMode,
@@ -311,7 +322,6 @@ fun ApplicationNavController() {
                     vm = vm,
                     hostId = null,
                     openLocalShell = true,
-                    queueSummary = queueAmbientSummary,
                     onOpenSettings = { navController.navigate("settings") },
                     onOpenWeb = { navController.navigate("web") },
                         onOpenQueue = { pane ->
@@ -337,7 +347,6 @@ fun ApplicationNavController() {
             TerminalScreen(
                 vm = vm,
                 hostId = id,
-                queueSummary = queueAmbientSummary,
                 onOpenSettings = { navController.navigate("settings") },
                 onOpenWeb = { navController.navigate("web") },
                 onOpenQueue = { pane ->
@@ -347,6 +356,7 @@ fun ApplicationNavController() {
             )
         }
 
+        }
     }
 
     if (!appLockEnabled) {

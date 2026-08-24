@@ -96,7 +96,9 @@ fun GhosttyTheme.toChuColorPalette(): ChuColorPalette {
 
     val textPrimary = foreground
     val textSecondary = foreground.mix(background, 0.28f)
-    val textMuted = foreground.mix(background, 0.5f)
+    // 0.5 lam chu meta phang nhu tren nen sang (Latte ~2.1:1). 0.22 dua ve
+    // >= 4.5:1 ma van thap hon secondary (mix 0.28) mot bac.
+    val textMuted = foreground.mix(background, 0.22f)
 
     // Brand accent is derived from the theme's own foreground rather than
     // ANSI palette[4]. Borrowing ANSI blue makes every UI button clash with

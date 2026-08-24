@@ -58,10 +58,8 @@ import com.jossephus.chuchu.ui.components.ChuCard
 import com.jossephus.chuchu.ui.components.ChuDialog
 import com.jossephus.chuchu.ui.components.ChuText
 import com.jossephus.chuchu.ui.components.ChuTextField
-import com.jossephus.chuchu.ui.components.KohiActionMenu
 import com.jossephus.chuchu.ui.components.KohiSectionBand
 import com.jossephus.chuchu.ui.components.TuiBadge
-import com.jossephus.chuchu.ui.screens.Queue.QueueAmbientSummary
 import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTypography
 
@@ -77,10 +75,6 @@ fun ServerListScreen(
     onConnectServer: (Long) -> Unit,
     onDeleteServer: (Long) -> Unit,
     onOpenSettings: () -> Unit,
-    onOpenWeb: () -> Unit,
-    onOpenDashboard: () -> Unit,
-    onOpenQueue: (String?) -> Unit,
-    queueSummary: QueueAmbientSummary,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -90,7 +84,6 @@ fun ServerListScreen(
     val openTabs by sessionRepo.tabs.collectAsStateWithLifecycle()
     val hasOpenLocalShell = openTabs.any { it.spec.transport == Transport.LocalShell }
 
-    var showKohiMenu by remember { mutableStateOf(false) }
     var selectedHostId by remember { mutableStateOf<Long?>(null) }
     var pendingDisconnectHostId by remember { mutableStateOf<Long?>(null) }
     var pendingConnectHostId by remember { mutableStateOf<Long?>(null) }
@@ -133,22 +126,6 @@ fun ServerListScreen(
 
     val colors = ChuColors.current
     val typography = ChuTypography.current
-    val queuePortalStatus = when {
-        queueSummary.hasError -> "offline"
-        queueSummary.isAnyBlocked -> "${queueSummary.blockedCount} blocked"
-        queueSummary.isPaused -> "paused"
-        queueSummary.runningCount > 0 -> "${queueSummary.runningCount} running"
-        queueSummary.totalActive > 0 -> "${queueSummary.totalActive} queued"
-        else -> "ready"
-    }
-    val queuePortalColor = when {
-        queueSummary.hasError -> colors.error
-        queueSummary.isAnyBlocked -> colors.warning
-        queueSummary.isPaused -> colors.textMuted
-        queueSummary.isAnyWorking -> colors.accent
-        queueSummary.totalActive > 0 -> colors.accentSecondary
-        else -> colors.success
-    }
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -166,10 +143,8 @@ fun ServerListScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                // Bam "kohi" mo service portal (Files / Dashboard / Queue).
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.clickable { showKohiMenu = true },
                 ) {
                     ChuText("$ ", style = typography.headline, color = colors.textMuted)
                     ChuText("kohi", style = typography.headline)
@@ -293,16 +268,6 @@ fun ServerListScreen(
         ) {
             ChuText("+ add server", style = typography.label, color = colors.onAccent)
         }
-
-        KohiActionMenu(
-            isOpen = showKohiMenu,
-            onDismiss = { showKohiMenu = false },
-            onOpenFileBrowser = onOpenWeb,
-            onOpenDashboard = onOpenDashboard,
-            onOpenQueue = onOpenQueue,
-            queueStatus = queuePortalStatus,
-            queueStatusColor = queuePortalColor,
-        )
 
         val pendingDisconnectHost = hosts.firstOrNull { it.id == pendingDisconnectHostId }
         if (pendingDisconnectHost != null) {

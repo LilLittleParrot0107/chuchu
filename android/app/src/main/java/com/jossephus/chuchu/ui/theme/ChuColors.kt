@@ -38,7 +38,9 @@ val ChuDarkColors: ChuColorPalette = ChuColorPalette(
     // nen khong biet dau la thong tin chinh.
     textPrimary = Color(0xFFE4E8FC),
     textSecondary = Color(0xFFAEB4D6),
-    textMuted = Color(0xFF666C92),
+    // 98A0CE: dat 4.94-6.90:1 tren ca 3 nen (AA) — 666C92 cu chi 2.47:1 tren
+    // surface, chu meta nhin nhoe nhoe.
+    textMuted = Color(0xFF98A0CE),
     accent = Color(0xFFB4BEFE),
     accentSecondary = Color(0xFF89B4FA),
     error = Color(0xFFF38BA8),

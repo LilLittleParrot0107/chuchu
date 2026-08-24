@@ -6,12 +6,16 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.windowInsetsTopHeight
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
@@ -47,12 +51,24 @@ fun DbtopScreen(
         onPauseOrDispose { viewModel.stopPolling() }
     }
 
-    Column(
+    Box(
         modifier = modifier
             .fillMaxSize()
-            .background(colors.background)
-            .windowInsetsPadding(WindowInsets.safeDrawing),
+            .background(colors.background),
     ) {
+        // Scrim status bar = surface khop voi DBTOP command band ngay duoi.
+        Spacer(
+            Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .windowInsetsTopHeight(WindowInsets.statusBars)
+                .background(colors.surface),
+        )
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .windowInsetsPadding(WindowInsets.safeDrawing),
+        ) {
         DbtopTopBar(
             // Suy lai tu ts SNAPSHOT moi lan ve: ui.freshness la gia tri dong
             // bang tai luc fetch — server chet thi no bao "UPDATED 5M AGO"
@@ -145,6 +161,7 @@ fun DbtopScreen(
             },
         )
     }
+}
 }
 
 private fun DbtopUiState.itemCount(): Int = when (selectedView) {

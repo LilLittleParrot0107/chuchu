@@ -8,6 +8,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.windowInsetsTopHeight
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
@@ -116,10 +119,22 @@ fun QueueScreen(
         modifier = modifier
             .fillMaxSize()
             .background(colors.background)
-            .windowInsetsPadding(WindowInsets.safeDrawing)
             .imePadding(),
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
+        // Scrim status bar = surface: khop voi command band ngay duoi, het
+        // seam "thanh noti khac mau phan duoi". Mau lay tu palette active.
+        Spacer(
+            Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .windowInsetsTopHeight(WindowInsets.statusBars)
+                .background(colors.surface),
+        )
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .windowInsetsPadding(WindowInsets.safeDrawing),
+        ) {
             // Status ngan de title QUEUE khong bi ep thanh "QU…"; so luong agent
             // da co o band AGENTS, khong lap lai o day.
             val pendingCount = ui.state.tasks.count { !it.isCompleted && !it.isRunning }

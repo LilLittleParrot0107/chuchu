@@ -35,9 +35,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imeAnimationTarget
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.isImeVisible
-import com.jossephus.chuchu.ui.screens.Queue.QueueAmbientFab
-import com.jossephus.chuchu.ui.screens.Queue.QueueAmbientSummary
-import com.jossephus.chuchu.ui.screens.Queue.QueueAmbientTickerPill
 
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.offset
@@ -301,7 +298,6 @@ fun TerminalScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     openLocalShell: Boolean = false,
-    queueSummary: QueueAmbientSummary = QueueAmbientSummary.Empty,
 ) {
     val sessionState by vm.sessionState.collectAsStateWithLifecycle()
 
@@ -432,7 +428,6 @@ fun TerminalScreen(
             )
     }
     val showCustomActionsFab by settingsRepo.showCustomActionsFab.collectAsStateWithLifecycle()
-    val showQueueFab by settingsRepo.showQueueFab.collectAsStateWithLifecycle()
     val builtinShortcuts by settingsRepo.builtinShortcuts.collectAsStateWithLifecycle()
     var fabFilteredActions by remember { mutableStateOf<List<TerminalCustomAction>?>(null) }
     val chuchuKeys =
@@ -1450,12 +1445,6 @@ fun TerminalScreen(
                                     }
                                 }
 
-                                QueueAmbientTickerPill(
-                                    summary = queueSummary,
-                                    onClick = { onOpenQueue(queueSummary.activeTaskPane) },
-                                    modifier = Modifier.align(Alignment.TopCenter),
-                                )
-
                                 val selState = selectionState
 
                                 if (selState != null) {
@@ -1714,13 +1703,6 @@ fun TerminalScreen(
                                     horizontalAlignment = Alignment.End,
                                     verticalArrangement = Arrangement.spacedBy(8.dp),
                                 ) {
-                                    if (showQueueFab) {
-                                        QueueAmbientFab(
-                                            summary = queueSummary,
-                                            onClick = { onOpenQueue(queueSummary.activeTaskPane) },
-                                        )
-                                    }
-
                                     if (currentTerminalCustomKeyGroups.isNotEmpty() &&
                                         (showCustomActionsFab || fabFilteredActions != null)
                                     ) {
