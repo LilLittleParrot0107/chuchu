@@ -7,6 +7,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -29,6 +33,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
@@ -261,13 +266,26 @@ fun KohiNavShell(
                 Box(modifier = Modifier.weight(1f)) { content() }
             }
         } else {
+            // IME mo -> an bar: neu khong, composer/terminal bi day cao THUA
+            // dung chieu cao bar (ime inset do tu day manh, content lai bi
+            // cat tai dinh bar) = dung dai trang giua content va keyboard.
+            // Con navigationBars luon duoc tieu thu o content: bar tu xu ly
+            // khi hien, keyboard de len khi an.
+            val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
             Column(modifier = Modifier.fillMaxSize()) {
-                Box(modifier = Modifier.fillMaxWidth().weight(1f)) { content() }
-                KohiBottomBar(
-                    selectedRoute = selectedRoute ?: "",
-                    queueBadge = queueBadge,
-                    onSelect = onSelect,
-                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .consumeWindowInsets(WindowInsets.navigationBars),
+                ) { content() }
+                if (!imeVisible) {
+                    KohiBottomBar(
+                        selectedRoute = selectedRoute ?: "",
+                        queueBadge = queueBadge,
+                        onSelect = onSelect,
+                    )
+                }
             }
         }
     }
