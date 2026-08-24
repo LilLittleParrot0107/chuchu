@@ -314,11 +314,17 @@ class QueueViewModel(
                     return@launch
                 }
                 val results = withContext(Dispatchers.IO) {
+                    // Chụp rev một lần trước vòng lặp: gửi rev theo từng task khi op
+                    // yêu cầu (như runAction ở trên làm). Trước đây luôn truyền null,
+                    // qsrv trả 409 cho cả lô nếu phiên khác vừa động vào hàng đợi —
+                    // và lỗi đó bị nuốt vào cột "N/M failed" không ai biết vì sao.
+                    val currentRev = _ui.value.state.rev
                     doneTasks.map { task ->
-                        val rmOp = task.actions.firstOrNull {
+                        val rmAction = task.actions.firstOrNull {
                             it.op == "rm" || it.op == "del" || it.op == "delete" || it.danger
-                        }?.op ?: "rm"
-                        c.act(rmOp, task.id, null)
+                        }
+                        val rev = if (rmAction?.needsRev == true) currentRev else null
+                        c.act(rmAction?.op ?: "rm", task.id, rev)
                     }
                 }
                 persistAuthRecovery(c)
@@ -371,6 +377,9 @@ class QueueViewModel(
         settings.setQueueToken(token)
         // Task ids are only unique within one qsrv instance.
         responseCache.clear()
+        // Summary ambient phải reset cùng state: nếu không, pill/FAB vẫn hiển thị
+        // số liệu của qsrv CŨ trong khoảng thời gian trước khi refreshNow() kịp về.
+        _ambientSummary.value = QueueAmbientSummary.Empty
         _ui.update {
             it.copy(
                 state = QueueState.Empty,

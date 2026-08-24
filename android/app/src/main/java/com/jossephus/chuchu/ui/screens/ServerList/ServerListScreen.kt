@@ -48,7 +48,6 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlin.math.roundToInt
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.jossephus.chuchu.model.HostProfile
 import com.jossephus.chuchu.model.Transport

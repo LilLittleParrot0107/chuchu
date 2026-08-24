@@ -27,6 +27,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -49,25 +50,31 @@ fun QueueAmbientFab(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    if (summary.totalActive == 0 && !summary.isAnyWorking && !summary.isAnyBlocked && !summary.hasError) {
+    // Paused-only cũng phải thấy FAB: khi queue tạm dừng, không có gì chạy/block
+    // nhưng người dùng vẫn cần đường vào Queue để resume.
+    if (summary.totalActive == 0 && !summary.isAnyWorking && !summary.isAnyBlocked &&
+        !summary.hasError && !summary.isPaused
+    ) {
         return
     }
 
     val colors = ChuColors.current
     val typography = ChuTypography.current
 
+    // hasError xếp trước isAnyBlocked: lỗi kết nối phải thắng màu cảnh báo,
+    // nếu không queue chết trong lúc bị chặn thì pill vẫn giả vờ "chỉ là chờ duyệt".
     val borderColor = when {
-        summary.isAnyBlocked -> colors.warning
         summary.hasError -> colors.error
-        summary.isAnyWorking -> colors.accent
+        summary.isAnyBlocked -> colors.warning
+        summary.isAnyWorking -> colors.success
         summary.totalActive > 0 -> colors.accent
         else -> colors.border
     }
 
     val iconColor = when {
-        summary.isAnyBlocked -> colors.warning
         summary.hasError -> colors.error
-        summary.isAnyWorking -> colors.accent
+        summary.isAnyBlocked -> colors.warning
+        summary.isAnyWorking -> colors.success
         else -> colors.textMuted
     }
 
@@ -134,9 +141,13 @@ fun QueueAmbientTickerPill(
         append(summary.pendingCount); append('|')
         append(summary.primaryAgentName); append('|')
         append(summary.isPaused); append('|')
+        // totalActive phải vào chữ ký: running giảm (task xong bớt) không đổi
+        // statusText/pendingCount thì pill vẫn phải re-expand báo số mới.
+        append(summary.totalActive); append('|')
         append(summary.hasError)
     }
-    var dismissedSignature by remember { mutableStateOf<String?>(null) }
+    // Saveable: xoay màn hình/process death không được "quên" lệnh ✕ của người dùng.
+    var dismissedSignature by rememberSaveable { mutableStateOf<String?>(null) }
     var expanded by remember { mutableStateOf(true) }
 
     LaunchedEffect(signature) {
@@ -145,9 +156,9 @@ fun QueueAmbientTickerPill(
         expanded = false
     }
 
-    // hasError phải nằm trong điều kiện hiện: trước đây qsrv chết thì pill im
-    // lặng biến mất, người đang chờ kết quả không hề hay biết queue ngắt.
-    val shouldShow = (summary.isAnyWorking || summary.isAnyBlocked ||
+    // totalActive > 0 đứng đầu: task chỉ đang "waiting" (chưa chạy, chưa block)
+    // trước đây làm pill im lặng biến mất dù hàng đợi có việc thật.
+    val shouldShow = (summary.totalActive > 0 || summary.isAnyWorking || summary.isAnyBlocked ||
         summary.isPaused || summary.hasError) && dismissedSignature != signature
 
     AnimatedVisibility(
@@ -212,8 +223,10 @@ fun QueueAmbientTickerPill(
                         style = typography.labelSmall,
                         color = colors.textMuted,
                         modifier = Modifier
-                            .clickable { dismissedSignature = signature }
-                            .padding(start = 4.dp),
+                            // Padding TRƯỚC clickable để vùng đập trúng ✕ to hơn —
+                            // hiện giờ mép 4dp của glyph không ăn click, bấm hụt.
+                            .padding(start = 4.dp)
+                            .clickable { dismissedSignature = signature },
                     )
                 } else if (summary.totalActive > 0) {
                     // Dạng thu gọn: chấm màu + số việc. Vẫn giữa màn hình.

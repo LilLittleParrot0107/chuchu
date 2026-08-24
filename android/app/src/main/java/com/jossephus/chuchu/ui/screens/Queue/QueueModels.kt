@@ -1,5 +1,8 @@
 package com.jossephus.chuchu.ui.screens.Queue
 
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Color
+import com.jossephus.chuchu.ui.theme.ChuColors
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -56,6 +59,11 @@ internal val QueueTask.isRunning: Boolean
         state.equals("working", ignoreCase = true) ||
         state.equals("busy", ignoreCase = true)
 
+// Đặt cạnh isCompleted/isRunning: "failed" là trạng thái kết thúc như "done",
+// tách riêng để chỗ đếm active lọc đúng mà không phải so state string rải rác.
+internal val QueueTask.isFailed: Boolean
+    get() = state.equals("failed", ignoreCase = true)
+
 internal fun QueueAction.operationKey(taskId: Int?): String = "$op:${taskId ?: "-"}"
 
 internal object QueueOperationKey {
@@ -89,6 +97,31 @@ data class QueueFeedback(
     val text: String,
     val tone: QueueFeedbackTone,
 )
+
+// Bản dịch tone -> màu sống ở models (không phải QueueScreen): mọi composable
+// ngoài màn hình Queue (pill, FAB, banner) đều cần, để đây tránh mỗi nơi tự viết.
+@Composable
+internal fun QueueTone.color(): Color {
+    val colors = ChuColors.current
+    return when (this) {
+        QueueTone.Accent -> colors.accent
+        QueueTone.Ok -> colors.success
+        QueueTone.Warn -> colors.warning
+        QueueTone.Error -> colors.error
+        QueueTone.Dim -> colors.textMuted
+    }
+}
+
+@Composable
+internal fun QueueFeedbackTone.color(): Color {
+    val colors = ChuColors.current
+    return when (this) {
+        QueueFeedbackTone.Info -> colors.accent
+        QueueFeedbackTone.Success -> colors.success
+        QueueFeedbackTone.Warning -> colors.warning
+        QueueFeedbackTone.Error -> colors.error
+    }
+}
 
 private val queueFeedbackWhitespace = Regex("\\s+")
 private val justNowLegacy = Regex("\\bvua xong\\b", RegexOption.IGNORE_CASE)

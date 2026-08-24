@@ -14,14 +14,15 @@ data class QueueAmbientSummary(
     val activeTaskPane: String? = null,
     val primaryAgentName: String? = null,
     val statusText: String = "",
-    val topTasks: List<QueueTask> = emptyList(),
     val hasError: Boolean = false,
 ) {
     companion object {
         val Empty = QueueAmbientSummary()
 
         fun from(state: QueueState, error: String?): QueueAmbientSummary {
-            val activeTasks = state.tasks.filterNot { it.isCompleted }
+            // Task "failed" không phải active: nếu chỉ trừ isCompleted thì việc chết
+            // kẹt mãi trong tổng đếm, pill/FAB nhấp nháy mãi không chịu tĩnh.
+            val activeTasks = state.tasks.filterNot { it.isCompleted || it.isFailed }
             val runningTasks = activeTasks.filter { it.isRunning }
             val blockedAgents = state.agents.filter { agent ->
                 agent.tone == QueueTone.Warn ||
@@ -42,7 +43,13 @@ data class QueueAmbientSummary(
                 isPaused = state.paused,
                 activeTaskId = primaryTask?.id,
                 activeTaskPane = primaryTask?.target?.takeIf(String::isNotBlank),
-                primaryAgentName = primaryTask?.target?.takeIf(String::isNotBlank) ?: primaryAgent?.name,
+                // Blocked mà không có gì chạy: agent chờ duyệt mới là nhân vật chính
+                // của thông báo — không thì pill nhắc "@ai đó" sai người, người ta
+                // bấm vào lại phải tự đoán xem ai đang cần mình.
+                primaryAgentName = when {
+                    blockedAgents.isNotEmpty() && runningTasks.isEmpty() -> blockedAgents.first().name
+                    else -> primaryTask?.target?.takeIf(String::isNotBlank) ?: primaryAgent?.name
+                },
                 statusText = when {
                     blockedAgents.isNotEmpty() -> "needs approval"
                     runningTasks.isNotEmpty() -> "running"
@@ -50,11 +57,8 @@ data class QueueAmbientSummary(
                     activeTasks.isNotEmpty() -> "waiting"
                     else -> "ready"
                 },
-                topTasks = activeTasks.take(MAX_AMBIENT_TASKS),
                 hasError = error != null || state.banner?.tone == QueueTone.Error,
             )
         }
-
-        private const val MAX_AMBIENT_TASKS = 3
     }
 }

@@ -1,11 +1,11 @@
 package com.jossephus.chuchu.ui
 
 import android.app.Application
+import android.net.Uri
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.LaunchedEffect
 import kotlinx.coroutines.flow.firstOrNull
 import androidx.compose.runtime.setValue
@@ -40,6 +40,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.ui.unit.dp
+
+/** Pane tu pill/FAB -> route Queue; encode phong ngua ky tu dac biet tuong lai. */
+private fun queueRoute(pane: String?): String =
+    if (pane != null) "queue?pane=${Uri.encode(pane)}" else "queue"
 
 @Composable
 fun ApplicationNavController() {
@@ -162,7 +166,7 @@ fun ApplicationNavController() {
                 onOpenSettings = { navController.navigate("settings") },
                 onOpenWeb = { navController.navigate("web") },
                 onOpenQueue = { pane ->
-                    navController.navigate(if (pane != null) "queue?pane=$pane" else "queue")
+                    navController.navigate(queueRoute(pane))
                 },
                 queueSummary = queueAmbientSummary,
             )
@@ -311,7 +315,7 @@ fun ApplicationNavController() {
                     onOpenSettings = { navController.navigate("settings") },
                     onOpenWeb = { navController.navigate("web") },
                         onOpenQueue = { pane ->
-                        navController.navigate(if (pane != null) "queue?pane=$pane" else "queue")
+                        navController.navigate(queueRoute(pane))
                     },
                     onBack = { navController.popBackStack() },
                 )
@@ -337,7 +341,7 @@ fun ApplicationNavController() {
                 onOpenSettings = { navController.navigate("settings") },
                 onOpenWeb = { navController.navigate("web") },
                 onOpenQueue = { pane ->
-                    navController.navigate(if (pane != null) "queue?pane=$pane" else "queue")
+                    navController.navigate(queueRoute(pane))
                 },
                 onBack = { navController.popBackStack() },
             )

@@ -27,6 +27,11 @@ fun ChuDialog(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
     dismissLabel: String = "Cancel",
+    // QueueDialogs cần khoá nút confirm khi validation fail thay vì tự dựng dialog.
+    confirmEnabled: Boolean = true,
+    // Slot thay thế title dạng string — cho phép title giàu (badge, counter)
+    // mà không phải fork cả dialog.
+    titleContent: (@Composable () -> Unit)? = null,
     properties: DialogProperties = DialogProperties(),
     content: @Composable () -> Unit,
 ) {
@@ -42,12 +47,18 @@ fun ChuDialog(
             modifier = modifier
                 .fillMaxWidth()
                 .imePadding()
-                .background(colors.surfaceVariant, shape)
+                // surface (không phải surfaceVariant) để thống nhất skin với 2
+                // dialog tự viết; panel bên trong vẫn surfaceVariant nên vẫn contrast.
+                .background(colors.surface, shape)
                 .border(BorderStroke(1.dp, colors.border), shape)
                 .padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            ChuText(text = title, style = typography.title)
+            if (titleContent != null) {
+                titleContent()
+            } else {
+                ChuText(text = title, style = typography.title)
+            }
             content()
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -63,6 +74,8 @@ fun ChuDialog(
                 }
                 ChuButton(
                     onClick = onConfirm,
+                    // Forward enabled để caller (QueueDialogs) gate confirm theo validation.
+                    enabled = confirmEnabled,
                     bracketed = true,
                 ) {
                     ChuText(confirmLabel, style = typography.label, color = colors.onAccent)

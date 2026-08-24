@@ -3,7 +3,6 @@ package com.jossephus.chuchu.ui.screens.Terminal
 import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
-import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.OpenableColumns
@@ -59,7 +58,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -1719,7 +1717,7 @@ fun TerminalScreen(
                                     if (showQueueFab) {
                                         QueueAmbientFab(
                                             summary = queueSummary,
-                                            onClick = { onOpenQueue(null) },
+                                            onClick = { onOpenQueue(queueSummary.activeTaskPane) },
                                         )
                                     }
 

@@ -23,6 +23,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
@@ -51,6 +53,12 @@ fun ChuTextField(
     // Inner padding of the input box; the terminal compose box passes a
     // tighter value to keep the strip compact.
     verticalPadding: Dp = 9.dp,
+    // QueueDialogs contract: helper/error line dưới field; đỏ khi isError.
+    supportingText: String? = null,
+    // Đổi viền sang error để caller báo validation fail ngay tại field.
+    isError: Boolean = false,
+    // Gate input từ caller (vd khoá form khi đang submit) thay vì disable cả Column.
+    enabled: Boolean = true,
 ) {
     val colors = ChuColors.current
     val typography = ChuTypography.current
@@ -80,13 +88,25 @@ fun ChuTextField(
             onValueChange = onValueChange,
             modifier = Modifier
                 .fillMaxWidth()
+                // TalkBack đọc label thay vì chuỗi value rời — field trống/không
+                // placeholder vẫn có ngữ nghĩa khi duyệt.
+                .semantics { contentDescription = label }
                 .focusRequester(focusRequester)
                 .background(if (focused) colors.surface else Color.Transparent, shape)
+                // Ưu tiên: focus → accent, lỗi → error, còn lại viền tĩnh.
                 .border(
-                    BorderStroke(1.dp, if (focused) colors.accent else colors.border),
+                    BorderStroke(
+                        1.dp,
+                        when {
+                            focused -> colors.accent
+                            isError -> colors.error
+                            else -> colors.border
+                        },
+                    ),
                     shape,
                 )
                 .padding(horizontal = 10.dp, vertical = verticalPadding),
+            enabled = enabled,
             singleLine = singleLine,
             textStyle = typography.body.copy(color = colors.textPrimary, textAlign = textAlign),
             keyboardOptions = keyboardOptions,
@@ -106,5 +126,14 @@ fun ChuTextField(
                 }
             },
         )
+        if (supportingText != null) {
+            ChuText(
+                text = supportingText,
+                style = typography.labelSmall,
+                // Đỏ khi field đang lỗi, xám mờ cho helper text thường.
+                color = if (isError) colors.error else colors.textMuted,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
     }
 }

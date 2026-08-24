@@ -4,6 +4,8 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import com.jossephus.chuchu.ui.theme.ChuColors
@@ -17,12 +19,21 @@ fun ChuText(
     color: Color = ChuColors.current.textPrimary,
     maxLines: Int = Int.MAX_VALUE,
     overflow: TextOverflow = TextOverflow.Clip,
+    softWrap: Boolean = true,
+    // Cho glyph trang trí (▌, ×, ·): TalkBack không nên đọc "vertical bar" —
+    // caller đặt mô tả có nghĩa hoặc gắn vào phần tử cha.
+    contentDescription: String? = null,
 ) {
     BasicText(
         text = text,
-        modifier = modifier,
+        modifier = if (contentDescription != null) {
+            modifier.semantics { this.contentDescription = contentDescription }
+        } else {
+            modifier
+        },
         style = style.copy(color = color),
         maxLines = maxLines,
         overflow = overflow,
+        softWrap = softWrap,
     )
 }

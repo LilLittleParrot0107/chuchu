@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTypography
@@ -101,6 +102,12 @@ fun KohiCompactAction(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     danger: Boolean = false,
+    // Passthrough cho caller cần chip cao hơn (touch target lớn) — mặc định
+    // giữ 24.dp để 5 chip trong command band không đè title.
+    minHeight: Dp = 24.dp,
+    // Passthrough cho accessibility: chip chỉ có text viết tắt (SYNC, CFG)
+    // nên TalkBack cần mô tả đầy đủ do caller cung cấp.
+    contentDescription: String? = null,
 ) {
     val colors = ChuColors.current
     ChuButton(
@@ -113,7 +120,8 @@ fun KohiCompactAction(
         bracketed = false,
         borderColor = if (danger) colors.error else colors.border,
         contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
-        minHeight = 24.dp,
+        minHeight = minHeight,
+        contentDescription = contentDescription,
         modifier = modifier,
     ) {
         ChuText(

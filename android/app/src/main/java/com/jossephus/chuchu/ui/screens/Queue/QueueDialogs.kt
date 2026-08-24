@@ -4,6 +4,9 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import androidx.compose.foundation.background
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,6 +21,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -26,6 +30,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -55,7 +61,24 @@ internal fun TaskDetailDialog(
     var responseText by remember { mutableStateOf<String?>(null) }
     var loadingResponse by remember { mutableStateOf(false) }
 
-    LaunchedEffect(task.id, task.hasResp) {
+    // retry đếm thêm lần bấm ↻ — trước đây fetch hỏng thì dialog chết luôn
+    // không có đường thử lại.
+    var retry by remember { mutableStateOf(0) }
+    var copiedPrompt by remember { mutableStateOf(false) }
+    var copiedResponse by remember { mutableStateOf(false) }
+    LaunchedEffect(copiedPrompt) {
+        if (copiedPrompt) {
+            delay(1500)
+            copiedPrompt = false
+        }
+    }
+    LaunchedEffect(copiedResponse) {
+        if (copiedResponse) {
+            delay(1500)
+            copiedResponse = false
+        }
+    }
+    LaunchedEffect(task.id, task.hasResp, retry) {
         if (task.hasResp || task.isCompleted) {
             loadingResponse = true
             responseText = onFetchResponse?.invoke(task.id)
@@ -99,15 +122,18 @@ internal fun TaskDetailDialog(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 ChuText("PROMPT", style = type.labelSmall, color = colors.textMuted)
-                ScrollableTextPanel(
+                // Prompt thường ngắn — bỏ panel cuộn riêng, outer scroll gánh:
+                // còn 1 mức nested scroll thay vì 2.
+                ChuText(
                     text = task.text,
-                    maxHeight = 240,
+                    style = type.body,
+                    color = colors.textPrimary,
                 )
 
                 when {
                     loadingResponse -> ChuText("LOADING AGENT RESPONSE…", style = type.labelSmall, color = colors.accent)
                     task.isCompleted && responseText.isNullOrBlank() && !loadingResponse ->
-                        ChuText("NO RESPONSE FETCHED — TRY AGAIN", style = type.labelSmall, color = colors.textMuted)
+                        KohiCompactAction(label = "↻ RETRY", onClick = { retry++ })
                     !responseText.isNullOrBlank() -> {
                         ChuText("AGENT RESPONSE", style = type.labelSmall, color = colors.accent)
                         ScrollableTextPanel(
@@ -124,21 +150,34 @@ internal fun TaskDetailDialog(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                KohiCompactAction(label = "COPY PROMPT", onClick = onCopy)
+                KohiCompactAction(
+                    label = if (copiedPrompt) "COPIED ✓" else "COPY PROMPT",
+                    onClick = {
+                        onCopy()
+                        copiedPrompt = true
+                    },
+                )
                 if (!responseText.isNullOrBlank()) {
                     KohiCompactAction(
-                        label = "COPY RESPONSE",
+                        label = if (copiedResponse) "COPIED ✓" else "COPY RESPONSE",
                         onClick = {
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                             clipboard.setPrimaryClip(ClipData.newPlainText("Agent response", responseText))
+                            copiedResponse = true
                         },
                     )
                 }
+                // DELETE một phát ăn ngay từng là cơn ác mộng — lần đầu chỉ
+                // khoá súng ("CONFIRM?"), lần hai mới xoá thật.
+                var armedDelete by remember(task.id) { mutableStateOf(false) }
                 task.actions.forEach { action ->
+                    val isDelete = action.danger
                     KohiCompactAction(
-                        label = action.label.uppercase(),
+                        label = if (isDelete && armedDelete) "CONFIRM?" else action.label.uppercase(),
                         danger = action.danger,
-                        onClick = { onAction(action) },
+                        onClick = {
+                            if (isDelete && !armedDelete) armedDelete = true else onAction(action)
+                        },
                     )
                 }
             }
@@ -173,23 +212,48 @@ internal fun QueueConfigDialog(
     onSave: (String, String) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val colors = ChuColors.current
+    val type = ChuTypography.current
     var url by remember { mutableStateOf(currentUrl) }
     var token by remember { mutableStateOf(currentToken) }
+    var urlError by remember { mutableStateOf(false) }
 
     ChuDialog(
         title = "QUEUE SETTINGS",
         confirmLabel = "SAVE",
         dismissLabel = "CANCEL",
+        confirmEnabled = url.isNotBlank(),
+        // Band ▌ thống nhất ngữ pháp header với LOGS/detail (trước đây title
+        // to riêng một kiểu).
+        titleContent = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                ChuText("▌", style = type.labelSmall, color = colors.accent)
+                ChuText(
+                    "QUEUE SETTINGS",
+                    style = type.labelSmall.copy(fontWeight = FontWeight.Bold),
+                    color = colors.textSecondary,
+                )
+            }
+        },
         onConfirm = { onSave(url.trim(), token.trim()) },
         onDismiss = onDismiss,
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             ChuTextField(
                 value = url,
-                onValueChange = { url = it },
+                onValueChange = {
+                    url = it
+                    urlError = false
+                },
                 label = "QSRV URL",
                 placeholder = "https://…ts.net/q",
                 singleLine = true,
+                isError = urlError,
+                supportingText = if (urlError) "URL is required" else null,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next, keyboardType = KeyboardType.Uri),
             )
             ChuTextField(
                 value = token,
@@ -199,10 +263,15 @@ internal fun QueueConfigDialog(
                 singleLine = true,
                 autoFocus = false,
                 visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { onSave(url.trim(), token.trim()) }),
             )
         }
     }
 }
+
+private val LOG_ERROR_RE =
+    Regex("\\b(error|fatal|panic|fail(ed|ure)?)s?\\b", RegexOption.IGNORE_CASE)
 
 @Composable
 internal fun QueueLogsDialog(
@@ -242,7 +311,7 @@ internal fun QueueLogsDialog(
                     )
                     if (logs.isNotEmpty()) {
                         ChuText(
-                            "· ${logs.size} LINES",
+                            "· LAST ${logs.size} LINES",
                             style = type.labelSmall,
                             color = colors.textMuted,
                         )
@@ -253,25 +322,33 @@ internal fun QueueLogsDialog(
                     KohiCompactAction(label = "✕", onClick = onDismiss)
                 }
             }
+            // Giữ log cũ khi refresh (trước đây loading thay toàn bộ nội dung
+            // làm scroll sụp về đầu); log mới nhất nằm cuối -> auto cuộn xuống.
+            val scrollState = rememberScrollState()
+            LaunchedEffect(logs) {
+                if (logs.isNotEmpty()) scrollState.scrollTo(scrollState.maxValue)
+            }
+            val hScroll = rememberScrollState()
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(max = 280.dp)
                     .background(colors.surfaceVariant)
                     .padding(8.dp)
-                    .verticalScroll(rememberScrollState()),
+                    .verticalScroll(scrollState)
+                    .horizontalScroll(hScroll),
             ) {
                 when {
-                    loading -> ChuText("FETCHING LOGS…", style = type.bodySmall, color = colors.textMuted)
                     error != null -> ChuText("ERROR: $error", style = type.bodySmall, color = colors.error)
+                    logs.isEmpty() && loading -> ChuText("FETCHING LOGS…", style = type.bodySmall, color = colors.textMuted)
                     logs.isEmpty() -> ChuText("NO LOGS AVAILABLE", style = type.bodySmall, color = colors.textMuted)
                     else -> Column {
                         logs.forEach { line ->
-                            val isErr = Regex("\\b(error|fatal|panic|fail(ed|ure)s?)\\b", RegexOption.IGNORE_CASE)
-                                .containsMatchIn(line)
+                            val isErr = LOG_ERROR_RE.containsMatchIn(line)
                             ChuText(
                                 line,
                                 style = type.bodySmall,
+                                softWrap = false,
                                 color = if (isErr) colors.error else colors.textSecondary,
                             )
                         }

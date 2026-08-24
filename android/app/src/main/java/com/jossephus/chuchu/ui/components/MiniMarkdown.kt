@@ -46,7 +46,7 @@ fun MiniMarkdownText(markdown: String) {
     // remember(markdown, styles) thay doi lien tuc -> parse lai toan bo text.
     val styles = remember(colors, type) {
         MdStyles(
-            code = SpanStyle(fontFamily = FontFamily.Monospace, background = colors.surfaceVariant),
+            code = SpanStyle(fontFamily = FontFamily.Monospace, background = colors.border.copy(alpha = 0.3f)),
             bold = SpanStyle(fontWeight = FontWeight.Bold),
             italic = SpanStyle(fontStyle = FontStyle.Italic),
             link = SpanStyle(color = colors.accent),
@@ -57,12 +57,18 @@ fun MiniMarkdownText(markdown: String) {
             h3 = SpanStyle(fontWeight = FontWeight.Bold),
         )
     }
-    val annotated = remember(markdown, styles) { buildMiniMarkdown(markdown, styles) }
+    val built = remember(markdown, styles) { buildMiniMarkdown(markdown, styles) }
+    // Moi block deu append newline ke ca block cuoi -> panel thua mot dong rong.
+    val annotated = if (built.endsWith("\n")) built.subSequence(0, built.length - 1) else built
     BasicText(text = annotated, style = TextStyle(color = colors.textPrimary, fontSize = type.body.fontSize))
 }
 
+private val HR_RE = Regex("(-{3,}|\\*{3,}|_{3,})")
+private val LIST_RE = Regex("^([-*]|\\d+[.)])\\s")
+
 private val INLINE_MD = Regex(
     "`[^`\\n]+`"                       // `code`
+    + "|\\*\\*\\*[^*\\n]+\\*\\*\\*"      // ***bold-italic*** — phai truoc bold
     + "|\\*\\*[^*\\n]+\\*\\*"          // **bold**
     + "|\\*[^*\\n]+\\*"                // *italic*
     + "|\\[[^\\]\\n]+\\]\\([^)\\n]+\\)" // [label](url)
@@ -95,11 +101,11 @@ private fun buildMiniMarkdown(md: String, s: MdStyles): AnnotatedString = buildA
                 withStyle(s.quote) { appendInline(t.removePrefix(">").trim(), s) }
                 append('\n')
             }
-            t.matches(Regex("(-{3,}|\\*{3,}|_{3,})")) -> {
-                withStyle(s.muted) { append("────────────────────────────────────────") }
+            t.matches(HR_RE) -> {
+                withStyle(s.muted) { append("────────────────────────────────") }
                 append('\n')
             }
-            Regex("^([-*]|\\d+[.)])\\s").containsMatchIn(t.take(4)) -> {
+            LIST_RE.containsMatchIn(t.take(4)) -> {
                 val markerEnd = t.indexOfFirst { it == ' ' }.coerceAtLeast(1)
                 withStyle(s.bold) { append(t.take(markerEnd)); append(' ') }
                 appendInline(t.substring(markerEnd + 1), s)

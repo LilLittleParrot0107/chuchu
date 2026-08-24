@@ -23,12 +23,20 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -65,20 +73,33 @@ internal fun QueueAgentRoster(
     val colors = ChuColors.current
     val type = ChuTypography.current
 
+    // FOCUS nho agent vua roi khoi: user tap ALL de nhin tong quan thi quay lai
+    // FOCUS phai ve dung cho do, khong nhay ve agent dau tien trong danh sach.
+    var lastFocused by rememberSaveable { mutableStateOf<String?>(null) }
+    SideEffect {
+        if (selectedPane != ALL_AGENTS) lastFocused = selectedPane
+    }
+
     Column(modifier = Modifier.fillMaxWidth()) {
         KohiSectionBand(label = "AGENTS", meta = "${agents.size} LIVE") {
             val spreadMode = selectedPane == ALL_AGENTS
             ChuButton(
                 onClick = {
-                    if (spreadMode) agents.firstOrNull()?.pane?.let(onSelect)
-                    else onSelect(ALL_AGENTS)
+                    if (spreadMode) {
+                        val target = lastFocused ?: agents.firstOrNull()?.pane
+                        if (target != null) onSelect(target)
+                    } else {
+                        onSelect(ALL_AGENTS)
+                    }
                 },
                 enabled = agents.isNotEmpty(),
                 variant = ChuButtonVariant.Ghost,
-                bracketed = true,
+                bracketed = false,
                 borderColor = if (spreadMode) colors.accent else colors.border,
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 3.dp),
-                minHeight = 26.dp,
+                // 24dp + pad (8,2): can chieu voi KohiCompactAction o command
+                // band — truoc day bracketed+26dp lam chip to hon nut khac.
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                minHeight = 24.dp,
             ) {
                 // Ten nut noi ra HANH DONG se lam (focus mot agent / tra ve all),
                 // mau accent khi dang o che do lan tay de che do nay khong bi lan
@@ -111,7 +132,10 @@ internal fun QueueAgentRoster(
                 items(agents, key = QueueAgent::pane) { agent ->
                     val selected = selectedPane == agent.pane
                     val taskCount = tasks.count { it.target == agent.pane && !it.isCompleted }
-                    val working = runtimeDot(agent) == "●"
+                    // Dot tinh 1 lan moi row: truoc day runtimeDot() bi goi 3 lan
+                    // (check working, glyph, dieu kien label dac biet).
+                    val dot = runtimeDot(agent)
+                    val working = dot == "●"
                     KohiSelectableRow(
                         selected = selected,
                         tone = colors.accent,      // rail + border theo ACCENT, khong theo tone
@@ -127,7 +151,7 @@ internal fun QueueAgentRoster(
                             modifier = Modifier.width(11.dp),
                         )
                         ChuText(
-                            runtimeDot(agent),
+                            dot,
                             style = type.labelSmall,
                             color = if (working) colors.success else agent.tone.color(),
                         )
@@ -142,7 +166,7 @@ internal fun QueueAgentRoster(
                         )
                         // Dot ●○ da noi ro trang thai — tu trang thai dac biet
                         // (▲ blocked, ? unknown) moi can chu di kem.
-                        if (runtimeDot(agent) !in listOf("●", "○")) {
+                        if (dot !in listOf("●", "○")) {
                             ChuText(
                                 agent.label.uppercase(),
                                 style = type.labelSmall,
@@ -157,7 +181,9 @@ internal fun QueueAgentRoster(
                             if (taskCount > 0) taskCount.toString() else "",
                             style = type.labelSmall,
                             color = colors.accent,
-                            modifier = Modifier.width(16.dp),
+                            // 20dp thay vi 16dp: so 3 chu so (100+) bi clip
+                            // thanh 2 chu so o be rong cu.
+                            modifier = Modifier.width(20.dp),
                         )
                     }
                 }
@@ -204,6 +230,7 @@ internal fun QueueTaskRow(
                 color = colors.textMuted,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+                // ~28% chỗ còn lại cho @target, text giữ phần lớn.
                 modifier = Modifier.weight(0.28f, fill = false),
             )
         }
@@ -310,19 +337,26 @@ internal fun QueueTaskDetailPane(
  * Empty state HUU ICH thay cho mot dong "QUEUE IS EMPTY" giua khoang trong:
  * hien inspector cua agent dang chon (status, so viec, hoat dong gan nhat) va
  * huong dan buoc tiep theo. Van giu nguyen pha terminal: key-value monospace.
+ *
+ * Nhan TOAN BO queue (allTasks) va tu loc theo pane: empty-state xay ra khi
+ * scope khong con viec pending, nen neu caller truyen list da loc thi DONE /
+ * RECENT mat theo luon (RECENT tuong duong dead code). Tu loc tu list day du
+ * giup "0 QUEUED · N DONE" va dong RECENT van hien dung.
  */
 @Composable
 internal fun EmptyQueueInspector(
     agent: QueueAgent?,
     scopeLabel: String,
-    tasks: List<QueueTask>,
+    allTasks: List<QueueTask>,
+    pane: String,
     modifier: Modifier = Modifier,
 ) {
     val colors = ChuColors.current
     val type = ChuTypography.current
-    val pending = tasks.count { !it.isCompleted }
-    val done = tasks.count { it.isCompleted }
-    val recent = tasks.lastOrNull { it.isCompleted }
+    val scoped = if (pane == ALL_AGENTS) allTasks else allTasks.filter { it.target == pane }
+    val pending = scoped.count { !it.isCompleted }
+    val done = scoped.count { it.isCompleted }
+    val recent = scoped.lastOrNull { it.isCompleted }
 
     Column(modifier = modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -432,6 +466,11 @@ internal fun QueueComposer(
                 maxLines = 4,
                 textStyle = type.body.copy(color = colors.textPrimary),
                 cursorBrush = SolidColor(colors.accent),
+                // IME action Send: Enter tren ban phim mem gui luon (kieu qq)
+                // thay vi phai cham nut SEND; Enter vat ly van xuong dong vi
+                // singleLine = false.
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                keyboardActions = KeyboardActions(onSend = { if (canSend) onSend() }),
                 modifier = Modifier.weight(1f)
                     .padding(vertical = 8.dp),
                 decorationBox = { inner ->

@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -23,7 +24,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.jossephus.chuchu.ui.components.KohiCommandBand
@@ -35,18 +35,6 @@ import com.jossephus.chuchu.ui.components.ChuText
 import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTypography
 import kotlinx.coroutines.delay
-
-@Composable
-fun QueueTone.color(): Color {
-    val colors = ChuColors.current
-    return when (this) {
-        QueueTone.Accent -> colors.accent
-        QueueTone.Ok -> colors.success
-        QueueTone.Warn -> colors.warning
-        QueueTone.Error -> colors.error
-        QueueTone.Dim -> colors.textMuted
-    }
-}
 
 /**
  * Native Queue follows qq's hierarchy: command band, agent rows, task rows,
@@ -76,7 +64,11 @@ fun QueueScreen(
     var configOpen by remember { mutableStateOf(false) }
     var setupPromptDismissed by remember { mutableStateOf(false) }
     var logsOpen by remember { mutableStateOf(false) }
-    var inspectedTask by remember { mutableStateOf<QueueTask?>(null) }
+    // WHY: chi giu ID thay vi object — poller co the cap nhat/xoa task giua luc
+    // dialog mo; resolve lai tu ui.state.tasks moi lan recompose de dialog luon
+    // hien trang thai moi nhat thay vi snapshot dong bang luc mo.
+    var inspectedTaskId by remember { mutableStateOf<Int?>(null) }
+    val inspectedTask = inspectedTaskId?.let { id -> ui.state.tasks.firstOrNull { it.id == id } }
     var selectedPane by remember(initialPane) { mutableStateOf(initialPane) }
     var selectedTaskId by remember { mutableStateOf<Int?>(null) }
     var prompt by remember { mutableStateOf("") }
@@ -87,8 +79,16 @@ fun QueueScreen(
         ?: agents.firstOrNull()?.pane
         ?: ALL_AGENTS
     val selectedAgent = agents.firstOrNull { it.pane == pane }
+    // WHY: qq chi giu 3 task DONE gan nhat trong view de list khong phinh vo
+    // han theo thoi gian; muon xoa han thi dung CLR DONE (no moi don state).
+    // Active dat truoc doneTail de thu tu doc chay tu viec pending sang viec
+    // vua xong, giong hang doi that.
     val visibleTasks = remember(ui.state.tasks, pane) {
-        if (pane == ALL_AGENTS) ui.state.tasks else ui.state.tasks.filter { it.target == pane }
+        val scoped =
+            if (pane == ALL_AGENTS) ui.state.tasks else ui.state.tasks.filter { it.target == pane }
+        val active = scoped.filterNot { it.isCompleted }
+        val doneTail = scoped.filter { it.isCompleted }.takeLast(3)
+        active + doneTail
     }
     val selectedTask = visibleTasks.firstOrNull { it.id == selectedTaskId }
     val doneCount = visibleTasks.count { it.isCompleted }
@@ -123,14 +123,9 @@ fun QueueScreen(
             // Status ngan de title QUEUE khong bi ep thanh "QU…"; so luong agent
             // da co o band AGENTS, khong lap lai o day.
             val pendingCount = ui.state.tasks.count { !it.isCompleted && !it.isRunning }
-            val status = when {
-                ui.loading -> "SCANNING"
-                ui.error != null -> "OFFLINE"
-                ui.state.paused -> "PAUSED"
-                !ui.everLoaded -> "NOT SCANNED"
-                pendingCount > 0 -> "$pendingCount PENDING"
-                else -> "LIVE"
-            }
+            // Text status la logic thuan -> ham non-composable queueStatusText;
+            // mau phu thuoc ChuColors.current nen van map tai cho goi.
+            val status = queueStatusText(ui)
             val statusColor = when {
                 ui.error != null -> colors.error
                 ui.state.paused -> colors.warning
@@ -168,8 +163,10 @@ fun QueueScreen(
                 // chip 26dp keo band 26dp len 36dp dung luc co viec xong, trong
                 // khi qq giu band muc thuan thong tin mot dong.
                 if (doneCount > 0) {
+                    // Label co dinh "CLR DONE" ca khi dang chay: doi sang "CLR…"
+                    // lam rong band nhay dong; trang thai busy da bao qua enabled.
                     KohiCompactAction(
-                        label = if (isClearingDone) "CLR…" else "CLR DONE",
+                        label = "CLR DONE",
                         enabled = !isClearingDone,
                         danger = true,
                         onClick = { onClearDone(if (pane == ALL_AGENTS) null else pane) },
@@ -219,7 +216,8 @@ fun QueueScreen(
                     visibleTasks.isEmpty() && ui.everLoaded -> EmptyQueueInspector(
                         agent = selectedAgent,
                         scopeLabel = selectedAgent?.name ?: "ALL AGENTS",
-                        tasks = visibleTasks,
+                        allTasks = ui.state.tasks,
+                        pane = pane,
                     )
                     !ui.everLoaded && ui.loading -> Box(
                         modifier = Modifier.fillMaxSize(),
@@ -228,6 +226,19 @@ fun QueueScreen(
                         ChuText(
                             "LOADING QUEUE…",
                             style = ChuTypography.current.label,
+                            color = colors.textMuted,
+                        )
+                    }
+                    // Lan quet dau chua thanh con + loi mang: day nguoi ve hanh
+                    // dong dung (kiem tra QSRV, pull CFG de retry) chu khong de
+                    // roi vao danh sach gia hay spinner vo han.
+                    !ui.everLoaded && ui.error != null -> Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        ChuText(
+                            "▌ OFFLINE — CHECK QSRV · PULL CFG TO RETRY",
+                            style = ChuTypography.current.labelSmall,
                             color = colors.textMuted,
                         )
                     }
@@ -253,17 +264,9 @@ fun QueueScreen(
                 QueueTaskDetailPane(
                     task = task,
                     busyOps = ui.busyOps,
-                    onInspect = { inspectedTask = task },
+                    onInspect = { inspectedTaskId = task.id },
                     onCopy = { copyPrompt(task) },
                     onAction = { action -> onAction(action, task.id) },
-                )
-            }
-
-            ui.feedback?.let { feedback ->
-                KohiFeedbackBand(
-                    text = feedback.text,
-                    color = feedback.tone.color(),
-                    onDismiss = { onConsumeFeedback(feedback.id) },
                 )
             }
 
@@ -282,14 +285,28 @@ fun QueueScreen(
             )
         }
 
+        // WHY: overlay thay vi in-flow trong Column — band feedback tu trc day
+        // composer va detail pane nhay len/xuong khi hien/tan. Neo BottomCenter
+        // + le 76dp de nam phia tren composer ma khong chiem layout cua ai.
+        ui.feedback?.let { feedback ->
+            KohiFeedbackBand(
+                text = feedback.text,
+                color = feedback.tone.color(),
+                onDismiss = { onConsumeFeedback(feedback.id) },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 76.dp),
+            )
+        }
+
         inspectedTask?.let { task ->
             TaskDetailDialog(
                 task = task,
-                onDismiss = { inspectedTask = null },
+                onDismiss = { inspectedTaskId = null },
                 onCopy = { copyPrompt(task) },
                 onAction = { action ->
                     onAction(action, task.id)
-                    inspectedTask = null
+                    inspectedTaskId = null
                 },
                 onFetchResponse = onFetchResponse,
             )
@@ -323,14 +340,21 @@ fun QueueScreen(
     }
 }
 
-@Composable
-private fun QueueFeedbackTone.color(): Color {
-    val colors = ChuColors.current
-    return when (this) {
-        QueueFeedbackTone.Info -> colors.accent
-        QueueFeedbackTone.Success -> colors.success
-        QueueFeedbackTone.Warning -> colors.warning
-        QueueFeedbackTone.Error -> colors.error
+/**
+ * WHY: text status la logic thuan, khong cham Compose state — cung mot
+ * QueueUiState luon ra cung mot chuoi, test duoc khong can compose harness.
+ * Thu tu if LA nghiep vu: loading nuot error (dang quet lai), error nuot
+ * paused...; mau tuong ung van map rieng tai composable.
+ */
+private fun queueStatusText(ui: QueueUiState): String {
+    val pendingCount = ui.state.tasks.count { !it.isCompleted && !it.isRunning }
+    return when {
+        ui.loading -> "SCANNING"
+        ui.error != null -> "OFFLINE"
+        ui.state.paused -> "PAUSED"
+        !ui.everLoaded -> "NOT SCANNED"
+        pendingCount > 0 -> "$pendingCount PENDING"
+        else -> "LIVE"
     }
 }
 
