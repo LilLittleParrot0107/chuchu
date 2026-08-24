@@ -49,7 +49,13 @@ internal fun ChartsView(
                 if (curve.isEmpty()) {
                     ChuText("NO CURVE DATA", style = type.labelSmall, color = colors.textMuted)
                 } else {
-                    NetWorthCurveChart(points = curve, lineColor = colors.accent, height = 180.dp)
+                    NetWorthCurveChart(
+                        points = curve,
+                        lineColor = colors.accent,
+                        tooltipBg = colors.surfaceVariant,
+                        tooltipText = colors.textPrimary,
+                        height = 180.dp,
+                    )
                 }
             }
         }
@@ -72,6 +78,8 @@ internal fun ChartsView(
                         dailyData = daily,
                         primaryColor = colors.accent,
                         accentColor = colors.success,
+                        tooltipBg = colors.surfaceVariant,
+                        textColor = colors.textSecondary,
                         height = 160.dp,
                     )
                 }

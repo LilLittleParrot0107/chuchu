@@ -50,6 +50,7 @@ fun DailyYieldBarChart(
     modifier: Modifier = Modifier,
     primaryColor: Color = Color(0xFF38BDF8),
     accentColor: Color = Color(0xFF4ADE80),
+    tooltipBg: Color = Color(0xFF11111B),
     gridColor: Color = Color(0xFF45475A).copy(alpha = 0.35f),
     textColor: Color = Color(0xFFA6ADC8),
     height: Dp = 180.dp,
@@ -84,9 +85,9 @@ fun DailyYieldBarChart(
             fontWeight = FontWeight.Normal,
         )
     }
-    val tooltipMainStyle = remember {
+    val tooltipMainStyle = remember(primaryColor) {
         TextStyle(
-            color = Color(0xFF38BDF8),
+            color = primaryColor,
             fontSize = 11.sp,
             fontFamily = FontFamily.Monospace,
             fontWeight = FontWeight.Bold,
@@ -94,7 +95,7 @@ fun DailyYieldBarChart(
     }
     val tooltipSecStyle = remember {
         TextStyle(
-            color = Color(0xFFA6E3A1),
+            color = accentColor,
             fontSize = 9.sp,
             fontFamily = FontFamily.Monospace,
             fontWeight = FontWeight.Medium,
@@ -271,12 +272,12 @@ fun DailyYieldBarChart(
 
                 drawPath(
                     path = tooltipPath,
-                    color = Color(0xFF11111B).copy(alpha = 0.95f),
+                    color = tooltipBg.copy(alpha = 0.95f),
                     style = Fill,
                 )
                 drawPath(
                     path = tooltipPath,
-                    color = Color(0xFF38BDF8).copy(alpha = 0.7f),
+                    color = primaryColor.copy(alpha = 0.7f),
                     style = Stroke(width = 1.dp.toPx()),
                 )
 

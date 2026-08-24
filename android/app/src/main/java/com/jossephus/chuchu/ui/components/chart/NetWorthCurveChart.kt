@@ -52,6 +52,8 @@ fun NetWorthCurveChart(
     points: List<CurvePoint>,
     modifier: Modifier = Modifier,
     lineColor: Color = Color(0xFF38BDF8),
+    tooltipBg: Color = Color(0xFF181825),
+    tooltipText: Color = Color(0xFFCDD6F4),
     gridColor: Color = Color(0xFF45475A).copy(alpha = 0.4f),
     textColor: Color = Color(0xFFA6ADC8),
     height: Dp = 200.dp,
@@ -90,9 +92,9 @@ fun NetWorthCurveChart(
             fontWeight = FontWeight.Normal,
         )
     }
-    val tooltipTitleStyle = remember {
+    val tooltipTitleStyle = remember(tooltipText) {
         TextStyle(
-            color = Color(0xFFCDD6F4),
+            color = tooltipText,
             fontSize = 11.sp,
             fontFamily = FontFamily.Monospace,
             fontWeight = FontWeight.Bold,
@@ -327,7 +329,7 @@ fun NetWorthCurveChart(
 
                 drawPath(
                     path = tooltipPath,
-                    color = Color(0xFF181825).copy(alpha = 0.95f),
+                    color = tooltipBg.copy(alpha = 0.95f),
                     style = Fill,
                 )
                 drawPath(
