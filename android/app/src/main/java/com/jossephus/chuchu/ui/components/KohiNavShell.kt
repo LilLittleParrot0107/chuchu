@@ -146,6 +146,7 @@ private fun KohiNavItem(
     badge: Int?,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    pillColor: Color? = null,
 ) {
     val colors = ChuColors.current
     val tint = if (selected) colors.textPrimary else colors.textSecondary
@@ -154,7 +155,7 @@ private fun KohiNavItem(
             .size(width = 56.dp, height = 40.dp)
             .semantics { contentDescription = tab.contentDescription }
             .clip(RoundedCornerShape(12.dp))
-            .background(if (selected) colors.surfaceVariant else Color.Transparent)
+            .background(if (selected) (pillColor ?: colors.surfaceVariant) else Color.Transparent)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
@@ -223,7 +224,9 @@ private fun KohiSideRail(
         modifier = Modifier
             .width(72.dp)
             .fillMaxHeight()
-            .background(colors.surface)
+            // Nen rail CUNG MAU theme (background), khong sang hon content —
+            // thu vien pill moi la lop sang (surface = bac tren mocha).
+            .background(colors.background)
             .statusBarsPadding()
             .navigationBarsPadding(),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -236,6 +239,7 @@ private fun KohiSideRail(
                 selected = selectedRoute == tab.route,
                 badge = if (tab == KohiTab.QUEUE) queueBadge else null,
                 onClick = { onSelect(tab) },
+                pillColor = colors.surface,
             )
         }
         Spacer(Modifier.weight(1f))
