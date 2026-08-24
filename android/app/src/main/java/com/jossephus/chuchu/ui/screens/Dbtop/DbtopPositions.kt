@@ -18,6 +18,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -57,6 +58,14 @@ internal fun PositionsView(
     }
 }
 
+/** APR cao = cơ hội nổi bật (xanh), trung bình = xanh dương, thấp = mờ đi. */
+private fun aprTint(apr: Double?, colors: com.jossephus.chuchu.ui.theme.ChuColorPalette): Color = when {
+    apr == null || apr <= 0.0 -> colors.textMuted
+    apr >= 30.0 -> colors.success
+    apr >= 15.0 -> colors.accentSecondary
+    else -> colors.textMuted
+}
+
 @Composable
 private fun DappPositionRow(
     row: DappRow,
@@ -80,9 +89,9 @@ private fun DappPositionRow(
         lending -> colors.accentSecondary
         else -> colors.accent
     }
+    // APR có CỘT RIÊNG bên phải (user quan tâm nhất) — không trộn vào metrics.
     val metrics = buildList {
         if (showYield && row.perday > 0) add("+${DeFiFormatter.formatUsd(row.perday)}/D")
-        if (showYield && row.apr != null && row.apr > 0) add("${DeFiFormatter.formatPercent(row.apr, false)} APR")
         row.health?.let { add("HF ${String.format(Locale.US, "%.2fx", it)}") }
     }.joinToString(" · ").ifBlank { row.proto.uppercase() }
 
@@ -110,7 +119,25 @@ private fun DappPositionRow(
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(6.dp))
+        // Cột APR RIÊNG — màu theo mức: >=30% xanh nổi bật, >=15% xanh dương,
+        // thap hon = mo đi. User theo doi APR nen cho no dung hang rieng.
+        Column(
+            modifier = Modifier.width(52.dp),
+            horizontalAlignment = Alignment.End,
+        ) {
+            if (row.apr != null && row.apr > 0) {
+                ChuText(
+                    DeFiFormatter.formatPercent(row.apr, false, 1),
+                    style = type.label.copy(fontWeight = if (row.apr >= 30.0) FontWeight.Bold else FontWeight.Normal),
+                    color = aprTint(row.apr, colors),
+                    maxLines = 1,
+                )
+            } else {
+                ChuText("—", style = type.labelSmall, color = colors.textMuted)
+            }
+        }
+        Spacer(Modifier.width(6.dp))
         ChuText(
             DeFiFormatter.formatUsdCompact(row.cap),
             style = type.label.copy(fontWeight = FontWeight.Bold),

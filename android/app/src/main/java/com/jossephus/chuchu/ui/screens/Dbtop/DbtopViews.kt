@@ -22,7 +22,7 @@ import com.jossephus.chuchu.data.model.dbtop.DailyYield
 import com.jossephus.chuchu.data.model.dbtop.DeFiFormatter
 import com.jossephus.chuchu.ui.components.ChuText
 import com.jossephus.chuchu.ui.components.KohiSectionBand
-import com.jossephus.chuchu.ui.components.chart.DailyYieldBarChart
+import com.jossephus.chuchu.ui.components.chart.YieldComboChart
 import com.jossephus.chuchu.ui.components.chart.NetWorthCurveChart
 import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTypography
@@ -61,7 +61,7 @@ internal fun ChartsView(
         }
         item(key = "daily_yield") {
             KohiSectionBand(
-                "DAILY YIELD",
+                "YIELD · DAILY + ACCUM",
                 currentPerDay?.let { "+${DeFiFormatter.formatUsd(it)}/D" } ?: "SCAN OFFLINE",
                 accent = if (currentPerDay != null) colors.success else colors.error,
             )
@@ -74,13 +74,15 @@ internal fun ChartsView(
                 if (daily.isEmpty()) {
                     ChuText("NO DAILY YIELD DATA", style = type.bodySmall, color = colors.textMuted)
                 } else {
-                    DailyYieldBarChart(
+                    // 1 chart hai lop: bar = daily, line = accumulated (thang rieng).
+                    YieldComboChart(
                         dailyData = daily,
-                        primaryColor = colors.accent,
+                        barColor = colors.accent,
+                        accumColor = colors.success,
                         accentColor = colors.success,
                         tooltipBg = colors.surfaceVariant,
                         textColor = colors.textSecondary,
-                        height = 160.dp,
+                        height = 190.dp,
                     )
                 }
             }

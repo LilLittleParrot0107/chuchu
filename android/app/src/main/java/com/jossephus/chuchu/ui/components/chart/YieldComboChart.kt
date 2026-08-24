@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Fill
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -44,16 +45,21 @@ import com.jossephus.chuchu.data.model.dbtop.DailyYield
 import com.jossephus.chuchu.data.model.dbtop.DeFiFormatter
 import kotlin.math.max
 
+/**
+ * 1 chart HAI lớp: bar = daily yield theo ngày, line = accumulated yield
+ * (cộng dồn) với thang riêng bên phải. Chạm/kéo để xem tooltip cả hai giá.
+ */
 @Composable
-fun DailyYieldBarChart(
+fun YieldComboChart(
     dailyData: List<DailyYield>,
     modifier: Modifier = Modifier,
-    primaryColor: Color = Color(0xFF38BDF8),
+    barColor: Color = Color(0xFF38BDF8),
+    accumColor: Color = Color(0xFFA6E3A1),
     accentColor: Color = Color(0xFF4ADE80),
     tooltipBg: Color = Color(0xFF11111B),
     gridColor: Color = Color(0xFF45475A).copy(alpha = 0.35f),
     textColor: Color = Color(0xFFA6ADC8),
-    height: Dp = 180.dp,
+    height: Dp = 190.dp,
 ) {
     if (dailyData.isEmpty()) return
 
@@ -73,8 +79,16 @@ fun DailyYieldBarChart(
     val touchX = remember { mutableFloatStateOf(-1f) }
     val selectedIndexState = remember { mutableIntStateOf(-1) }
 
+    // Thang riêng cho từng lớp: bar theo max daily, line theo max cộng dồn.
     val maxYield = remember(dailyData) {
         max(dailyData.maxOfOrNull { it.yieldUsd } ?: 1.0, 1.0)
+    }
+    val cumulative = remember(dailyData) {
+        var s = 0.0
+        dailyData.map { s += it.yieldUsd; s }
+    }
+    val maxCum = remember(cumulative) {
+        max(cumulative.lastOrNull() ?: 1.0, 1.0)
     }
 
     val labelStyle = remember(textColor) {
@@ -85,15 +99,23 @@ fun DailyYieldBarChart(
             fontWeight = FontWeight.Normal,
         )
     }
-    val tooltipMainStyle = remember(primaryColor) {
+    val tooltipMainStyle = remember(barColor) {
         TextStyle(
-            color = primaryColor,
+            color = barColor,
             fontSize = 11.sp,
             fontFamily = FontFamily.Monospace,
             fontWeight = FontWeight.Bold,
         )
     }
-    val tooltipSecStyle = remember {
+    val tooltipAccStyle = remember(accumColor) {
+        TextStyle(
+            color = accumColor,
+            fontSize = 10.sp,
+            fontFamily = FontFamily.Monospace,
+            fontWeight = FontWeight.Bold,
+        )
+    }
+    val tooltipSecStyle = remember(accentColor) {
         TextStyle(
             color = accentColor,
             fontSize = 9.sp,
@@ -103,6 +125,7 @@ fun DailyYieldBarChart(
     }
 
     val tooltipPath = remember { Path() }
+    val linePath = remember { Path() }
 
     Box(
         modifier = modifier
@@ -156,7 +179,7 @@ fun DailyYieldBarChart(
 
             if (plotWidth <= 0 || plotHeight <= 0) return@Canvas
 
-            // 1. Gridlines
+            // 1. Gridlines theo thang DAILY (nhãn bên phải)
             val gridSteps = 2
             val dashEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 4f), 0f)
             for (i in 0..gridSteps) {
@@ -179,7 +202,7 @@ fun DailyYieldBarChart(
                 )
             }
 
-            // 2. Bars
+            // 2. Bars — daily yield
             val count = dailyData.size
             val slotWidth = plotWidth / count
             val barSpacing = slotWidth * 0.25f
@@ -213,7 +236,7 @@ fun DailyYieldBarChart(
 
                 val barBrush = Brush.verticalGradient(
                     colors = listOf(
-                        (if (isSelected) accentColor else primaryColor).copy(alpha = alpha),
+                        (if (isSelected) accentColor else barColor).copy(alpha = alpha),
                         accentColor.copy(alpha = alpha * 0.7f),
                     ),
                     startY = barTop,
@@ -237,21 +260,37 @@ fun DailyYieldBarChart(
                 }
             }
 
-            // 3. Tooltip
+            // 3. Line — accumulated yield, thang RIENG (maxCum), vẽ đè lên bars
+            linePath.rewind()
+            for (i in 0 until count) {
+                val cx = leftPadding + i * slotWidth + slotWidth / 2f
+                val normY = (cumulative[i] / maxCum).toFloat().coerceIn(0f, 1f)
+                val cy = topPadding + (1f - normY) * plotHeight * animProgress.value
+                if (i == 0) linePath.moveTo(cx, cy) else linePath.lineTo(cx, cy)
+            }
+            drawPath(
+                path = linePath,
+                color = accumColor.copy(alpha = if (activeIndex != -1) 0.9f else 1f),
+                style = Stroke(width = 2.2.dp.toPx(), cap = StrokeCap.Round),
+            )
+
+            // 4. Tooltip: daily + accum + ngày
             if (activeIndex in 0 until count) {
                 val selected = dailyData[activeIndex]
                 val barCenterX = leftPadding + activeIndex * slotWidth + slotWidth / 2f
 
-                val yieldStr = "+${DeFiFormatter.formatUsd(selected.yieldUsd)}"
+                val yieldStr = "+${DeFiFormatter.formatUsd(selected.yieldUsd)}/D"
+                val accumStr = "Σ +${DeFiFormatter.formatUsd(cumulative[activeIndex])}"
                 val subStr = "${selected.date} (${String.format(java.util.Locale.US, "%.1fd", selected.coverageDays)})"
 
                 val yieldLayout = textMeasurer.measure(yieldStr, tooltipMainStyle)
+                val accumLayout = textMeasurer.measure(accumStr, tooltipAccStyle)
                 val subLayout = textMeasurer.measure(subStr, tooltipSecStyle)
 
                 val padH = 8.dp.toPx()
                 val padV = 4.dp.toPx()
-                val ttWidth = max(yieldLayout.size.width, subLayout.size.width) + padH * 2
-                val ttHeight = yieldLayout.size.height + subLayout.size.height + padV * 2
+                val ttWidth = maxOf(yieldLayout.size.width, accumLayout.size.width, subLayout.size.width) + padH * 2
+                val ttHeight = yieldLayout.size.height + accumLayout.size.height + subLayout.size.height + padV * 2 + 4.dp.toPx()
 
                 var ttLeft = barCenterX - ttWidth / 2f
                 if (ttLeft + ttWidth > canvasWidth - rightPadding) ttLeft = canvasWidth - rightPadding - ttWidth
@@ -277,18 +316,13 @@ fun DailyYieldBarChart(
                 )
                 drawPath(
                     path = tooltipPath,
-                    color = primaryColor.copy(alpha = 0.7f),
+                    color = accumColor.copy(alpha = 0.7f),
                     style = Stroke(width = 1.dp.toPx()),
                 )
 
-                drawText(
-                    textLayoutResult = yieldLayout,
-                    topLeft = Offset(ttLeft + padH, ttTop + padV),
-                )
-                drawText(
-                    textLayoutResult = subLayout,
-                    topLeft = Offset(ttLeft + padH, ttTop + padV + yieldLayout.size.height),
-                )
+                drawText(textLayoutResult = yieldLayout, topLeft = Offset(ttLeft + padH, ttTop + padV))
+                drawText(textLayoutResult = accumLayout, topLeft = Offset(ttLeft + padH, ttTop + padV + yieldLayout.size.height + 2.dp.toPx()))
+                drawText(textLayoutResult = subLayout, topLeft = Offset(ttLeft + padH, ttTop + padV + yieldLayout.size.height + accumLayout.size.height + 4.dp.toPx()))
             }
         }
     }
