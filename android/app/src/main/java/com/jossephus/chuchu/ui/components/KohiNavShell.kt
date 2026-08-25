@@ -193,13 +193,14 @@ private fun KohiBottomBar(
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            // KHONG weight: weight keo pill dai het o -> vien sat man hinh.
+            // Kich thuoc 56x40 co dinh, SpaceEvenly tu chia le deu.
             KohiTab.entries.forEach { tab ->
                 KohiNavItem(
                     tab = tab,
                     selected = selectedRoute == tab.route,
                     badge = if (tab == KohiTab.QUEUE) queueBadge else null,
                     onClick = { onSelect(tab) },
-                    modifier = Modifier.weight(1f),
                 )
             }
         }
@@ -222,7 +223,7 @@ private fun KohiSideRail(
     val colors = ChuColors.current
     Column(
         modifier = Modifier
-            .width(72.dp)
+            .width(80.dp)
             .fillMaxHeight()
             // Nen rail CUNG MAU theme (background), khong sang hon content —
             // thu vien pill moi la lop sang (surface = bac tren mocha).
