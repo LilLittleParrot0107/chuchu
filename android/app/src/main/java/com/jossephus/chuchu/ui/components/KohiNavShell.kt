@@ -278,11 +278,19 @@ fun KohiNavShell(
             // khi hien, keyboard de len khi an.
             val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
             Column(modifier = Modifier.fillMaxSize()) {
+                // consume navigationBars CHI KHI bar dang hien (ime dong):
+                // content khong bi cong don nav inset voi bar. Khi IME mo thi
+                // KHONG consume — nav inset van duoc bao (keyboard che no),
+                // nuot vao se day composer/accessory bar CAO hon keyboard
+                // dung 1 khoang = chieu cao nav bar.
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
-                        .consumeWindowInsets(WindowInsets.navigationBars),
+                        .then(
+                            if (!imeVisible) Modifier.consumeWindowInsets(WindowInsets.navigationBars)
+                            else Modifier
+                        ),
                 ) { content() }
                 if (!imeVisible) {
                     KohiBottomBar(
