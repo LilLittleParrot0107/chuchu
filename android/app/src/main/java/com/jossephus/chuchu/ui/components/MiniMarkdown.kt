@@ -1,8 +1,23 @@
 package com.jossephus.chuchu.ui.components
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
@@ -10,7 +25,9 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.dp
 import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTypography
 
@@ -21,7 +38,8 @@ import com.jossephus.chuchu.ui.theme.ChuTypography
  *
  * Phu dung phan markdown agent thuong tra loi: heading #..####, **bold**,
  * *italic*, `code`, fence ba-dau-nhay (khoi mono), list gach-ngoang hoac so,
- * blockquote >, ngang --- , link [t](u) (hien nhan, khong bat su kien mo link).
+ * blockquote >, ngang --- , link [t](u) (hien nhan, khong bat su kien mo link),
+ * va BANG | a | b | (25/8 — agent hay tra loi so sanh dang bang).
  * Nhan nhung gi khong hieu la chu thuong — khong mat chu.
  */
 
@@ -38,13 +56,75 @@ private class MdStyles(
     val h3: SpanStyle,
 )
 
+// ─────────────────────────── block parser ───────────────────────────
+
+/** Mot khoi markdown: doan text thuong, hoac bang | a | b | co separator. */
+internal sealed class MdBlock {
+    data class Text(val lines: List<String>) : MdBlock()
+    data class Table(val header: List<String>, val rows: List<List<String>>) : MdBlock()
+}
+
+/** Dong separator cua bang GFM: | --- | :---: | (cho phep 2+ gach). */
+internal fun isTableSeparator(line: String): Boolean {
+    val t = line.trim().trim('|')
+    if (!t.contains('-')) return false
+    return t.split('|').all { c -> c.trim().matches(Regex(":?-{2,}:?")) }
+}
+
+internal fun splitRow(line: String): List<String> =
+    line.trim().trim('|').split('|').map { it.trim() }
+
+/**
+ * Tach markdown thanh cac block. Bang duoc nhan khi mot dong bat dau bang
+ * '|' va DONG KE TIEN la separator — tranh nham voi text co ky tu '|'.
+ * Code fence duoc track de khong bao gio nham bang trong fence.
+ */
+internal fun splitBlocks(md: String): List<MdBlock> {
+    val blocks = mutableListOf<MdBlock>()
+    var textBuf = mutableListOf<String>()
+    var inFence = false
+    val lines = md.lines()
+    var i = 0
+
+    fun flush() {
+        if (textBuf.isNotEmpty()) {
+            blocks += MdBlock.Text(textBuf.toList())
+            textBuf = mutableListOf()
+        }
+    }
+
+    while (i < lines.size) {
+        val line = lines[i].trimEnd()
+        if (line.trimStart().startsWith("```")) inFence = !inFence
+        val t = line.trim()
+        if (!inFence && t.startsWith("|") && i + 1 < lines.size && isTableSeparator(lines[i + 1])) {
+            flush()
+            val header = splitRow(t)
+            i += 2 // header + separator
+            val rows = mutableListOf<List<String>>()
+            while (i < lines.size && lines[i].trim().startsWith("|") && !lines[i].trimStart().startsWith("```")) {
+                rows += splitRow(lines[i])
+                i += 1
+            }
+            blocks += MdBlock.Table(header = header, rows = rows)
+            continue
+        }
+        textBuf += line
+        i += 1
+    }
+    flush()
+    return blocks
+}
+
+// ─────────────────────────── styles ───────────────────────────
+
 @Composable
-fun MiniMarkdownText(markdown: String) {
+private fun rememberMdStyles(): MdStyles {
     val colors = ChuColors.current
     val type = ChuTypography.current
     // Styles phai duoc remember: tao moi moi recompose lam key cua
     // remember(markdown, styles) thay doi lien tuc -> parse lai toan bo text.
-    val styles = remember(colors, type) {
+    return remember(colors, type) {
         MdStyles(
             code = SpanStyle(fontFamily = FontFamily.Monospace, background = colors.border.copy(alpha = 0.3f)),
             bold = SpanStyle(fontWeight = FontWeight.Bold),
@@ -57,10 +137,108 @@ fun MiniMarkdownText(markdown: String) {
             h3 = SpanStyle(fontWeight = FontWeight.Bold),
         )
     }
-    val built = remember(markdown, styles) { buildMiniMarkdown(markdown, styles) }
-    // Moi block deu append newline ke ca block cuoi -> panel thua mot dong rong.
-    val annotated = if (built.endsWith("\n")) built.subSequence(0, built.length - 1) else built
-    BasicText(text = annotated, style = TextStyle(color = colors.textPrimary, fontSize = type.body.fontSize))
+}
+
+@Composable
+fun MiniMarkdownText(markdown: String) {
+    val colors = ChuColors.current
+    val type = ChuTypography.current
+    val styles = rememberMdStyles()
+
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        val blocks = remember(markdown) { splitBlocks(markdown) }
+        blocks.forEach { block ->
+            when (block) {
+                is MdBlock.Table -> MarkdownTable(block = block, styles = styles)
+                is MdBlock.Text -> {
+                    val md = block.lines.joinToString("\n")
+                    val built = remember(md, styles) { buildMiniMarkdown(md, styles) }
+                    // Moi block deu append newline ke ca block cuoi -> thua
+                    // mot dong rong.
+                    val annotated = if (built.endsWith("\n")) built.subSequence(0, built.length - 1) else built
+                    BasicText(
+                        text = annotated,
+                        style = TextStyle(color = colors.textPrimary, fontSize = type.body.fontSize),
+                    )
+                }
+            }
+        }
+    }
+}
+
+// ─────────────────────────── table renderer ───────────────────────────
+
+@Composable
+private fun MarkdownTable(block: MdBlock.Table, styles: MdStyles) {
+    val colors = ChuColors.current
+    val type = ChuTypography.current
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(4.dp))
+            .border(1.dp, colors.border, RoundedCornerShape(4.dp)),
+    ) {
+        // Header — nen surfaceVariant, chu dam
+        Row(modifier = Modifier.fillMaxWidth().background(colors.surfaceVariant)) {
+            block.header.forEach { h ->
+                BasicText(
+                    text = inlineAnnotated(h, styles),
+                    style = TextStyle(
+                        color = colors.textPrimary,
+                        fontSize = type.labelSmall.fontSize,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace,
+                    ),
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 6.dp, vertical = 5.dp),
+                    maxLines = 4,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+
+        block.rows.forEachIndexed { index, row ->
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(colors.border.copy(alpha = 0.4f)),
+            )
+            // Zebra nhe de doc hang dai
+            Row(
+                modifier = Modifier.fillMaxWidth().background(
+                    if (index % 2 == 1) colors.surfaceVariant.copy(alpha = 0.4f) else Color.Transparent,
+                ),
+            ) {
+                row.forEach { cell ->
+                    BasicText(
+                        text = inlineAnnotated(cell, styles),
+                        style = TextStyle(
+                            color = colors.textSecondary,
+                            fontSize = type.labelSmall.fontSize,
+                            fontFamily = FontFamily.Monospace,
+                        ),
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 6.dp, vertical = 4.dp),
+                    )
+                }
+                // Pad nhung hang it cot hon header de khong xep lung tung
+                repeat((block.header.size - row.size).coerceAtLeast(0)) {
+                    Spacer(Modifier.weight(1f))
+                }
+            }
+        }
+    }
+}
+
+// ─────────────────────────── inline builder ───────────────────────────
+
+/** Cell/table can AnnotatedString dung inline style — goi helper nay. */
+private fun inlineAnnotated(text: String, s: MdStyles): AnnotatedString = buildAnnotatedString {
+    appendInline(text, s)
 }
 
 private val HR_RE = Regex("(-{3,}|\\*{3,}|_{3,})")
@@ -119,7 +297,7 @@ private fun buildMiniMarkdown(md: String, s: MdStyles): AnnotatedString = buildA
     }
 }
 
-/** Xu ly inline trong MOT dong: code > bold > italic > link, phan con lai thuong. */
+/** Xu ly inline trong MOT dong: code > bold-italic > bold > italic > link. */
 private fun AnnotatedString.Builder.appendInline(text: String, s: MdStyles) {
     var i = 0
     for (m in INLINE_MD.findAll(text)) {
@@ -127,6 +305,9 @@ private fun AnnotatedString.Builder.appendInline(text: String, s: MdStyles) {
         val tok = m.value
         when {
             tok.startsWith("`") -> withStyle(s.code) { append(tok.trim('`')) }
+            tok.startsWith("***") -> withStyle(s.bold.copy(fontStyle = FontStyle.Italic)) {
+                append(tok.removeSurrounding("***"))
+            }
             tok.startsWith("**") -> withStyle(s.bold) { append(tok.removeSurrounding("**")) }
             tok.startsWith("*") -> withStyle(s.italic) { append(tok.removeSurrounding("*")) }
             tok.startsWith("[") -> {
