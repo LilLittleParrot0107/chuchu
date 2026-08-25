@@ -39,6 +39,9 @@ fun KohiCommandBand(
     statusColor: Color = ChuColors.current.textMuted,
     onBack: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
+    // null = surface (chuẩn). Queue/Dbtop truyền background để cả khối trên
+    // cùng (status bar + band) tan vào nền theme như rail.
+    containerColor: Color? = null,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
     val colors = ChuColors.current
@@ -47,7 +50,7 @@ fun KohiCommandBand(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .background(colors.surface)
+            .background(containerColor ?: colors.surface)
             .padding(horizontal = 10.dp, vertical = 2.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,

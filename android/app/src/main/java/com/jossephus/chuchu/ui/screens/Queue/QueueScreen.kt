@@ -128,7 +128,7 @@ fun QueueScreen(
                 .align(Alignment.TopCenter)
                 .fillMaxWidth()
                 .windowInsetsTopHeight(WindowInsets.statusBars)
-                .background(colors.surface),
+                .background(colors.background),
         )
         Column(
             modifier = Modifier
@@ -153,6 +153,9 @@ fun QueueScreen(
                 status = status,
                 statusColor = statusColor,
                 onBack = onBack,
+                // Toi mau nen theme: status bar + band + content + rail (man
+                // rong) la MOT ton, khong con khoi surface sac bep o tren.
+                containerColor = colors.background,
             ) {
                 ui.state.globalActions.firstOrNull()?.let { action ->
                     val busy = action.operationKey(null) in ui.busyOps

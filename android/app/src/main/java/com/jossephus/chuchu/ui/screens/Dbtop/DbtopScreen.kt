@@ -62,7 +62,7 @@ fun DbtopScreen(
                 .align(Alignment.TopCenter)
                 .fillMaxWidth()
                 .windowInsetsTopHeight(WindowInsets.statusBars)
-                .background(colors.surface),
+                .background(colors.background),
         )
         Column(
             modifier = Modifier

@@ -52,6 +52,7 @@ internal fun DbtopTopBar(
         status = ageText,
         statusColor = tone,
         onBack = onClose,
+        containerColor = colors.background,
     ) {
         KohiCompactAction(
             label = if (isRefreshing) "SCANNING" else "↻",
