@@ -5,12 +5,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
@@ -41,6 +37,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.geometry.Offset
@@ -188,40 +185,6 @@ private fun KohiNavItem(
     }
 }
 
-/** Bar dưới cho màn compact: 4 ô dàn đều, surface phủ cả gesture nav phía dưới. */
-@Composable
-private fun KohiBottomBar(
-    selectedRoute: String,
-    queueBadge: Int?,
-    onSelect: (KohiTab) -> Unit,
-) {
-    val colors = ChuColors.current
-    Column(modifier = Modifier.fillMaxWidth().background(colors.surface)) {
-        Row(
-            modifier = Modifier.fillMaxWidth().height(64.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            // KHONG weight: weight keo pill dai het o -> vien sat man hinh.
-            // Kich thuoc 56x40 co dinh, SpaceEvenly tu chia le deu.
-            KohiTab.entries.forEach { tab ->
-                KohiNavItem(
-                    tab = tab,
-                    selected = selectedRoute == tab.route,
-                    badge = if (tab == KohiTab.QUEUE) queueBadge else null,
-                    onClick = { onSelect(tab) },
-                )
-            }
-        }
-        Spacer(
-            Modifier
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .height(2.dp),
-        )
-    }
-}
-
 /** Rail trái cho màn rộng/ngang: icon dọc, cùng pill grammar. */
 @Composable
 private fun KohiSideRail(
@@ -313,24 +276,38 @@ fun KohiNavShell(
                             else Modifier
                         ),
                 ) { content() }
-                // Bar trượt vào/ra thay vì pop tức thì — hết cơn "giật" mỗi
-                // lần keyboard hạ/nâng (imeVisible flip đầu animation).
-                AnimatedVisibility(
-                    visible = !imeVisible,
-                    enter = slideInVertically(
-                        initialOffsetY = { it },
-                        animationSpec = tween(180),
-                    ) + fadeIn(tween(180)),
-                    exit = slideOutVertically(
-                        targetOffsetY = { it },
-                        animationSpec = tween(180),
-                    ) + fadeOut(tween(180)),
+                // Strip CỐ ĐỊNH chiều cao (bar + nav inset): layout không bao
+                // giờ đổi khi keyboard nâng/hạ -> hết giật. Bar chỉ FADE alpha
+                // trong strip; khi IME mở keyboard che toàn strip.
+                val stripColors = ChuColors.current
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(stripColors.surface)
+                        .navigationBarsPadding(),
                 ) {
-                    KohiBottomBar(
-                        selectedRoute = selectedRoute ?: "",
-                        queueBadge = queueBadge,
-                        onSelect = onSelect,
+                    val barAlpha by animateFloatAsState(
+                        targetValue = if (imeVisible) 0f else 1f,
+                        animationSpec = tween(150),
+                        label = "tabBarAlpha",
                     )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(64.dp)
+                            .alpha(barAlpha),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        KohiTab.entries.forEach { tab ->
+                            KohiNavItem(
+                                tab = tab,
+                                selected = selectedRoute == tab.route,
+                                badge = if (tab == KohiTab.QUEUE) queueBadge else null,
+                                onClick = { onSelect(tab) },
+                            )
+                        }
+                    }
                 }
             }
         }
