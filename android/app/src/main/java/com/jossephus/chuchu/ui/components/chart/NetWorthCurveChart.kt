@@ -94,6 +94,10 @@ fun NetWorthCurveChart(
         )
     }
 
+    // Hoist khoi DrawScope: allocation moi frame.
+    val dashedEffectCached = remember { PathEffect.dashPathEffect(floatArrayOf(6f, 6f), 0f) }
+    val markerDashCached = remember { PathEffect.dashPathEffect(floatArrayOf(4f, 4f), 0f) }
+
     // Cache nhan truc: measure trong draw chay moi frame keo tooltip.
     val gridLabels = remember(minVal, maxVal, labelTextStyle) {
         (0..3).map { i ->
@@ -166,7 +170,7 @@ fun NetWorthCurveChart(
 
             // 1. Gridlines
             val gridLinesCount = 3
-            val dashedEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 6f), 0f)
+            val dashedEffect = dashedEffectCached
 
             for (i in 0..gridLinesCount) {
                 val ratio = i.toFloat() / gridLinesCount
@@ -283,7 +287,7 @@ fun NetWorthCurveChart(
                     start = Offset(markerX, topPadding),
                     end = Offset(markerX, topPadding + plotHeight),
                     strokeWidth = 1.dp.toPx(),
-                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 4f), 0f),
+                    pathEffect = markerDashCached,
                 )
 
                 // Pulse Glow Marker

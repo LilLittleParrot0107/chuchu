@@ -126,6 +126,8 @@ fun YieldComboChart(
 
     val tooltipPath = remember { Path() }
     val linePath = remember { Path() }
+    // Hoist khoi draw: allocation moi frame khi keo tooltip la lang phi.
+    val dashEffect = remember { PathEffect.dashPathEffect(floatArrayOf(4f, 4f), 0f) }
 
     // Cache text layout: measure trong draw chay moi frame khi keo tooltip.
     val dateLayouts = remember(dailyData, labelStyle) {
@@ -190,7 +192,6 @@ fun YieldComboChart(
 
             // 1. Gridlines theo thang DAILY (nhãn bên phải)
             val gridSteps = 2
-            val dashEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 4f), 0f)
             for (i in 0..gridSteps) {
                 val ratio = i.toFloat() / gridSteps
                 val y = topPadding + plotHeight * (1f - ratio)
