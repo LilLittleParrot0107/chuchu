@@ -127,6 +127,15 @@ fun YieldComboChart(
     val tooltipPath = remember { Path() }
     val linePath = remember { Path() }
 
+    // Cache text layout: measure trong draw chay moi frame khi keo tooltip.
+    val dateLayouts = remember(dailyData, labelStyle) {
+        dailyData.map { textMeasurer.measure(it.date.takeLast(5), labelStyle) }
+    }
+    val gridLabels = remember(dailyData, labelStyle) {
+        val maxYieldV = maxYield
+        (0..2).map { i -> textMeasurer.measure(DeFiFormatter.formatUsdCompact(maxYieldV * i / 2.0), labelStyle) }
+    }
+
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -195,7 +204,7 @@ fun YieldComboChart(
                     pathEffect = dashEffect,
                 )
 
-                val labelResult = textMeasurer.measure(DeFiFormatter.formatUsdCompact(yieldVal), labelStyle)
+                val labelResult = gridLabels[i]
                 drawText(
                     textLayoutResult = labelResult,
                     topLeft = Offset(canvasWidth - rightPadding - labelResult.size.width, y - labelResult.size.height - 2f),
@@ -250,8 +259,7 @@ fun YieldComboChart(
                     cornerRadius = cornerRadius,
                 )
 
-                val dateFormatted = item.date.takeLast(5) // "08-20"
-                val dateLayout = textMeasurer.measure(dateFormatted, labelStyle)
+                val dateLayout = dateLayouts[i]
                 if (dateLayout.size.width <= slotWidth * 0.9f) {
                     drawText(
                         textLayoutResult = dateLayout,

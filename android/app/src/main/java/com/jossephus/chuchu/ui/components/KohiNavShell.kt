@@ -35,7 +35,10 @@ import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.List
 import androidx.compose.foundation.Image
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -282,7 +285,19 @@ fun KohiNavShell(
             // cat tai dinh bar) = dung dai trang giua content va keyboard.
             // Con navigationBars luon duoc tieu thu o content: bar tu xu ly
             // khi hien, keyboard de len khi an.
-            val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+            //
+            // derivedStateOf: doc ime inset trong composition thi subcribe
+            // TUNG FRAME animation keyboard (ca shell + NavHost recompose
+            // ~18 lan/300ms = jank). Bo qua gia tri trung gian, chi thong
+            // bao khi Boolean doi trang thai.
+            val density = LocalDensity.current
+            // WindowInsets.ime la property @Composable — bat INSTANCE o scope
+            // composable, roi derivedStateOf doc getBottom (state-backed):
+            // chi thong bao khi Boolean doi, khong recompose tung frame.
+            val imeInsets = WindowInsets.ime
+            val imeVisible by remember {
+                derivedStateOf { imeInsets.getBottom(density) > 0 }
+            }
             Column(modifier = Modifier.fillMaxSize()) {
                 // consume navigationBars CHI KHI bar dang hien (ime dong):
                 // content khong bi cong don nav inset voi bar. Khi IME mo thi

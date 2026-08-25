@@ -84,6 +84,7 @@ fun NetWorthCurveChart(
     val maxVal = remember(points) { points.maxOfOrNull { it.nw } ?: 1.0 }
     val valueRange = if (maxVal == minVal) 1.0 else (maxVal - minVal)
 
+
     val labelTextStyle = remember(textColor) {
         TextStyle(
             color = textColor,
@@ -91,6 +92,14 @@ fun NetWorthCurveChart(
             fontFamily = FontFamily.Monospace,
             fontWeight = FontWeight.Normal,
         )
+    }
+
+    // Cache nhan truc: measure trong draw chay moi frame keo tooltip.
+    val gridLabels = remember(minVal, maxVal, labelTextStyle) {
+        (0..3).map { i ->
+            val v = minVal + (maxVal - minVal) * (i.toFloat() / 3f)
+            textMeasurer.measure(DeFiFormatter.formatUsdCompact(v), labelTextStyle)
+        }
     }
     val tooltipTitleStyle = remember(tooltipText) {
         TextStyle(
@@ -172,8 +181,7 @@ fun NetWorthCurveChart(
                     pathEffect = dashedEffect,
                 )
 
-                val labelText = DeFiFormatter.formatUsdCompact(lineVal)
-                val textLayout = textMeasurer.measure(labelText, labelTextStyle)
+                val textLayout = gridLabels[i]
                 drawText(
                     textLayoutResult = textLayout,
                     topLeft = Offset(canvasWidth - rightPadding - textLayout.size.width, y - textLayout.size.height - 2f),
