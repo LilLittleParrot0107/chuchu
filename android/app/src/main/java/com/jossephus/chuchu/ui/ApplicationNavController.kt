@@ -39,6 +39,9 @@ import com.jossephus.chuchu.ui.screens.Terminal.TerminalScreen
 import com.jossephus.chuchu.ui.screens.Terminal.TerminalViewModel
 import com.jossephus.chuchu.ui.security.VerificationResult
 import com.jossephus.chuchu.ui.security.requireUserVerification
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
@@ -119,6 +122,11 @@ fun ApplicationNavController() {
     // route pattern cua queue la "queue?pane={pane}" — cat phan query de khop tab.
     val currentRoute = backStackEntry?.destination?.route?.substringBefore('?')
 
+    // Mac dinh cua Navigation Compose la fade 700ms — chuyen tab cu thi nhin
+    // nhu "treo". Crossfade nhanh 100ms cho kip nhip bam.
+    val quickFadeIn = fadeIn(animationSpec = tween(100))
+    val quickFadeOut = fadeOut(animationSpec = tween(80))
+
     KohiNavShell(
         selectedRoute = currentRoute,
         queueBadge = queueAmbientSummary.takeIf { it.totalActive > 0 }?.totalActive,
@@ -132,7 +140,14 @@ fun ApplicationNavController() {
             }
         },
     ) {
-        NavHost(navController = navController, startDestination = "servers") {
+        NavHost(
+            navController = navController,
+            startDestination = "servers",
+            enterTransition = { quickFadeIn },
+            exitTransition = { quickFadeOut },
+            popEnterTransition = { quickFadeIn },
+            popExitTransition = { quickFadeOut },
+        ) {
         composable("servers") {
             val vm: ServerListViewModel = viewModel(factory = ServerListViewModel.factory(application))
             val settingsRepo = SettingsRepository.getInstance(application)
