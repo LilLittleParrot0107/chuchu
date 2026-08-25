@@ -5,6 +5,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
@@ -292,7 +298,19 @@ fun KohiNavShell(
                             else Modifier
                         ),
                 ) { content() }
-                if (!imeVisible) {
+                // Bar trượt vào/ra thay vì pop tức thì — hết cơn "giật" mỗi
+                // lần keyboard hạ/nâng (imeVisible flip đầu animation).
+                AnimatedVisibility(
+                    visible = !imeVisible,
+                    enter = slideInVertically(
+                        initialOffsetY = { it },
+                        animationSpec = tween(180),
+                    ) + fadeIn(tween(180)),
+                    exit = slideOutVertically(
+                        targetOffsetY = { it },
+                        animationSpec = tween(180),
+                    ) + fadeOut(tween(180)),
+                ) {
                     KohiBottomBar(
                         selectedRoute = selectedRoute ?: "",
                         queueBadge = queueBadge,
