@@ -128,10 +128,15 @@ internal fun TaskDetailDialog(
                 ChuText("PROMPT", style = type.labelSmall, color = colors.textMuted)
                 // Prompt thường ngắn — bỏ panel cuộn riêng, outer scroll gánh:
                 // còn 1 mức nested scroll thay vì 2.
-                // Prompt cua user -20% (user chot 27/8) — response agent giu nguyen.
+                // Prompt cua user -10% (27/8: giam 20% xong user keu nho qua,
+                // nang lai 10) — response agent giu nguyen. Scale ca lineHeight,
+                // khong lap lai bug chu de nhau ben dashboard.
                 ChuText(
                     text = task.text,
-                    style = type.body.copy(fontSize = type.body.fontSize * 0.8f),
+                    style = type.body.copy(
+                        fontSize = type.body.fontSize * 0.9f,
+                        lineHeight = type.body.lineHeight * 0.9f,
+                    ),
                     color = colors.textPrimary,
                 )
 
