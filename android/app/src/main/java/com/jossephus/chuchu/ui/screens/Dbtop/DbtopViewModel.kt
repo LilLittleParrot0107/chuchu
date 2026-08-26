@@ -30,7 +30,7 @@ import kotlinx.coroutines.withContext
 enum class DbtopView(val label: String, val tab: String) {
     POSITIONS("Positions", "POS"),
     WATCHLIST("Watchlist", "WATCH"),
-    CHARTS("Charts", "CHARTS"),
+    CHARTS("Chart", "CHART"),
     SPENDING("Spending", "SPEND"),
 }
 

@@ -166,7 +166,7 @@ internal fun ChartsView(
         }
         item(key = "daily_yield") {
             KohiSectionBand(
-                label = "YIELD · DAILY + ACCUM",
+                label = "YIELD · DAILY",
                 meta = currentPerDay?.let { "+${DeFiFormatter.formatUsd(it)}/D" } ?: "SCAN OFFLINE",
                 containerColor = colors.background,
                 accent = if (currentPerDay != null) colors.success else colors.error,
@@ -196,7 +196,6 @@ internal fun ChartsView(
         item(key = "net_vs_spend") {
             KohiSectionBand(
                 label = "Σ YIELD VS SPEND",
-                meta = "GAP = SPENT",
                 containerColor = colors.background,
                 accent = colors.warning,
             )
