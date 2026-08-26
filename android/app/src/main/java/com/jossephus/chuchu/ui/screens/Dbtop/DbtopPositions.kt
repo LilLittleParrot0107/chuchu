@@ -62,6 +62,7 @@ internal fun PositionsView(
                 row = row,
                 selected = selectedKey == row.positionKey(),
                 showYield = showYield && (row.expiry == null || row.expiry > nowSec),
+                nowSec = nowSec,
                 onClick = { onSelect(row) },
             )
         }
@@ -73,6 +74,7 @@ private fun DappPositionRow(
     row: DappRow,
     selected: Boolean,
     showYield: Boolean,
+    nowSec: Long,
     onClick: () -> Unit,
 ) {
     val colors = ChuColors.current
@@ -91,13 +93,37 @@ private fun DappPositionRow(
         lending -> colors.accentSecondary
         else -> colors.accent
     }
-    // HF khong con nam trong metrics text: lending row co han thanh health
-    // truc quan ben duoi (user yeu cau 26/8).
-    val metrics = remember(row, showYield) {
+    // So cu the nam O DAY vi thanh do gio la fill nen row (am hieu, khong
+    // phai do thi chinh xac) — user chot 27/8.
+    val metrics = remember(row, showYield, nowSec) {
         buildList {
+            row.detail?.option?.let { opt ->
+                val expiry = opt.expiry ?: 0L
+                val daysLeft = if (expiry > nowSec) (expiry - nowSec) / 86400.0 else 0.0
+                add(if (daysLeft > 0) String.format(Locale.US, "%.1fD LEFT", daysLeft) else "EXPIRED")
+            }
+            row.health?.takeIf { it > 0 }?.let { add("HF ${String.format(Locale.US, "%.2fx", it)}") }
+            row.liqDrop?.takeIf { it > 0 && row.health != null }?.let {
+                add(String.format(Locale.US, "-%.0f%% LIQ", it))
+            }
             if (showYield && row.perday > 0) add("+${DeFiFormatter.formatUsd(row.perday)}/D")
             if (showYield && row.apr != null && row.apr > 0) add("${DeFiFormatter.formatPercent(row.apr, false)} APR")
         }.joinToString(" · ").ifBlank { row.proto.uppercase() }
+    }
+    // Fill nen row: health uu tien (rui ro truoc), khong thi tien trinh option.
+    val health = row.health
+    val rowFill: Pair<Float, Color>? = when {
+        health != null && health > 0 -> {
+            val tier = when {
+                health < RiskEvaluator.HP_BAD -> colors.error
+                health < RiskEvaluator.HP_WARN -> colors.warning
+                else -> colors.success
+            }
+            ((health - 1.0).toFloat().coerceIn(0f, 1f)) to tier
+        }
+        row.detail?.option != null ->
+            optionElapsedFraction(row.detail.option, nowSec) to colors.warning
+        else -> null
     }
 
     KohiSelectableRow(
@@ -105,6 +131,8 @@ private fun DappPositionRow(
         tone = tone,
         onClick = onClick,
         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+        fillFraction = rowFill?.first,
+        fillColor = rowFill?.second,
     ) {
         ChuText(glyph, style = type.labelSmall, color = tone)
         Spacer(Modifier.width(6.dp))
@@ -123,23 +151,6 @@ private fun DappPositionRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            // padding(end): thanh la khoi dac full-bleed, khong co khoang tho
-            // tu nhien nhu chu — de sat so cap ben phai nhin rat bi.
-            row.detail?.option?.let { opt ->
-                OptionProgressBar(
-                    option = opt,
-                    compact = true,
-                    modifier = Modifier.padding(end = 12.dp),
-                )
-            }
-            row.health?.takeIf { it > 0.0 }?.let { hf ->
-                LendingHealthBar(
-                    health = hf,
-                    liqDrop = row.liqDrop,
-                    compact = true,
-                    modifier = Modifier.padding(end = 12.dp),
-                )
-            }
         }
         Spacer(Modifier.width(6.dp))
         ChuText(
@@ -150,6 +161,15 @@ private fun DappPositionRow(
             overflow = TextOverflow.Ellipsis,
         )
     }
+}
+
+/** Phan tram ky han da troi qua cua option (0..1) — dung chung row fill va bar detail. */
+internal fun optionElapsedFraction(option: OptionDetail, nowSec: Long): Float {
+    val expiry = option.expiry ?: 0L
+    val sold = option.sold ?: 0L
+    val totalSec = if (sold in 1 until expiry) (expiry - sold).toDouble() else (option.dte ?: 0.0) * 86400.0
+    val elapsedSec = if (sold > 0 && totalSec > 0) (nowSec - sold).toDouble().coerceIn(0.0, totalSec) else 0.0
+    return if (totalSec > 0) (elapsedSec / totalSec).toFloat().coerceIn(0f, 1f) else 0f
 }
 
 @Composable

@@ -277,10 +277,15 @@ fun KohiSelectableRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+    // 0..1: nhung "muc do" (tien trinh option / health lending) vao NEN row
+    // kieu btop — alpha thap nen chi la am hieu lien mat; so cu the phai nam
+    // o dong chu (user chot 27/8). null = khong ve gi.
+    fillFraction: Float? = null,
+    fillColor: Color? = null,
     content: @Composable RowScope.() -> Unit,
 ) {
     val colors = ChuColors.current
-    Row(
+    Box(
         modifier = modifier
             .fillMaxWidth()
             .height(IntrinsicSize.Min)
@@ -290,21 +295,35 @@ fun KohiSelectableRow(
                 color = if (selected) tone.copy(alpha = 0.6f) else colors.border.copy(alpha = CHU_HAIRLINE_ALPHA),
             )
             .clickable(onClick = onClick),
-        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxHeight()
-                .width(3.dp)
-                .background(if (selected) tone else Color.Transparent),
-        )
+        // Ve DUOI content va TAT khi selected: nen surface + rail da mang
+        // trang thai chon, chong them fill la lau mau.
+        if (!selected && fillFraction != null && fillFraction > 0f) {
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth(fillFraction.coerceIn(0f, 1f))
+                    .background((fillColor ?: tone).copy(alpha = 0.14f)),
+            )
+        }
         Row(
-            modifier = Modifier
-                .weight(1f)
-                .padding(contentPadding),
+            modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min),
             verticalAlignment = Alignment.CenterVertically,
-            content = content,
-        )
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(3.dp)
+                    .background(if (selected) tone else Color.Transparent),
+            )
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(contentPadding),
+                verticalAlignment = Alignment.CenterVertically,
+                content = content,
+            )
+        }
     }
     Box(
         modifier = Modifier
