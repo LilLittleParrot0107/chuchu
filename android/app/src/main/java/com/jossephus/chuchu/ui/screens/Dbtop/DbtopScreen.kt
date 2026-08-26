@@ -210,7 +210,13 @@ fun DbtopScreen(
                         val dismiss = { viewModel.togglePosition(row.positionKey()) }
                         androidx.compose.ui.window.Dialog(
                             onDismissRequest = dismiss,
-                            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+                            // decorFitsSystemWindows=false: cua so dialog phu ca man va TU nhan
+                            // inset — thieu no thi navigationBarsPadding trong dialog tra 0,
+                            // sheet de len navbar va "lem" mat may dong cuoi (bug 27/8).
+                            properties = androidx.compose.ui.window.DialogProperties(
+                                usePlatformDefaultWidth = false,
+                                decorFitsSystemWindows = false,
+                            ),
                         ) {
                             // fillMaxSize + clickable = vung scrim bat tap-ra-ngoai
                             // (voi usePlatformDefaultWidth=false, cua so dialog chiem
