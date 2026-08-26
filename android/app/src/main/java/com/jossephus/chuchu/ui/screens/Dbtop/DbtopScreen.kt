@@ -220,10 +220,7 @@ fun DbtopScreen(
                         // luon dung — ca man dang ne navbar bang no) roi truyen
                         // dp cung vao sheet: inset doc BEN TRONG cua so Dialog
                         // tra 0 tren may that, da lam sheet lem 2 lan (26-27/8).
-                        val density = androidx.compose.ui.platform.LocalDensity.current
-                        val navBottom = with(density) {
-                            WindowInsets.safeDrawing.getBottom(density).toDp()
-                        }
+                        val navBottom = com.jossephus.chuchu.ui.components.rememberRootNavBottomDp()
                         androidx.compose.ui.window.Dialog(
                             onDismissRequest = dismiss,
                             // decorFitsSystemWindows=false: cua so dialog phu ca man va TU nhan

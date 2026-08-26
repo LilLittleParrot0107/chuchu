@@ -96,10 +96,7 @@ internal fun TaskDetailDialog(
     val maxDialogH = (LocalConfiguration.current.screenHeightDp * 0.86f).dp
     // Inset navbar do o composition man hinh, truyen dp cung vao dialog —
     // doc inset trong cua so dialog tra 0 tren may that (bug lem 26-27/8).
-    val sheetDensity = androidx.compose.ui.platform.LocalDensity.current
-    val navBottom = with(sheetDensity) {
-        androidx.compose.foundation.layout.WindowInsets.safeDrawing.getBottom(sheetDensity).toDp()
-    }
+    val navBottom = com.jossephus.chuchu.ui.components.rememberRootNavBottomDp()
 
     // BOTTOM SHEET nhu detail cua dashboard (user chot 27/8): scrim mo phan
     // tren, tap vao vung mo = dong, khung nam sat day man.

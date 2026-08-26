@@ -79,7 +79,6 @@ fun QueueScreen(
     var inspectedTaskId by remember { mutableStateOf<Int?>(null) }
     val inspectedTask = inspectedTaskId?.let { id -> ui.state.tasks.firstOrNull { it.id == id } }
     var selectedPane by remember(initialPane) { mutableStateOf(initialPane) }
-    var selectedTaskId by remember { mutableStateOf<Int?>(null) }
     var prompt by remember { mutableStateOf("") }
 
     val agents = ui.state.agents
@@ -99,7 +98,6 @@ fun QueueScreen(
         val doneTail = scoped.filter { it.isCompleted }.takeLast(3)
         active + doneTail
     }
-    val selectedTask = visibleTasks.firstOrNull { it.id == selectedTaskId }
     val doneCount = visibleTasks.count { it.isCompleted }
     val isAdding = QueueOperationKey.ADD in ui.busyOps
     val isClearingDone =
@@ -224,7 +222,6 @@ fun QueueScreen(
                 selectedPane = pane,
                 onSelect = { nextPane ->
                     selectedPane = nextPane
-                    selectedTaskId = null
                 },
             )
 
@@ -281,25 +278,16 @@ fun QueueScreen(
                         items(visibleTasks, key = QueueTask::id) { task ->
                             QueueTaskRow(
                                 task = task,
-                                selected = selectedTaskId == task.id,
+                                selected = false,
                                 showTarget = pane == ALL_AGENTS,
-                                onClick = {
-                                    selectedTaskId = if (selectedTaskId == task.id) null else task.id
-                                },
+                                // Tap = mo thang sheet detail co scrim (user chot
+                                // 27/8, dong bo voi dashboard) — buoc chon-roi-
+                                // INSPECT trung gian da bo.
+                                onClick = { inspectedTaskId = task.id },
                             )
                         }
                     }
                 }
-            }
-
-            selectedTask?.let { task ->
-                QueueTaskDetailPane(
-                    task = task,
-                    busyOps = ui.busyOps,
-                    onInspect = { inspectedTaskId = task.id },
-                    onCopy = { copyPrompt(task) },
-                    onAction = { action -> onAction(action, task.id) },
-                )
             }
 
             QueueComposer(
