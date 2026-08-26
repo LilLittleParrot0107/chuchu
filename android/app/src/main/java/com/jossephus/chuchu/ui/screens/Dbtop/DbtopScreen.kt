@@ -166,6 +166,10 @@ fun DbtopScreen(
                                 row = selectedRow,
                                 showYield = currentPerDay != null && (selectedRow.expiry == null || selectedRow.expiry > nowSec),
                                 onClose = { viewModel.togglePosition(selectedRow.positionKey()) },
+                                // Man gap: cot phai cao full man — bo tran 280dp
+                                // (tran do danh cho pane inline man hep ngay xua),
+                                // dai thong tin trai het chieu doc, khoi cuon.
+                                maxHeight = androidx.compose.ui.unit.Dp.Infinity,
                             )
                         } else {
                             YieldInsightPane(
