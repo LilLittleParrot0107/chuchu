@@ -137,9 +137,26 @@ fun YieldComboChart(
     val dateLayouts = remember(dailyData, labelStyle) {
         dailyData.map { textMeasurer.measure(it.date.takeLast(5), labelStyle) }
     }
-    val gridLabels = remember(dailyData, labelStyle) {
-        val maxYieldV = maxYield
-        (0..2).map { i -> textMeasurer.measure(DeFiFormatter.formatUsdCompact(maxYieldV * i / 2.0), labelStyle) }
+    // HAI truc co nhan rieng, to mau theo lop (chuan combo-chart): daily ben
+    // TRAI mau bar, cong don ben PHAI mau line. Truoc day chi co mot bo nhan
+    // (thang daily) ma line lai ve theo thang rieng vo hinh -> nhin ty le
+    // bar/line thay "sai sai" (user bat 26/8) vi so tren man khong noi gi
+    // ve do cao cua line ca.
+    val dailyGridLabels = remember(maxYield, labelStyle, barColor) {
+        (0..2).map { i ->
+            textMeasurer.measure(
+                DeFiFormatter.formatUsdCompact(maxYield * i / 2.0),
+                labelStyle.copy(color = barColor.copy(alpha = 0.85f)),
+            )
+        }
+    }
+    val cumGridLabels = remember(maxCum, labelStyle, accumColor) {
+        (0..2).map { i ->
+            textMeasurer.measure(
+                "Σ" + DeFiFormatter.formatUsdCompact(maxCum * i / 2.0),
+                labelStyle.copy(color = accumColor.copy(alpha = 0.85f)),
+            )
+        }
     }
 
     Box(
@@ -199,7 +216,6 @@ fun YieldComboChart(
             for (i in 0..gridSteps) {
                 val ratio = i.toFloat() / gridSteps
                 val y = topPadding + plotHeight * (1f - ratio)
-                val yieldVal = maxYield * ratio
 
                 drawLine(
                     color = gridColor,
@@ -209,10 +225,15 @@ fun YieldComboChart(
                     pathEffect = dashEffect,
                 )
 
-                val labelResult = gridLabels[i]
+                val dailyLabel = dailyGridLabels[i]
                 drawText(
-                    textLayoutResult = labelResult,
-                    topLeft = Offset(canvasWidth - rightPadding - labelResult.size.width, y - labelResult.size.height - 2f),
+                    textLayoutResult = dailyLabel,
+                    topLeft = Offset(leftPadding, y - dailyLabel.size.height - 2f),
+                )
+                val cumLabel = cumGridLabels[i]
+                drawText(
+                    textLayoutResult = cumLabel,
+                    topLeft = Offset(canvasWidth - rightPadding - cumLabel.size.width, y - cumLabel.size.height - 2f),
                 )
             }
 

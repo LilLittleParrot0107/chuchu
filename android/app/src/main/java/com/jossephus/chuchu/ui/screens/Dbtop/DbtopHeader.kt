@@ -56,6 +56,9 @@ internal fun DbtopTopBar(
         status = ageText,
         statusColor = tone,
         onBack = onClose,
+        // Tan vao nen theme de khop mau voi vung status bar phia tren —
+        // truoc day band xam surface con thanh noti mau background, lo seam.
+        containerColor = colors.background,
     ) {
         KohiCompactAction(
             label = if (isRefreshing) "SCANNING" else "↻",
@@ -78,6 +81,7 @@ internal fun DashboardSummary(
     KohiSectionBand(
         label = "OVERVIEW",
         meta = if (perDay != null) "LIVE YIELD" else "YIELD HIDDEN",
+        containerColor = colors.background,
         // Yield an di vi snapshot cu/chet la trang thai "canh giac", khong
         // phai loi — error do de danh cho DEBT va SCAN OFFLINE.
         accent = if (perDay != null) colors.success else colors.warning,
@@ -206,7 +210,7 @@ internal fun DashboardViewBand(
                 modifier = Modifier.weight(1f),
             ) {
                 ChuText(
-                    view.label,
+                    view.tab,
                     style = type.labelSmall.copy(fontWeight = FontWeight.Bold),
                     color = if (active) colors.onAccent else colors.textSecondary,
                     maxLines = 1,

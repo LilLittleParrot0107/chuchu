@@ -223,6 +223,9 @@ fun KohiSectionBand(
     meta: String? = null,
     modifier: Modifier = Modifier,
     accent: Color = ChuColors.current.accent,
+    // null = surface (chuan). Dbtop truyen background: bo cac dai xam cat
+    // ngang man (user che 26/8), band chi con glyph ▌ + chu tren nen theme.
+    containerColor: Color? = null,
     trailing: @Composable RowScope.() -> Unit = {},
 ) {
     val colors = ChuColors.current
@@ -230,7 +233,7 @@ fun KohiSectionBand(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .background(colors.surface)
+            .background(containerColor ?: colors.surface)
             .padding(horizontal = 10.dp, vertical = 5.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,

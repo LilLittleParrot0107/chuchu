@@ -118,7 +118,7 @@ internal fun ChartsView(
     val type = ChuTypography.current
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         item(key = "net_worth_curve") {
-            KohiSectionBand("NET WORTH CURVE", DeFiFormatter.formatUsd(netWorth))
+            KohiSectionBand("NET WORTH CURVE", DeFiFormatter.formatUsd(netWorth), containerColor = colors.background)
             ChuCard(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -144,8 +144,9 @@ internal fun ChartsView(
         }
         item(key = "daily_yield") {
             KohiSectionBand(
-                "YIELD · DAILY + ACCUM",
-                currentPerDay?.let { "+${DeFiFormatter.formatUsd(it)}/D" } ?: "SCAN OFFLINE",
+                label = "YIELD · DAILY + ACCUM",
+                meta = currentPerDay?.let { "+${DeFiFormatter.formatUsd(it)}/D" } ?: "SCAN OFFLINE",
+                containerColor = colors.background,
                 accent = if (currentPerDay != null) colors.success else colors.error,
             )
             ChuCard(
@@ -222,7 +223,7 @@ internal fun SpendingView(spending: SpendingState?) {
             }
         }
         if (spending.byMonth.isNotEmpty()) {
-            item(key = "by_month_band") { KohiSectionBand("BY MONTH") }
+            item(key = "by_month_band") { KohiSectionBand("BY MONTH", containerColor = colors.background) }
             items(spending.byMonth.entries.sortedByDescending { it.key }, key = { "m-${it.key}" }) { (month, usd) ->
                 Row(
                     modifier = Modifier
@@ -240,7 +241,7 @@ internal fun SpendingView(spending: SpendingState?) {
             }
         }
         if (spending.recent.isNotEmpty()) {
-            item(key = "recent_band") { KohiSectionBand("RECENT", "${spending.count} TX") }
+            item(key = "recent_band") { KohiSectionBand("RECENT", "${spending.count} TX", containerColor = colors.background) }
             items(spending.recent, key = { "r-${it.ts}-${it.usd}" }) { entry ->
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Row(

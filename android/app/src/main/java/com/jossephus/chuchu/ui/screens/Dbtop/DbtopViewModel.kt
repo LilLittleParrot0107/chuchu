@@ -24,11 +24,13 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
-enum class DbtopView(val label: String) {
-    POSITIONS("Positions"),
-    WATCHLIST("Watchlist"),
-    CHARTS("Charts"),
-    SPENDING("Spending"),
+// `label` = ten day du (section band); `tab` = dang ngan cho nut chuyen view
+// — 4 tab chia deu man hep thi "Positions"/"Watchlist" dai hon nut, bi "…".
+enum class DbtopView(val label: String, val tab: String) {
+    POSITIONS("Positions", "POS"),
+    WATCHLIST("Watchlist", "WATCH"),
+    CHARTS("Charts", "CHARTS"),
+    SPENDING("Spending", "SPEND"),
 }
 
 fun normalizeBaseToken(sym: String): String {

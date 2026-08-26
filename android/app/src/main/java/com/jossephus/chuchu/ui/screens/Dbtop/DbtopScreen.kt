@@ -3,6 +3,7 @@ package com.jossephus.chuchu.ui.screens.Dbtop
 import android.app.Application
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -119,6 +120,7 @@ fun DbtopScreen(
             KohiSectionBand(
                 label = ui.selectedView.label,
                 meta = "${ui.itemCount(watchlistItems.size)} ITEMS",
+                containerColor = colors.background,
             )
 
             if (wide && ui.selectedView == DbtopView.POSITIONS) {
@@ -148,7 +150,8 @@ fun DbtopScreen(
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxHeight()
-                            .background(colors.surface),
+                            .background(colors.surface)
+                            .border(1.dp, colors.border),
                     ) {
                         if (selectedRow != null) {
                             PositionDetailPane(
@@ -197,13 +200,27 @@ fun DbtopScreen(
                     }
                 }
 
+                // Man hep: detail la POPUP giua man (user chot 26/8) — scrim
+                // mo phia sau + khung vien lam ro dau la detail, dau la list;
+                // pane inline cu mau hao hao voi row nen khong phan biet duoc.
                 if (ui.selectedView == DbtopView.POSITIONS) {
                     selectedRow?.let { row ->
-                        PositionDetailPane(
-                            row = row,
-                            showYield = currentPerDay != null && (row.expiry == null || row.expiry > nowSec),
-                            onClose = { viewModel.togglePosition(row.positionKey()) },
-                        )
+                        val dismiss = { viewModel.togglePosition(row.positionKey()) }
+                        androidx.compose.ui.window.Dialog(onDismissRequest = dismiss) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(colors.surface)
+                                    .border(1.dp, colors.border),
+                            ) {
+                                PositionDetailPane(
+                                    row = row,
+                                    showYield = currentPerDay != null && (row.expiry == null || row.expiry > nowSec),
+                                    onClose = dismiss,
+                                    maxHeight = 480.dp,
+                                )
+                            }
+                        }
                     }
                 }
             }
