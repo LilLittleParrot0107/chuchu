@@ -16,6 +16,14 @@ data class SpendingState(
     val month: String = "",
     val count: Int = 0,
     @SerialName("by_month") val byMonth: Map<String, Double> = emptyMap(),
+    /** Chi tieu theo ngay cua THANG HIEN TAI — chi ngay co chi tieu. */
+    @SerialName("by_day") val byDay: Map<String, Double> = emptyMap(),
+    /**
+     * Gia token ~24h truoc (tu snapshot debank gan moc now-24h). App tinh
+     * % 24h so voi px hien tai cua state.json. KHONG dung pxPrev cua
+     * state.json cho viec nay: do la gia cua lan quet truoc (30 phut).
+     */
+    val px24: Map<String, Double> = emptyMap(),
     val recent: List<SpendingEntry> = emptyList(),
 )
 

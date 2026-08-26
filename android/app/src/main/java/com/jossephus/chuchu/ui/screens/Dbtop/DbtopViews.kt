@@ -23,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.jossephus.chuchu.data.model.dbtop.CurvePoint
@@ -96,6 +97,25 @@ private fun WatchlistTokenRow(
                 ),
                 color = colors.textPrimary,
                 maxLines = 1,
+            )
+            // Cot % 24h (user 27/8) — so voi px24 tu snapshot debank ~24h
+            // truoc, KHONG phai pxPrev (gia lan quet truoc, 30 phut).
+            val pct = token.changePct24h
+            ChuText(
+                text = pct?.let { String.format(Locale.US, "%+.1f%%", it) } ?: "—",
+                style = type.labelSmall.copy(
+                    fontFamily = FontFamily.Monospace,
+                    fontFeatureSettings = "tnum",
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.End,
+                ),
+                color = when {
+                    pct == null -> colors.textMuted
+                    pct >= 0 -> colors.success
+                    else -> colors.error
+                },
+                maxLines = 1,
+                modifier = Modifier.width(64.dp),
             )
         }
         Box(
@@ -179,11 +199,10 @@ internal fun ChartsView(
 }
 
 /**
- * Tab SPENDING — chi xoay quanh HIEN TAI (user chot 26/8, hai vong gop y):
- * card THANG NAY + tong NAM NAY, duoi la tung thang cua nam nay. KHONG co
- * all-time: 2 vi la dia chi nap san tu 2023, cong don ca lich su ra con so
- * $250k vo nghia voi cau hoi "dang tieu bao nhieu". Khong co danh sach
- * tung giao dich — chi tiet nam o ledger.jsonl tren Legion.
+ * Tab SPENDING — bo cuc LUOI thay list doc (user 27/8: "khong bi dang list
+ * dai dang dac"): card THANG NAY / NAM NAY tren cung, duoi la "THEO NGAY"
+ * (chi ngay co chi tieu, luoi 2 cot) roi luoi thang cua nam nay (3 cot).
+ * Khong all-time (luat 26/8), khong danh sach giao dich (ledger.jsonl giu).
  */
 @Composable
 internal fun SpendingView(spending: SpendingState?) {
@@ -197,11 +216,7 @@ internal fun SpendingView(spending: SpendingState?) {
     val thisYearMonths = spending.byMonth.entries
         .filter { it.key.startsWith(year) }
         .sortedByDescending { it.key }
-    val mono = type.label.copy(
-        fontFamily = FontFamily.Monospace,
-        fontFeatureSettings = "tnum",
-        fontWeight = FontWeight.Bold,
-    )
+    val days = spending.byDay.entries.sortedByDescending { it.key }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -233,37 +248,89 @@ internal fun SpendingView(spending: SpendingState?) {
                 }
             }
         }
-        if (thisYearMonths.isNotEmpty()) {
-            item(key = "year_band") { KohiSectionBand(year, containerColor = colors.background) }
-            items(thisYearMonths, key = { "m-${it.key}" }) { (month, usd) ->
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        ChuText(
-                            "THG ${month.substringAfter('-').trimStart('0')}",
-                            style = type.labelSmall,
-                            color = if (month == spending.month) colors.textPrimary else colors.textSecondary,
-                        )
-                        ChuText(
-                            "-${DeFiFormatter.formatUsd(usd)}",
-                            style = mono,
-                            color = if (month == spending.month) colors.warning else colors.textPrimary,
+        if (days.isNotEmpty()) {
+            item(key = "days_band") {
+                KohiSectionBand(
+                    label = "THEO NGÀY",
+                    meta = "THG ${spending.month.substringAfter('-').trimStart('0')}",
+                    containerColor = colors.background,
+                )
+            }
+            items(days.chunked(2), key = { row -> "d-" + row.joinToString("|") { it.key } }) { rowDays ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp, vertical = 3.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    rowDays.forEach { (day, usd) ->
+                        SpendCell(
+                            label = day.substring(8) + "/" + day.substring(5, 7),
+                            value = "-${DeFiFormatter.formatUsd(usd)}",
+                            highlight = false,
+                            modifier = Modifier.weight(1f),
                         )
                     }
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(1.dp)
-                            .background(colors.border.copy(alpha = CHU_HAIRLINE_ALPHA)),
-                    )
+                    if (rowDays.size == 1) Spacer(Modifier.weight(1f))
                 }
             }
         }
+        if (thisYearMonths.isNotEmpty()) {
+            item(key = "year_band") { KohiSectionBand(year, containerColor = colors.background) }
+            items(thisYearMonths.chunked(3), key = { row -> "m-" + row.joinToString("|") { it.key } }) { rowMonths ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp, vertical = 3.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    rowMonths.forEach { (month, usd) ->
+                        SpendCell(
+                            label = "THG " + month.substringAfter('-').trimStart('0'),
+                            value = "-${DeFiFormatter.formatUsdCompact(usd)}",
+                            highlight = month == spending.month,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                    repeat(3 - rowMonths.size) { Spacer(Modifier.weight(1f)) }
+                }
+            }
+        }
+    }
+}
+
+/** O luoi chi tieu: label nho tren, so mono dam duoi, vien hairline. */
+@Composable
+private fun SpendCell(
+    label: String,
+    value: String,
+    highlight: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val colors = ChuColors.current
+    val type = ChuTypography.current
+    Column(
+        modifier = modifier
+            .background(colors.surface)
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+    ) {
+        ChuText(
+            label,
+            style = type.labelSmall,
+            color = if (highlight) colors.warning else colors.textMuted,
+            maxLines = 1,
+        )
+        ChuText(
+            value,
+            style = type.label.copy(
+                fontFamily = FontFamily.Monospace,
+                fontFeatureSettings = "tnum",
+                fontWeight = FontWeight.Bold,
+            ),
+            color = if (highlight) colors.warning else colors.textPrimary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 

@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.statusBars
@@ -22,6 +23,7 @@ import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -54,7 +56,7 @@ fun DbtopScreen(
     val nowSec = androidx.compose.runtime.remember(ui.state) { System.currentTimeMillis() / 1_000L }
     val currentPerDay = ui.currentPerDay(nowSec)
     val selectedRow = ui.state.rows.firstOrNull { it.positionKey() == ui.selectedPositionKey }
-    val watchlistItems = androidx.compose.runtime.remember(ui.state) { ui.state.buildWatchlist() }
+    val watchlistItems = androidx.compose.runtime.remember(ui.state, ui.spending) { ui.state.buildWatchlist(ui.spending?.px24 ?: emptyMap()) }
 
     BackHandler(onBack = onClose)
     LifecycleResumeEffect(Unit) {
@@ -200,25 +202,47 @@ fun DbtopScreen(
                     }
                 }
 
-                // Man hep: detail la POPUP giua man (user chot 26/8) — scrim
-                // mo phia sau + khung vien lam ro dau la detail, dau la list;
-                // pane inline cu mau hao hao voi row nen khong phan biet duoc.
+                // Man hep: detail la BOTTOM SHEET (user doi 27/8 tu popup giua
+                // man): van scrim mo + tap ra ngoai de dong, nhung khung nam
+                // sat day — tay voi toi de hon va hop thao tac vuot.
                 if (ui.selectedView == DbtopView.POSITIONS) {
                     selectedRow?.let { row ->
                         val dismiss = { viewModel.togglePosition(row.positionKey()) }
-                        androidx.compose.ui.window.Dialog(onDismissRequest = dismiss) {
+                        androidx.compose.ui.window.Dialog(
+                            onDismissRequest = dismiss,
+                            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+                        ) {
+                            // fillMaxSize + clickable = vung scrim bat tap-ra-ngoai
+                            // (voi usePlatformDefaultWidth=false, cua so dialog chiem
+                            // ca man nen onDismissRequest khong tu bat tap nua).
                             Box(
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(colors.surface)
-                                    .border(1.dp, colors.border),
+                                    .fillMaxSize()
+                                    .clickable(
+                                        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                                        indication = null,
+                                        onClick = dismiss,
+                                    ),
+                                contentAlignment = Alignment.BottomCenter,
                             ) {
-                                PositionDetailPane(
-                                    row = row,
-                                    showYield = currentPerDay != null && (row.expiry == null || row.expiry > nowSec),
-                                    onClose = dismiss,
-                                    maxHeight = 480.dp,
-                                )
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable(
+                                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                                            indication = null,
+                                        ) {}
+                                        .background(colors.surface)
+                                        .border(1.dp, colors.border)
+                                        .navigationBarsPadding(),
+                                ) {
+                                    PositionDetailPane(
+                                        row = row,
+                                        showYield = currentPerDay != null && (row.expiry == null || row.expiry > nowSec),
+                                        onClose = dismiss,
+                                        maxHeight = 480.dp,
+                                    )
+                                }
                             }
                         }
                     }

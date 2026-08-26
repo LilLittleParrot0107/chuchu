@@ -66,6 +66,7 @@ data class WatchlistTokenItem(
     val symbol: String,
     val price: Double,
     val totalUsd: Double,
+    val changePct24h: Double? = null,
 )
 
 private data class TokenHoldingAccum(
@@ -75,7 +76,7 @@ private data class TokenHoldingAccum(
     val proto: String,
 )
 
-fun DbtopState.buildWatchlist(): List<WatchlistTokenItem> {
+fun DbtopState.buildWatchlist(px24: Map<String, Double> = emptyMap()): List<WatchlistTokenItem> {
     val map = mutableMapOf<String, MutableList<TokenHoldingAccum>>()
 
     fun add(sym: String, amt: Double, usd: Double, px: Double, proto: String) {
@@ -122,10 +123,15 @@ fun DbtopState.buildWatchlist(): List<WatchlistTokenItem> {
 
         if (currentPx <= 0.0) return@mapNotNull null
 
+        // px24 co the mang ky hieu wrap (UBTC, WMON) thay vi symbol chuan —
+        // thu exact roi W-/U- prefix (cung gia voi goc); KHONG lay s*/sh*
+        // (LST gia khac han).
+        val prev = px24[baseSym] ?: px24["W" + baseSym] ?: px24["U" + baseSym]
         WatchlistTokenItem(
             symbol = baseSym,
             price = currentPx,
             totalUsd = totalUsd,
+            changePct24h = prev?.takeIf { it > 0 }?.let { (currentPx - it) / it * 100.0 },
         )
     }.sortedWith(
         compareByDescending<WatchlistTokenItem> { it.totalUsd }
