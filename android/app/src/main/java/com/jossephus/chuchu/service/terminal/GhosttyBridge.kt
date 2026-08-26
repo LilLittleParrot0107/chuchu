@@ -69,7 +69,4 @@ class GhosttyBridge {
     external fun nativeIsImageLoading(handle: Long): Boolean
     external fun nativeFormatSelectionRange(handle: Long, startCell: Int, endCell: Int): String?
     external fun nativeFormatSelectionScreenRange(handle: Long, startScreenCell: Int, endScreenCell: Int): String?
-    external fun nativeSelectWordAt(handle: Long, cellX: Int, cellY: Int): String?
-    external fun nativeSelectLineAt(handle: Long, cellX: Int, cellY: Int): String?
-    external fun nativeSelectAll(handle: Long): String?
 }

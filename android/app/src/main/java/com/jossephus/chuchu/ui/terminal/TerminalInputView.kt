@@ -97,11 +97,6 @@ class TerminalInputView(context: Context) : EditText(context) {
         onTerminalText?.invoke(text)
     }
 
-    private fun emitBackspaceText(source: String) {
-        logInput("emit source=$source text=<BS>")
-        onTerminalText?.invoke("\u007f")
-    }
-
     fun armInputSuppression(reason: String) {
         suppressInput = true
         suppressionSnapshot = editableText.toString()

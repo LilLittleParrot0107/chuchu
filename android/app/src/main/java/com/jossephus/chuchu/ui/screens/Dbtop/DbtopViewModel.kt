@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.jossephus.chuchu.data.model.dbtop.DappRow
 import com.jossephus.chuchu.data.model.dbtop.DataFreshness
 import com.jossephus.chuchu.data.model.dbtop.DbtopState
+import com.jossephus.chuchu.data.model.dbtop.SpendingState
 import com.jossephus.chuchu.data.network.DbtopClient
 import com.jossephus.chuchu.data.repository.DbtopCacheManager
 import com.jossephus.chuchu.data.repository.SettingsRepository
@@ -23,11 +24,111 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
-// 23/8: bo view WALLET theo yeu cau user — no la vi tri crash, va thong tin
-// so du vi du trung voi cot WALLET trong Overview. Chi con POSITIONS/CHARTS.
 enum class DbtopView(val label: String) {
     POSITIONS("Positions"),
+    WATCHLIST("Watchlist"),
     CHARTS("Charts"),
+    SPENDING("Spending"),
+}
+
+fun normalizeBaseToken(sym: String): String {
+    val s = sym.trim().uppercase()
+    return when {
+        s in listOf("SMON", "SHMON", "GMON", "WMON", "MON") -> "MON"
+        s in listOf("WHYPE", "SHYPE", "HYPE") -> "HYPE"
+        s in listOf("UBTC", "WBTC", "CBBTC", "TBTC", "BTC") -> "BTC"
+        s in listOf("WETH", "STETH", "WSTETH", "RETH", "UETH", "ETH") -> "ETH"
+        s in listOf("WS", "S") -> "S"
+        s in listOf("WMATIC", "MATIC", "POL") -> "POL"
+        s in listOf("WBNB", "BNB") -> "BNB"
+        s in listOf("WAVAX", "AVAX") -> "AVAX"
+        s in listOf("WFTM", "FTM") -> "FTM"
+        else -> s
+    }
+}
+
+fun isUsdStablecoin(sym: String): Boolean {
+    val s = sym.trim().uppercase()
+    if (s == "EURM") return false
+    if (s in listOf("USDC", "USDT", "USDT0", "AUSD", "USDM", "DAI", "USD+", "USDE", "FDUSD", "PYUSD", "CRVUSD", "FRAX", "LUSD", "TUSD", "BUSD", "GUSD", "USDD", "USDY")) {
+        return true
+    }
+    if (s.startsWith("USD") || s.endsWith("USD") || s.contains("USDT") || s.contains("USDC")) {
+        return true
+    }
+    return false
+}
+
+data class WatchlistTokenItem(
+    val symbol: String,
+    val price: Double,
+    val totalUsd: Double,
+)
+
+private data class TokenHoldingAccum(
+    val amount: Double,
+    val usd: Double,
+    val price: Double,
+    val proto: String,
+)
+
+fun DbtopState.buildWatchlist(): List<WatchlistTokenItem> {
+    val map = mutableMapOf<String, MutableList<TokenHoldingAccum>>()
+
+    fun add(sym: String, amt: Double, usd: Double, px: Double, proto: String) {
+        val raw = sym.trim()
+        if (raw.isBlank()) return
+        val base = normalizeBaseToken(raw)
+        if (isUsdStablecoin(base)) return
+        val list = map.getOrPut(base) { mutableListOf() }
+        list.add(TokenHoldingAccum(amt, usd, px, proto))
+    }
+
+    for (row in rows) {
+        val d = row.detail
+        d?.collateral?.forEach { add(it.sym, it.amt, it.usd, it.px, row.proto) }
+        d?.supply?.forEach { add(it.sym, it.amt, it.usd, it.px, row.proto) }
+        d?.borrow?.forEach { add(it.sym, it.amt, it.usd, it.px, row.proto) }
+        d?.reward?.forEach { add(it.sym, it.amt, it.usd, it.px, row.proto) }
+        d?.option?.underlying?.let { add(it.sym, it.amt, it.amt * it.px, it.px, row.proto) }
+    }
+
+    for (wt in walletTokens) {
+        add(wt.sym, wt.amt, wt.usd, wt.px, "Wallet")
+    }
+
+    for ((sym, p) in px) {
+        val base = normalizeBaseToken(sym)
+        if (isUsdStablecoin(base)) continue
+        if (!map.containsKey(base)) {
+            map[base] = mutableListOf()
+        }
+    }
+
+    return map.mapNotNull { (baseSym, holdings) ->
+        val totalUsd = holdings.sumOf { it.usd }
+        // Luật dbtop: chỉ show những token có vị thế nhiều hơn 100 USD
+        if (totalUsd < 100.0) return@mapNotNull null
+
+        // Giá của token gốc (LST -> giá token gốc: MON, HYPE, BTC, ETH...)
+        val currentPx = px[baseSym]
+            ?: px[baseSym.lowercase()]
+            ?: px[baseSym.uppercase()]
+            ?: holdings.firstOrNull { it.price > 0.0 }?.price
+            ?: 0.0
+
+        if (currentPx <= 0.0) return@mapNotNull null
+
+        WatchlistTokenItem(
+            symbol = baseSym,
+            price = currentPx,
+            totalUsd = totalUsd,
+        )
+    }.sortedWith(
+        compareByDescending<WatchlistTokenItem> { it.totalUsd }
+            .thenByDescending { it.price }
+            .thenBy { it.symbol }
+    )
 }
 
 internal const val DBTOP_HIGH_RISK_HEALTH_FACTOR = 1.25
@@ -50,6 +151,7 @@ data class DbtopUiState(
     val freshness: DataFreshness = DataFreshness.Fresh(0L),
     val selectedView: DbtopView = DbtopView.POSITIONS,
     val selectedPositionKey: String? = null,
+    val spending: SpendingState? = null,
 ) {
     /**
      * Vị thế có rủi ro cao nhất cần cảnh báo (Health Factor < 1.25x hoặc Option đáo hạn trong 4h).
@@ -172,6 +274,12 @@ class DbtopViewModel(
             _ui.update { it.copy(isRefreshing = true) }
         }
 
+        // spending.json nho (~2KB) va doc lap voi state.json — keo kem moi
+        // vong poll, hong thi giu ban cu (khong lam do ca man dashboard).
+        withContext(Dispatchers.IO) { fetchSpending() }?.let { sp ->
+            _ui.update { it.copy(spending = sp) }
+        }
+
         when (val result = withContext(Dispatchers.IO) { httpClient.fetch(forceRefresh = !isBackgroundPoll) }) {
             is DbtopClient.FetchResult.Fresh -> {
                 withContext(Dispatchers.IO) {
@@ -215,6 +323,21 @@ class DbtopViewModel(
             }
         }
     }
+
+    private fun fetchSpending(): SpendingState? = runCatching {
+        val conn = java.net.URL(settings.resolvedSpendingUrl).openConnection() as java.net.HttpURLConnection
+        conn.connectTimeout = 5_000
+        conn.readTimeout = 5_000
+        conn.setRequestProperty("Accept", "application/json")
+        try {
+            if (conn.responseCode != 200) return@runCatching null
+            val body = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+            com.jossephus.chuchu.data.model.dbtop.DbtopJson
+                .decodeFromString(SpendingState.serializer(), body)
+        } finally {
+            runCatching { conn.errorStream?.close() }
+        }
+    }.getOrNull()
 
     fun refreshNow() {
         viewModelScope.launch {

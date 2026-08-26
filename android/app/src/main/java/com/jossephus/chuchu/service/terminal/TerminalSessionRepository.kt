@@ -19,7 +19,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -83,25 +85,39 @@ class TerminalSessionRepository private constructor(application: Application) {
         combine(_preflightHostKeyPrompt, activeHostKeyPrompt) { preflight, active -> preflight ?: active }
             .stateIn(scope, SharingStarted.Eagerly, null)
 
-    val connectedHostIds: StateFlow<Set<Long>> =
-        _tabs
-            .flatMapLatest { tabs ->
-                if (tabs.isEmpty()) {
-                    flowOf(emptyList())
-                } else {
-                    combine(tabs.map { tab -> tab.sessionState.map { state -> tab to state } }) {
-                        it.toList()
-                    }
-                }
+    /**
+     * (tab, status) cho moi tab. distinctUntilChanged tren status la bat buoc:
+     * sessionState re-emit theo nhip snapshot 16ms cua MOI tab, trong khi hai
+     * consumer duoi day chi quan tam status — truoc day ca hai pipeline chay
+     * lai 60 lan/s/tab tren Main.immediate ke ca khi app o background.
+     */
+    private val tabStatuses: Flow<List<Pair<TabSession, SessionStatus>>> =
+        _tabs.flatMapLatest { tabs ->
+            if (tabs.isEmpty()) {
+                flowOf(emptyList())
+            } else {
+                combine(
+                    tabs.map { tab ->
+                        tab.sessionState
+                            .map { state -> state.status }
+                            .distinctUntilChanged()
+                            .map { status -> tab to status }
+                    },
+                ) { it.toList() }
             }
+        }
+
+    private fun SessionStatus.isAlive(): Boolean =
+        this == SessionStatus.Connecting ||
+            this == SessionStatus.Connected ||
+            this == SessionStatus.Reconnecting
+
+    val connectedHostIds: StateFlow<Set<Long>> =
+        tabStatuses
             .map { pairs ->
                 pairs
                     .asSequence()
-                    .filter { (_, state) ->
-                        state.status == SessionStatus.Connecting ||
-                            state.status == SessionStatus.Connected ||
-                            state.status == SessionStatus.Reconnecting
-                    }
+                    .filter { (_, status) -> status.isAlive() }
                     .mapNotNull { (tab, _) -> tab.spec.hostId }
                     .toSet()
             }
@@ -113,23 +129,9 @@ class TerminalSessionRepository private constructor(application: Application) {
 
     init {
         scope.launch {
-            combine(_tabs, _activeTabId) { tabs, _ -> tabs }
-                .flatMapLatest { tabs ->
-                    if (tabs.isEmpty()) {
-                        flowOf(emptyList())
-                    } else {
-                        combine(tabs.map { tab -> tab.sessionState.map { tab to it } }) {
-                            it.toList()
-                        }
-                    }
-                }
+            tabStatuses
                 .collect { pairs ->
-                    val anyAlive =
-                        pairs.any { (_, state) ->
-                            state.status == SessionStatus.Connecting ||
-                                state.status == SessionStatus.Connected ||
-                                state.status == SessionStatus.Reconnecting
-                        }
+                    val anyAlive = pairs.any { (_, status) -> status.isAlive() }
                     val label = if (anyAlive) currentNotificationLabel() else null
                     if (anyAlive && (!foregroundServiceRunning || foregroundNotificationLabel != label)) {
                         SessionForegroundService.start(appContext, label ?: "Active session")

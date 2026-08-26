@@ -102,28 +102,6 @@ class DbtopModelsTest {
         assertEquals(44.75, state.roll[0].apr, 0.01)
     }
 
-    @Test
-    fun testDeFiMathEngine() {
-        // Liquidation Drop for HF = 1.12957
-        val liqDrop = DeFiMathEngine.calculateLiquidationDropPct(1.12957)
-        assertEquals(11.47, liqDrop, 0.02)
-
-        // Liquidation Price for Base Spot 0.0278364 and HF 1.12957
-        val liqPrice = DeFiMathEngine.calculateLiquidationPrice(0.0278364, 1.12957)
-        assertEquals(0.02464, liqPrice, 0.0001)
-
-        // Leverage for Collateral 56167.85 and Debt 29676.04
-        val lev = DeFiMathEngine.calculateLeverage(56167.85, 29676.04)
-        assertEquals(2.12, lev, 0.01)
-
-        // Option ITM USD for Call 65k vs Spot 77232.10, Amt 0.2 -> (77232.10 - 65000) * 0.2 = 2446.42
-        val callItm = DeFiMathEngine.calculateOptionItmUsd(true, 65000.0, 77232.10, 0.2)
-        assertEquals(2446.42, callItm, 0.01)
-
-        // Option ITM USD for Put 67 vs Spot 76.114 (OTM)
-        val putItm = DeFiMathEngine.calculateOptionItmUsd(false, 67.0, 76.114, 500.0)
-        assertEquals(0.0, putItm, 0.001)
-    }
 
     @Test
     fun testDeFiFormatter() {
@@ -134,16 +112,6 @@ class DbtopModelsTest {
         assertEquals("$0.02784", DeFiFormatter.formatTokenPrice(0.0278364))
         assertEquals("+10.19%", DeFiFormatter.formatPercent(10.19))
         assertEquals("-0.36%", DeFiFormatter.formatPercent(-0.36))
-        assertEquals("13.9 ngày", DeFiFormatter.formatDteDays(13.94))
-        assertEquals("@65k", DeFiFormatter.formatStrikeLabel(65000.0))
-        assertEquals("@67", DeFiFormatter.formatStrikeLabel(67.0))
     }
 
-    @Test
-    fun testRiskEvaluator() {
-        assertEquals(RiskTier.CRITICAL, RiskEvaluator.evaluateLendingRisk(1.12))
-        assertEquals(RiskTier.DANGER, RiskEvaluator.evaluateLendingRisk(1.20))
-        assertEquals(RiskTier.MODERATE, RiskEvaluator.evaluateLendingRisk(1.35))
-        assertEquals(RiskTier.SAFE, RiskEvaluator.evaluateLendingRisk(1.85))
-    }
 }

@@ -376,7 +376,7 @@ class QueueViewModel(
         settings.setQueueUrl(url)
         settings.setQueueToken(token)
         // Task ids are only unique within one qsrv instance.
-        responseCache.clear()
+        responseCache.evictAll()
         // Summary ambient phải reset cùng state: nếu không, pill/FAB vẫn hiển thị
         // số liệu của qsrv CŨ trong khoảng thời gian trước khi refreshNow() kịp về.
         _ambientSummary.value = QueueAmbientSummary.Empty
@@ -391,15 +391,15 @@ class QueueViewModel(
         refreshNow()
     }
 
-    private val responseCache = mutableMapOf<Int, String>()
+    private val responseCache = android.util.LruCache<Int, String>(50)
 
     suspend fun loadTaskResponse(taskId: Int): String? {
-        responseCache[taskId]?.let { return it }
+        responseCache.get(taskId)?.let { return it }
         val c = client() ?: return null
         val response = withContext(Dispatchers.IO) {
             when (val r = c.fetchResponse(taskId)) {
                 is QueueClient.FetchResponse.Success -> {
-                    responseCache[taskId] = r.markdown
+                    responseCache.put(taskId, r.markdown)
                     r.markdown
                 }
                 is QueueClient.FetchResponse.Failed -> null

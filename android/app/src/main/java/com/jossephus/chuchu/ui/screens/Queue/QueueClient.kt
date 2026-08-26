@@ -235,7 +235,10 @@ class QueueClient(
             val text = stream?.use { it.readBytes().toString(Charsets.UTF_8) }.orEmpty()
             code to text
         } finally {
-            conn.disconnect()
+            // KHONG conn.disconnect(): no dong han socket, giet keep-alive pool
+            // → moi lan poll 2s la mot cu bat tay TCP/TLS moi, ton pin radio.
+            // Doc het + dong stream (use{} o tren) la du de tra connection ve pool.
+            runCatching { conn.errorStream?.close() }
         }
     }
 

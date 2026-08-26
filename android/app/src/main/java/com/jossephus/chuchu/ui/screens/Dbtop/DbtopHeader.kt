@@ -2,10 +2,12 @@ package com.jossephus.chuchu.ui.screens.Dbtop
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
@@ -20,10 +22,12 @@ import com.jossephus.chuchu.data.model.dbtop.DataFreshness
 import com.jossephus.chuchu.data.model.dbtop.DeFiFormatter
 import com.jossephus.chuchu.ui.components.ChuButton
 import com.jossephus.chuchu.ui.components.ChuButtonVariant
+import com.jossephus.chuchu.ui.components.ChuCard
 import com.jossephus.chuchu.ui.components.ChuText
 import com.jossephus.chuchu.ui.components.KohiCommandBand
 import com.jossephus.chuchu.ui.components.KohiCompactAction
 import com.jossephus.chuchu.ui.components.KohiSectionBand
+import com.jossephus.chuchu.ui.theme.CHU_HAIRLINE_ALPHA
 import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTypography
 
@@ -52,7 +56,6 @@ internal fun DbtopTopBar(
         status = ageText,
         statusColor = tone,
         onBack = onClose,
-        containerColor = colors.background,
     ) {
         KohiCompactAction(
             label = if (isRefreshing) "SCANNING" else "↻",
@@ -75,67 +78,102 @@ internal fun DashboardSummary(
     KohiSectionBand(
         label = "OVERVIEW",
         meta = if (perDay != null) "LIVE YIELD" else "YIELD HIDDEN",
-        accent = if (perDay != null) colors.success else colors.error,
+        // Yield an di vi snapshot cu/chet la trang thai "canh giac", khong
+        // phai loi — error do de danh cho DEBT va SCAN OFFLINE.
+        accent = if (perDay != null) colors.success else colors.warning,
     )
-    Row(
+    ChuCard(
         modifier = Modifier
             .fillMaxWidth()
-            .background(colors.surfaceVariant)
-            .padding(horizontal = 10.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .padding(horizontal = 10.dp, vertical = 4.dp),
     ) {
-        MetricCell(
-            label = "NET WORTH",
-            value = DeFiFormatter.formatUsd(netWorth),
-            color = colors.accent,
-            modifier = Modifier.weight(1.45f),
-        )
-        MetricCell(
-            label = "YIELD / DAY",
-            value = perDay?.let { (if (it >= 0) "+" else "") + DeFiFormatter.formatUsd(it) } ?: "—",
-            color = if (perDay != null) colors.success else colors.textMuted,
-            modifier = Modifier.weight(1f),
-        )
         Column(
-            modifier = Modifier.weight(1f).heightIn(min = 50.dp),
-            horizontalAlignment = Alignment.End,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            ChuText("WALLET", style = type.labelSmall, color = colors.textMuted)
-            ChuText(
-                DeFiFormatter.formatUsd(wallet),
-                style = type.label.copy(fontWeight = FontWeight.Bold),
-                color = colors.textPrimary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (debt > 0.0) {
-                ChuText(
-                    "DEBT ${DeFiFormatter.formatUsd(debt)}",
-                    style = type.labelSmall,
-                    color = colors.error,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                MetricCell(
+                    label = "NET WORTH",
+                    value = DeFiFormatter.formatUsd(netWorth),
+                    color = colors.accent,
                 )
+                MetricCell(
+                    label = "YIELD / DAY",
+                    value = perDay?.let { (if (it >= 0) "+" else "") + DeFiFormatter.formatUsd(it) } ?: "—",
+                    color = if (perDay != null) colors.success else colors.textMuted,
+                    alignEnd = true,
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(colors.border.copy(alpha = CHU_HAIRLINE_ALPHA)),
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    ChuText("WALLET  ", style = type.labelSmall, color = colors.textMuted)
+                    ChuText(
+                        DeFiFormatter.formatUsd(wallet),
+                        style = type.label.copy(
+                            fontFamily = FontFamily.Monospace,
+                            fontFeatureSettings = "tnum",
+                            fontWeight = FontWeight.Bold,
+                        ),
+                        color = colors.textPrimary,
+                    )
+                }
+                if (debt > 0.0) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        ChuText("DEBT  ", style = type.labelSmall, color = colors.error)
+                        ChuText(
+                            DeFiFormatter.formatUsd(debt),
+                            style = type.label.copy(
+                                fontFamily = FontFamily.Monospace,
+                                fontFeatureSettings = "tnum",
+                                fontWeight = FontWeight.Bold,
+                            ),
+                            color = colors.error,
+                        )
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-private fun MetricCell(
+internal fun MetricCell(
     label: String,
     value: String,
     color: Color,
+    alignEnd: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val type = ChuTypography.current
     val colors = ChuColors.current
-    Column(modifier = modifier) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = if (alignEnd) Alignment.End else Alignment.Start,
+    ) {
         ChuText(label, style = type.labelSmall, color = colors.textMuted, maxLines = 1)
         ChuText(
             value,
-            style = type.title.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold),
+            style = type.title.copy(
+                fontFamily = FontFamily.Monospace,
+                fontFeatureSettings = "tnum",
+                fontWeight = FontWeight.Bold,
+            ),
             color = color,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -146,15 +184,10 @@ private fun MetricCell(
 @Composable
 internal fun DashboardViewBand(
     selected: DbtopView,
-    positionCount: Int,
     onSelect: (DbtopView) -> Unit,
 ) {
     val colors = ChuColors.current
     val type = ChuTypography.current
-    val counts = mapOf(
-        DbtopView.POSITIONS to positionCount,
-        DbtopView.CHARTS to 2,
-    )
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -173,7 +206,7 @@ internal fun DashboardViewBand(
                 modifier = Modifier.weight(1f),
             ) {
                 ChuText(
-                    "${view.label} ${counts.getValue(view)}",
+                    view.label,
                     style = type.labelSmall.copy(fontWeight = FontWeight.Bold),
                     color = if (active) colors.onAccent else colors.textSecondary,
                     maxLines = 1,

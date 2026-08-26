@@ -17,6 +17,10 @@ data class ChuColorPalette(
     val textSecondary: Color,
     val textMuted: Color,
     val accent: Color,
+    // Nen cho nut Filled — kieu "inverted text" derive tu foreground, TACH
+    // khoi accent: 26/8 accent doi sang cursor-color (identity cua theme) lam
+    // thanh "+ add server" vang choe, user doi ve nhu cu.
+    val buttonFill: Color,
     val accentSecondary: Color,
     val error: Color,
     val success: Color,
@@ -42,6 +46,7 @@ val ChuDarkColors: ChuColorPalette = ChuColorPalette(
     // surface, chu meta nhin nhoe nhoe.
     textMuted = Color(0xFF98A0CE),
     accent = Color(0xFFB4BEFE),
+    buttonFill = Color(0xFFB4BEFE),
     accentSecondary = Color(0xFF89B4FA),
     error = Color(0xFFF38BA8),
     success = Color(0xFFA6E3A1),
@@ -50,6 +55,13 @@ val ChuDarkColors: ChuColorPalette = ChuColorPalette(
     disabledSurface = Color(0xFF585B70),
     disabledText = Color(0xFF585D80),
 )
+
+/**
+ * Alpha duy nhat cho divider/hairline ve tren colors.border. Truoc day moi
+ * noi mot gia tri (0.18/0.20/0.22) — tren OLED do sang thap gan nhu khong
+ * render duoc duong ke nao.
+ */
+const val CHU_HAIRLINE_ALPHA = 0.35f
 
 val LocalChuColors = staticCompositionLocalOf { ChuDarkColors }
 

@@ -26,7 +26,6 @@ import androidx.navigation.navArgument
 import com.jossephus.chuchu.data.repository.SettingsRepository
 import com.jossephus.chuchu.ui.screens.AddServer.AddServerScreen
 import com.jossephus.chuchu.ui.components.KohiNavShell
-import com.jossephus.chuchu.ui.components.KohiTab
 import com.jossephus.chuchu.ui.screens.AddServer.AddServerViewModel
 import com.jossephus.chuchu.ui.screens.Dbtop.DbtopScreen
 import com.jossephus.chuchu.ui.screens.Queue.QueueScreen
@@ -39,17 +38,30 @@ import com.jossephus.chuchu.ui.screens.Terminal.TerminalScreen
 import com.jossephus.chuchu.ui.screens.Terminal.TerminalViewModel
 import com.jossephus.chuchu.ui.security.VerificationResult
 import com.jossephus.chuchu.ui.security.requireUserVerification
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.ui.unit.dp
 
-/** Pane tu pill/FAB -> route Queue; encode phong ngua ky tu dac biet tuong lai. */
-private fun queueRoute(pane: String?): String =
-    if (pane != null) "queue?pane=${Uri.encode(pane)}" else "queue"
+private val MAIN_TAB_ROUTES = setOf("servers", "web", "dashboard", "queue")
+
+/**
+ * Queue mo tu accessory bar trong terminal. Route rieng voi tab QUEUE de
+ * (1) back tu day ve dung terminal (modal semantics), (2) pill QUEUE khong
+ * sang den nham, (3) popUpTo(servers) khi chuyen tab khong bao gio bi nham
+ * lai la mot "tab visit" dang mang saved state cua queue.
+ */
+private fun sessionQueueRoute(pane: String?): String =
+    if (pane != null) "session-queue?pane=${Uri.encode(pane)}" else "session-queue"
 
 @Composable
 fun ApplicationNavController() {
@@ -122,17 +134,32 @@ fun ApplicationNavController() {
     // route pattern cua queue la "queue?pane={pane}" — cat phan query de khop tab.
     val currentRoute = backStackEntry?.destination?.route?.substringBefore('?')
 
-    // Mac dinh cua Navigation Compose la fade 700ms — chuyen tab cu thi nhin
-    // nhu "treo". Crossfade nhanh 100ms cho kip nhip bam.
     val quickFadeIn = fadeIn(animationSpec = tween(100))
     val quickFadeOut = fadeOut(animationSpec = tween(80))
+
+    val tabEnterTransition = fadeIn(
+        animationSpec = tween(220, delayMillis = 40, easing = LinearOutSlowInEasing),
+    ) + scaleIn(
+        initialScale = 0.96f,
+        animationSpec = tween(220, delayMillis = 40, easing = LinearOutSlowInEasing),
+    )
+    val tabExitTransition = fadeOut(
+        animationSpec = tween(150, easing = FastOutLinearInEasing),
+    ) + scaleOut(
+        targetScale = 0.96f,
+        animationSpec = tween(150, easing = FastOutLinearInEasing),
+    )
 
     KohiNavShell(
         selectedRoute = currentRoute,
         queueBadge = queueAmbientSummary.takeIf { it.totalActive > 0 }?.totalActive,
         onSelect = { tab ->
-            // Tab chuyen nhau NHO STATE: popUpTo goc + saveState/restoreState
-            // giu scroll/selection cua tung tab nhu bottom nav chuan.
+            // Tab luon la root doc lap (Material bottom-nav contract): khong bao
+            // gio hijack ve terminal. Vao lai phien dang chay bang cach bam
+            // host co cham "connected" tren host list (banner resume rieng da
+            // bo 26/8 theo yeu cau user) — flag "activeTerminalRoute" da bo vi
+            // chi con 3/5 duong exit clear no, phan con de lai bien no thanh
+            // zombie dan vao terminal.
             navController.navigate(tab.route) {
                 popUpTo("servers") { saveState = true }
                 launchSingleTop = true
@@ -143,10 +170,42 @@ fun ApplicationNavController() {
         NavHost(
             navController = navController,
             startDestination = "servers",
-            enterTransition = { quickFadeIn },
-            exitTransition = { quickFadeOut },
-            popEnterTransition = { quickFadeIn },
-            popExitTransition = { quickFadeOut },
+            enterTransition = {
+                val targetBase = targetState.destination.route?.substringBefore('?')
+                val initialBase = initialState.destination.route?.substringBefore('?')
+                if (targetBase in MAIN_TAB_ROUTES && initialBase in MAIN_TAB_ROUTES) {
+                    tabEnterTransition
+                } else {
+                    quickFadeIn
+                }
+            },
+            exitTransition = {
+                val targetBase = targetState.destination.route?.substringBefore('?')
+                val initialBase = initialState.destination.route?.substringBefore('?')
+                if (targetBase in MAIN_TAB_ROUTES && initialBase in MAIN_TAB_ROUTES) {
+                    tabExitTransition
+                } else {
+                    quickFadeOut
+                }
+            },
+            popEnterTransition = {
+                val targetBase = targetState.destination.route?.substringBefore('?')
+                val initialBase = initialState.destination.route?.substringBefore('?')
+                if (targetBase in MAIN_TAB_ROUTES && initialBase in MAIN_TAB_ROUTES) {
+                    tabEnterTransition
+                } else {
+                    quickFadeIn
+                }
+            },
+            popExitTransition = {
+                val targetBase = targetState.destination.route?.substringBefore('?')
+                val initialBase = initialState.destination.route?.substringBefore('?')
+                if (targetBase in MAIN_TAB_ROUTES && initialBase in MAIN_TAB_ROUTES) {
+                    tabExitTransition
+                } else {
+                    quickFadeOut
+                }
+            },
         ) {
         composable("servers") {
             val vm: ServerListViewModel = viewModel(factory = ServerListViewModel.factory(application))
@@ -213,28 +272,26 @@ fun ApplicationNavController() {
                 defaultValue = null
             }),
         ) { backStackEntry ->
-            val initialPane = backStackEntry.arguments?.getString("pane")
-            val ui by sharedQueueVm.ui.collectAsStateWithLifecycle()
-            val qUrl by sharedQueueVm.queueUrl.collectAsStateWithLifecycle()
-            val qToken by sharedQueueVm.queueToken.collectAsStateWithLifecycle()
-            DisposableEffect(sharedQueueVm) {
-                sharedQueueVm.setQueueVisible(true)
-                onDispose { sharedQueueVm.setQueueVisible(false) }
-            }
-            QueueScreen(
-                ui = ui,
-                initialPane = initialPane,
-                onAction = sharedQueueVm::runAction,
-                onAdd = sharedQueueVm::addTask,
-                onClearDone = sharedQueueVm::clearDoneTasks,
-                onRefresh = sharedQueueVm::refreshNow,
-                onFetchLogs = sharedQueueVm::fetchLogs,
-                onShowFeedback = sharedQueueVm::showFeedback,
-                onConsumeFeedback = sharedQueueVm::consumeFeedback,
-                currentUrl = qUrl,
-                currentToken = qToken,
-                onSaveConfig = sharedQueueVm::saveConfig,
-                onFetchResponse = sharedQueueVm::loadTaskResponse,
+            QueueDestination(
+                sharedQueueVm = sharedQueueVm,
+                initialPane = backStackEntry.arguments?.getString("pane"),
+                onBack = { navController.popBackStack() },
+            )
+        }
+
+        // Cung UI voi tab QUEUE nhung NGOAI he tab: mo tu accessory bar trong
+        // terminal, an bottom bar (fullscreen modal), back ve dung terminal.
+        composable(
+            route = "session-queue?pane={pane}",
+            arguments = listOf(navArgument("pane") {
+                type = NavType.StringType
+                nullable = true
+                defaultValue = null
+            }),
+        ) { backStackEntry ->
+            QueueDestination(
+                sharedQueueVm = sharedQueueVm,
+                initialPane = backStackEntry.arguments?.getString("pane"),
                 onBack = { navController.popBackStack() },
             )
         }
@@ -339,10 +396,12 @@ fun ApplicationNavController() {
                     openLocalShell = true,
                     onOpenSettings = { navController.navigate("settings") },
                     onOpenWeb = { navController.navigate("web") },
-                        onOpenQueue = { pane ->
-                        navController.navigate(queueRoute(pane))
+                    onOpenQueue = { pane ->
+                        navController.navigate(sessionQueueRoute(pane))
                     },
-                    onBack = { navController.popBackStack() },
+                    onBack = {
+                        navController.popBackStack()
+                    },
                 )
             } else {
                 LaunchedEffect(Unit) {
@@ -365,9 +424,11 @@ fun ApplicationNavController() {
                 onOpenSettings = { navController.navigate("settings") },
                 onOpenWeb = { navController.navigate("web") },
                 onOpenQueue = { pane ->
-                    navController.navigate(queueRoute(pane))
+                    navController.navigate(sessionQueueRoute(pane))
                 },
-                onBack = { navController.popBackStack() },
+                onBack = {
+                    navController.popBackStack()
+                },
             )
         }
 
@@ -399,6 +460,43 @@ fun ApplicationNavController() {
             }
         }
     }
+}
+
+/**
+ * Noi dung Queue dung chung cho ca tab QUEUE ("queue?pane=...") va modal
+ * session-queue mo tu terminal. Chi khac nhau o route — dieu huong do caller
+ * truyen vao qua onBack. VM truyen tu ngoai de giu nguyen mot instance duy
+ * nhat theo Activity (polling + ambient summary dung chung toan app).
+ */
+@Composable
+private fun QueueDestination(
+    sharedQueueVm: QueueViewModel,
+    initialPane: String?,
+    onBack: () -> Unit,
+) {
+    val ui by sharedQueueVm.ui.collectAsStateWithLifecycle()
+    val qUrl by sharedQueueVm.queueUrl.collectAsStateWithLifecycle()
+    val qToken by sharedQueueVm.queueToken.collectAsStateWithLifecycle()
+    LifecycleResumeEffect(sharedQueueVm) {
+        sharedQueueVm.setQueueVisible(true)
+        onPauseOrDispose { sharedQueueVm.setQueueVisible(false) }
+    }
+    QueueScreen(
+        ui = ui,
+        initialPane = initialPane,
+        onAction = sharedQueueVm::runAction,
+        onAdd = sharedQueueVm::addTask,
+        onClearDone = sharedQueueVm::clearDoneTasks,
+        onRefresh = sharedQueueVm::refreshNow,
+        onFetchLogs = sharedQueueVm::fetchLogs,
+        onShowFeedback = sharedQueueVm::showFeedback,
+        onConsumeFeedback = sharedQueueVm::consumeFeedback,
+        currentUrl = qUrl,
+        currentToken = qToken,
+        onSaveConfig = sharedQueueVm::saveConfig,
+        onFetchResponse = sharedQueueVm::loadTaskResponse,
+        onBack = onBack,
+    )
 }
 
 @Composable

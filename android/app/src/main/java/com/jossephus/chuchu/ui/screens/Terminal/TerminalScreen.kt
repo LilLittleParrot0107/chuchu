@@ -37,6 +37,8 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.isImeVisible
 
 import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.exclude
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -79,8 +81,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.jossephus.chuchu.data.repository.SettingsRepository
 import com.jossephus.chuchu.model.AuthMethod
 import com.jossephus.chuchu.model.Transport
+import com.jossephus.chuchu.service.terminal.SessionState
 import com.jossephus.chuchu.service.terminal.SessionStatus
 import com.jossephus.chuchu.service.terminal.TabSpec
+import com.jossephus.chuchu.service.terminal.TerminalSnapshot
 import com.jossephus.chuchu.ui.components.ChuButton
 import com.jossephus.chuchu.ui.components.ChuButtonVariant
 import com.jossephus.chuchu.ui.components.ChuDialog
@@ -123,6 +127,9 @@ import com.jossephus.chuchu.ui.security.VerificationResult
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -299,7 +306,16 @@ fun TerminalScreen(
     modifier: Modifier = Modifier,
     openLocalShell: Boolean = false,
 ) {
-    val sessionState by vm.sessionState.collectAsStateWithLifecycle()
+    // Chrome state KHONG chua snapshot: sessionState re-emit theo nhip snapshot
+    // 16ms, doc no o top-level lam ca composable ~1900 dong nay recompose 60
+    // lan/s. Snapshot duoc doc rieng trong SnapshotReader ngay canh
+    // TerminalCanvas — noi duy nhat can no moi frame.
+    val sessionState by remember(vm) {
+        vm.sessionState.map { it.copy(snapshot = null) }.distinctUntilChanged()
+    }.collectAsStateWithLifecycle(vm.sessionState.value.copy(snapshot = null))
+    val hasSnapshot by remember(vm) {
+        vm.sessionState.map { it.snapshot != null }.distinctUntilChanged()
+    }.collectAsStateWithLifecycle(vm.sessionState.value.snapshot != null)
 
     val tabs by vm.tabs.collectAsStateWithLifecycle()
     val activeTabId by vm.activeTabId.collectAsStateWithLifecycle()
@@ -324,7 +340,7 @@ fun TerminalScreen(
     val density = LocalDensity.current
     val colors = ChuColors.current
     val typography = ChuTypography.current
-    val screenInsetsModifier = modifier.windowInsetsPadding(WindowInsets.safeDrawing)
+    val screenInsetsModifier = modifier.windowInsetsPadding(WindowInsets.safeDrawing.exclude(WindowInsets.ime))
     var lastSessionStatus by remember { mutableStateOf<SessionStatus?>(null) }
     val settingsRepo = remember(context) { SettingsRepository.getInstance(context) }
     val currentTheme by settingsRepo.themeName.collectAsStateWithLifecycle()
@@ -866,8 +882,7 @@ fun TerminalScreen(
         SessionStatus.Connected,
         SessionStatus.Reconnecting -> {
             val isReconnecting = sessionState.status == SessionStatus.Reconnecting
-            val snapshot = sessionState.snapshot
-            if (snapshot != null) {
+            if (hasSnapshot) {
                 var modifierState by remember { mutableStateOf(ModifierState()) }
                 val inputViewRef = remember { mutableStateOf<TerminalInputView?>(null) }
                 var menuSize by remember { mutableStateOf(IntSize.Zero) }
@@ -968,6 +983,33 @@ fun TerminalScreen(
 
 
                     fun dispatchAccessoryAction(action: AccessoryAction) {
+                        when (action) {
+                            is AccessoryAction.OpenQueue -> {
+                                onOpenQueue(null)
+                                return
+                            }
+                            is AccessoryAction.OpenFiles -> {
+                                if (filesSupported) {
+                                    vm.selectConnectionTab(ConnectionTab.Files)
+                                } else {
+                                    showLocalShellFilesUnsupported()
+                                }
+                                return
+                            }
+                            is AccessoryAction.OpenSettings -> {
+                                onOpenSettings()
+                                return
+                            }
+                            is AccessoryAction.OpenComposeBox -> {
+                                showComposeBox = true
+                                return
+                            }
+                            is AccessoryAction.SummonKeyboard -> {
+                                requestInputFocus()
+                                return
+                            }
+                            else -> {}
+                        }
                         if (
                             action is AccessoryAction.SendText && chuchuKeys.handleText(action.text)
                         ) {
@@ -1372,6 +1414,7 @@ fun TerminalScreen(
                             }
                         } else {
                             Box(modifier = Modifier.weight(1f)) {
+                                SnapshotReader(vm.sessionState) { snapshot ->
                                 TerminalCanvas(
                                     snapshot = snapshot,
                                     fontSizeSp = terminalFontSizeSp,
@@ -1417,11 +1460,11 @@ fun TerminalScreen(
                                         vm.onArrowKeyRepeat(key, 0, count)
                                     },
                                     onPrimaryClick = vm::onPrimaryMouseClick,
-                                    onAppSelectionDrag = vm::onAppSelectionDrag,
                                     onScroll = vm::onScroll,
                                     onFontSizeChange = { sizeSp -> terminalFontSizeSp = sizeSp },
                                     onSelectionChanged = { state -> selectionState = state },
                                 )
+                                }
 
                                 Row(
                                     modifier = Modifier.align(Alignment.TopEnd).padding(12.dp),
@@ -2112,7 +2155,13 @@ fun TerminalScreen(
         }
     }
 
+    BackHandler(enabled = selectionState != null) {
+        selection = null
+        selectionState = null
+    }
     BackHandler(enabled = showGlobalTabManager) { showGlobalTabManager = false }
+    BackHandler(enabled = showTabSheet) { showTabSheet = false }
+    BackHandler(enabled = showComposeBox) { showComposeBox = false }
 
     // Strip mode overlays — hoisted outside the when block so they are
     // available from disconnected, error, connecting, and connected states.
@@ -2276,4 +2325,19 @@ private fun UploadProgressDialog(progress: UploadProgress) {
             )
         }
     }
+}
+
+/**
+ * Doc snapshot 60Hz trong mot scope recompose RIENG: chi lambda [content]
+ * (tuc cu TerminalCanvas) chay lai moi frame, khong keo ca TerminalScreen.
+ */
+@Composable
+private fun SnapshotReader(
+    sessionState: StateFlow<SessionState>,
+    content: @Composable (TerminalSnapshot) -> Unit,
+) {
+    val snapshot by remember(sessionState) {
+        sessionState.map { it.snapshot }.distinctUntilChanged()
+    }.collectAsStateWithLifecycle(sessionState.value.snapshot)
+    snapshot?.let { content(it) }
 }

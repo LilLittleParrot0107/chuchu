@@ -16,9 +16,6 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 import java.util.Locale
 import kotlin.math.abs
-import kotlin.math.ln
-import kotlin.math.max
-import kotlin.math.sqrt
 
 /**
  * Cấu hình JSON phòng thủ:
@@ -144,9 +141,6 @@ data class DappDetail(
         breakdown?.let { DbtopJson.decodeFromJsonElement(LendingBreakdown.serializer(), it) }
     }.getOrNull()
 
-    fun asPoolBreakdown(): PoolBreakdown? = runCatching {
-        breakdown?.let { DbtopJson.decodeFromJsonElement(PoolBreakdown.serializer(), it) }
-    }.getOrNull()
 }
 
 @Serializable
@@ -209,18 +203,6 @@ data class LendingBreakdown(
     val keep: Double = 1.0,
     val why: String = "",
     val apr: Double = 0.0,
-)
-
-@Serializable
-data class PoolBreakdown(
-    val type: String = "",
-    val apy: Double = 0.0,
-    val apyBase: Double? = null,
-    val apyReward: Double? = null,
-    val tvl: Double? = null,
-    val project: String? = null,
-    val symbol: String? = null,
-    val pool: String? = null,
 )
 
 // ----------------------------------------------------------------------------
@@ -359,113 +341,14 @@ object CurvePointSerializer : KSerializer<CurvePoint> {
 }
 
 // ============================================================================
-// 2. RISK TIER & EVALUATOR
+// 2. RISK THRESHOLDS
 // ============================================================================
 
-enum class RiskTier(val label: String, val severity: Int) {
-    SAFE("An toàn", 1),
-    MODERATE("Cần chú ý", 2),
-    DANGER("Nguy hiểm", 3),
-    CRITICAL("Nguy kịch", 4)
-}
-
+// 25/8/2026 review: RiskTier + evaluate*/DeFiMathEngine (~120 dong) da bi xoa
+// — 0 reference trong app, chi con test tu soi guong. Nguong HF thi UI dung that.
 object RiskEvaluator {
     const val HP_BAD = 1.15
     const val HP_WARN = 1.25
-    const val T_SOON = 4 * 3600L       // 4h
-    const val T_ROLL = 48 * 3600L      // 48h
-
-    fun evaluateLendingRisk(healthFactor: Double?): RiskTier {
-        if (healthFactor == null || healthFactor <= 0.0) return RiskTier.SAFE
-        return when {
-            healthFactor < HP_BAD -> RiskTier.CRITICAL
-            healthFactor < HP_WARN -> RiskTier.DANGER
-            healthFactor < 1.50 -> RiskTier.MODERATE
-            else -> RiskTier.SAFE
-        }
-    }
-
-    fun evaluateOptionRisk(expiryTs: Long, nowTs: Long, isItm: Boolean): RiskTier {
-        val remainingSec = expiryTs - nowTs
-        if (remainingSec <= 0) return RiskTier.CRITICAL
-        return when {
-            remainingSec < T_SOON -> RiskTier.CRITICAL
-            isItm -> RiskTier.DANGER
-            remainingSec < T_ROLL -> RiskTier.MODERATE
-            else -> RiskTier.SAFE
-        }
-    }
-}
-
-// ============================================================================
-// 3. FINANCIAL MATH ENGINE
-// ============================================================================
-
-object DeFiMathEngine {
-
-    /**
-     * Tính toán đệm thanh lý: % giá tài sản thế chấp giảm tối đa trước khi HF chạm 1.0
-     */
-    fun calculateLiquidationDropPct(healthFactor: Double): Double {
-        if (healthFactor <= 1.0) return 0.0
-        return (1.0 - (1.0 / healthFactor)) * 100.0
-    }
-
-    /**
-     * Tính giá kích hoạt thanh lý của tài sản thế chấp cơ sở
-     */
-    fun calculateLiquidationPrice(baseSpotPx: Double, healthFactor: Double): Double {
-        if (healthFactor <= 0.0) return 0.0
-        return baseSpotPx / healthFactor
-    }
-
-    /**
-     * Tính tỷ lệ đòn bẩy: Collateral / Equity
-     */
-    fun calculateLeverage(collateralUsd: Double, debtUsd: Double): Double {
-        val equity = collateralUsd - debtUsd
-        if (equity <= 0.0) return 0.0
-        return collateralUsd / equity
-    }
-
-    /**
-     * Tính độ lệch Moneyness chuẩn hoá theo độ biến động: m = ln(K / S0) / sqrt(T)
-     */
-    fun calculateMoneynessMetric(strike: Double, spot: Double, daysToExpiry: Double): Double {
-        if (strike <= 0.0 || spot <= 0.0 || daysToExpiry <= 0.0) return 0.0
-        return ln(strike / spot) / sqrt(daysToExpiry)
-    }
-
-    /**
-     * Tính giá trị ITM (In-The-Money) của quyền chọn
-     */
-    fun calculateOptionItmUsd(isCall: Boolean, strike: Double, spot: Double, underlyingAmt: Double): Double {
-        val diff = if (isCall) (spot - strike) else (strike - spot)
-        return max(0.0, diff * underlyingAmt)
-    }
-
-    /**
-     * Tính APR quyền chọn đã chốt dựa trên vốn thế chấp ban đầu
-     */
-    fun calculateOptionLockedApr(premiumUsd: Double, collateralAtSaleUsd: Double, dteDays: Double): Double {
-        if (collateralAtSaleUsd <= 0.0 || dteDays <= 0.0) return 0.0
-        return (premiumUsd / collateralAtSaleUsd) * (365.0 / dteDays) * 100.0
-    }
-
-    /**
-     * Tính Net APR cho mô hình Lending đòn bẩy có áp dụng Haircut thưởng
-     */
-    fun calculateLeveragedLendingNetApr(
-        stakeApr: Double,
-        dustSupplyApr: Double,
-        dustBorrowRebateApr: Double,
-        borrowBaseCostApr: Double,
-        rewardKeepFactor: Double = 0.5,
-    ): Double {
-        val netDustSupply = dustSupplyApr * rewardKeepFactor
-        val netDustRebate = dustBorrowRebateApr * rewardKeepFactor
-        return stakeApr + netDustSupply + netDustRebate - abs(borrowBaseCostApr)
-    }
 }
 
 // ============================================================================
@@ -501,35 +384,28 @@ object DeFiFormatter {
     }
 
     /**
-     * Định dạng giá token theo độ sâu chữ số: $77,232.10, $0.02784
+     * Định dạng giá token theo độ sâu chữ số (chuẩn dbtop): $79,475.57, $80.83, $0.02784
      */
     fun formatTokenPrice(price: Double?): String {
         if (price == null || price == 0.0) return "$0"
         val absVal = abs(price)
         val sign = if (price < 0) "-" else ""
         return when {
-            absVal >= 1000 -> String.format(Locale.US, "%s$%,.2f", sign, absVal)
-            absVal >= 1 -> String.format(Locale.US, "%s$%,.3f", sign, absVal)
-            absVal >= 0.001 -> String.format(Locale.US, "%s$%.5f", sign, absVal)
-            else -> String.format(Locale.US, "%s$%.7f", sign, absVal)
+            absVal >= 100.0 -> String.format(Locale.US, "%s$%,.2f", sign, absVal)
+            absVal >= 1.0 -> {
+                val intDigits = absVal.toLong().toString().length
+                val decimals = maxOf(2, 4 - intDigits)
+                String.format(Locale.US, "%s$%,.${decimals}f", sign, absVal)
+            }
+            else -> {
+                // Với token giá < 1: tự động hiển thị đủ chữ số có nghĩa theo log10
+                val log10 = kotlin.math.log10(absVal)
+                val decimals = (3 - kotlin.math.floor(log10).toInt()).coerceIn(4, 8)
+                String.format(Locale.US, "%s$%,.${decimals}f", sign, absVal)
+            }
         }
     }
 
-    /**
-     * Định dạng số lượng token: 1.11M, 483.8k, 0.20
-     */
-    fun formatAmount(amount: Double?): String {
-        if (amount == null || amount == 0.0) return "0"
-        val absVal = abs(amount)
-        return when {
-            absVal >= 1_000_000 -> String.format(Locale.US, "%.2fM", amount / 1_000_000.0)
-            absVal >= 100_000 -> String.format(Locale.US, "%.0fk", amount / 1_000.0)
-            absVal >= 1_000 -> String.format(Locale.US, "%.1fk", amount / 1_000.0)
-            absVal >= 100 -> String.format(Locale.US, "%,.0f", amount)
-            absVal >= 1 -> String.format(Locale.US, "%,.2f", amount)
-            else -> String.format(Locale.US, "%,.4f", amount)
-        }
-    }
 
     /**
      * Định dạng tỷ lệ phần trăm: +10.19%, -0.36%, 21.05%
@@ -540,40 +416,6 @@ object DeFiFormatter {
         return String.format(Locale.US, "%s%,.${decimals}f%%", prefix, pct)
     }
 
-    /**
-     * Định dạng thời gian đáo hạn DTE: "13.9 ngày"
-     */
-    fun formatDteDays(dte: Double?): String {
-        if (dte == null || dte <= 0.0) return "Hết hạn"
-        return String.format(Locale.US, "%.1f ngày", dte)
-    }
 
-    /**
-     * Định dạng đếm ngược thời gian chi tiết: "13d 22h", "03h 45m", "12m 30s"
-     */
-    fun formatCountdown(secondsRemaining: Long?): String {
-        if (secondsRemaining == null || secondsRemaining <= 0) return "HẾT HẠN"
-        val days = secondsRemaining / 86400
-        val hours = (secondsRemaining % 86400) / 3600
-        val minutes = (secondsRemaining % 3600) / 60
-        val seconds = secondsRemaining % 60
-        return when {
-            days > 0 -> String.format(Locale.US, "%dd %02dh", days, hours)
-            hours > 0 -> String.format(Locale.US, "%02dh %02dm", hours, minutes)
-            else -> String.format(Locale.US, "%02dm %02ds", minutes, seconds)
-        }
-    }
 
-    /**
-     * Định dạng nhãn Strike: @65k, @67, @1.2M
-     */
-    fun formatStrikeLabel(strike: Double?): String {
-        if (strike == null) return "?"
-        val absVal = abs(strike)
-        return when {
-            absVal >= 1_000_000 -> String.format(Locale.US, "@%.1fM", strike / 1_000_000.0).replace(".0M", "M")
-            absVal >= 1_000 -> String.format(Locale.US, "@%.1fk", strike / 1_000.0).replace(".0k", "k")
-            else -> String.format(Locale.US, "@%,.0f", strike)
-        }
-    }
 }

@@ -60,7 +60,7 @@ fun ChuButtonSurface(
 
     val background: Color = when {
         !enabled -> colors.disabledSurface
-        variant == ChuButtonVariant.Filled -> colors.accent
+        variant == ChuButtonVariant.Filled -> colors.buttonFill
         backgroundColor != null -> backgroundColor
         else -> Color.Transparent
     }

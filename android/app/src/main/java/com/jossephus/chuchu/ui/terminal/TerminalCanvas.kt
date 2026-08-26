@@ -76,7 +76,6 @@ fun TerminalCanvas(
     onTripleTap: () -> Unit = {},
     onArrowKey: (key: TerminalSpecialKey, count: Int) -> Unit = { _, _ -> },
     onPrimaryClick: (x: Float, y: Float) -> Unit = { _, _ -> },
-    onAppSelectionDrag: (action: Int, x: Float, y: Float) -> Unit = { _, _, _ -> },
     onScroll: (delta: Int, x: Float, y: Float) -> Unit = { _, _, _ -> },
     minFontSizeSp: Float = 1f,
     maxFontSizeSp: Float = Float.MAX_VALUE,
@@ -108,13 +107,11 @@ fun TerminalCanvas(
     val longPressTimeoutMillis = remember {
         minOf(ViewConfiguration.getLongPressTimeout().toLong(), TRACKPAD_ARM_MS)
     }
-    val autoScrollEdgeZonePx = with(density) { 48.dp.toPx() }
     // Trackpad geometry, in real physical distance rather than character cells.
     val trackpadStepXPx = with(density) { TRACKPAD_STEP_X_DP.dp.toPx() }
     val trackpadStepYPx = with(density) { TRACKPAD_STEP_Y_DP.dp.toPx() }
     val trackpadDeadZonePx = with(density) { TRACKPAD_DEAD_ZONE_DP.dp.toPx() }
     val trackpadAxisForcePx = with(density) { TRACKPAD_AXIS_FORCE_DP.dp.toPx() }
-    val autoScrollIntervalMs = 55L
     val doubleTapTimeoutMillis = remember { ViewConfiguration.getDoubleTapTimeout().toLong() }
     val doubleTapSlopPx = remember(androidViewConfiguration) { androidViewConfiguration.scaledDoubleTapSlop.toFloat() }
     val primaryTypeface = remember(context, fontOption) {
@@ -184,6 +181,9 @@ fun TerminalCanvas(
         }
     }
     val drawBuffer = remember { StringBuilder(256) }
+    // Rect tai su dung cho drawBitmap — tranh 2 alloc moi image moi frame.
+    val imageSrcRect = remember { android.graphics.Rect() }
+    val imageDstRect = remember { android.graphics.RectF() }
     val singleGlyphCache = remember {
         HashMap<Int, String>(256).apply {
             for (cp in 33..126) this[cp] = cp.toChar().toString()
@@ -225,7 +225,6 @@ fun TerminalCanvas(
     val currentOnTripleTap = rememberUpdatedState(onTripleTap)
     val currentOnArrowKey = rememberUpdatedState(onArrowKey)
     val currentOnPrimaryClick = rememberUpdatedState(onPrimaryClick)
-    val currentOnAppSelectionDrag = rememberUpdatedState(onAppSelectionDrag)
     val currentOnScroll = rememberUpdatedState(onScroll)
     val currentOnFontSizeChange = rememberUpdatedState(onFontSizeChange)
     val currentFontSizeSp = rememberUpdatedState(fontSizeSp)
@@ -238,13 +237,11 @@ fun TerminalCanvas(
     val currentTouchSlopPx = rememberUpdatedState(touchSlopPx)
     val currentLongPressSlopPx = rememberUpdatedState(longPressSlopPx)
     val currentLongPressTimeoutMillis = rememberUpdatedState(longPressTimeoutMillis)
-    val currentAutoScrollEdgeZonePx = rememberUpdatedState(autoScrollEdgeZonePx)
     val currentDoubleTapTimeoutMillis = rememberUpdatedState(doubleTapTimeoutMillis)
     val currentDoubleTapSlopPx = rememberUpdatedState(doubleTapSlopPx)
     val ghosttyBridge = remember { GhosttyBridge() }
 
     var selectionViewportBaseline by remember { mutableStateOf<Int?>(null) }
-    var autoScrollingSelection by remember { mutableStateOf(false) }
 
     // Arrow keys are coalesced per frame, exactly like scroll below: a fast
     // swipe used to fire one SSH write (plus a forced full-grid snapshot) per
@@ -330,7 +327,6 @@ fun TerminalCanvas(
             snapshot = snapshot,
             selection = currentSelectionState.value,
             baseline = selectionViewportBaseline,
-            autoScrollingSelection = autoScrollingSelection,
             onBaselineChange = { selectionViewportBaseline = it },
             onSelectionChange = currentOnSelectionChange.value,
         )
@@ -390,53 +386,36 @@ fun TerminalCanvas(
                         var lastEventUptime = down.uptimeMillis
                         val longPressDeadline = down.uptimeMillis + currentLongPressTimeoutMillis.value
                         var lastPointerPos = down.position
-                        var autoScrollDir = 0
 
                         try {
                             while (true) {
                                 val timeoutMs = (longPressDeadline - lastEventUptime).coerceAtLeast(1L)
-                                val inAutoScrollZone = false
-                                val event = when {
-                                    dragMode == DragMode.None && !didScroll && !didPinch && !didDragGesture ->
+                                val event =
+                                    if (dragMode == DragMode.None && !didScroll && !didPinch && !didDragGesture) {
                                         withTimeoutOrNull(timeoutMs) { awaitPointerEvent() }
-                                    inAutoScrollZone ->
-                                        withTimeoutOrNull(autoScrollIntervalMs) { awaitPointerEvent() }
-                                    else -> awaitPointerEvent()
-                                }
+                                    } else {
+                                        awaitPointerEvent()
+                                    }
 
                                 if (event == null) {
-                                    if (dragMode == DragMode.None) {
-                                        // Long-press arms the arrow trackpad.
-                                        // NO selection yet: selecting here made
-                                        // the copy/paste menu pop up mid-swipe
-                                        // (stray paste taps). Word selection
-                                        // happens on a stationary RELEASE
-                                        // instead; dragging steers the cursor.
-                                        trackpadIndicator = down.position
-                                        currentHaptics.value.performHapticFeedback(
-                                            HapticFeedbackType.LongPress,
-                                        )
-                                        dragMode = DragMode.ArrowTrackpad
-                                        continue
-                                    }
-                                    val pos = lastPointerPos
-                                    val depth = if (autoScrollDir > 0) {
-                                        pos.y - (canvasSize.height - currentAutoScrollEdgeZonePx.value)
-                                    } else {
-                                        currentAutoScrollEdgeZonePx.value - pos.y
-                                    }.coerceAtLeast(0f)
-                                    val rows = (depth / currentCellHeight.value).toInt().coerceIn(1, 8)
-                                    scrollDeltaChannel.trySend(
-                                        TerminalScrollDelta(autoScrollDir * rows, pos.x, pos.y),
+                                    // Timeout chi xay ra o nhanh dragMode==None.
+                                    // Long-press arms the arrow trackpad.
+                                    // NO selection yet: selecting here made
+                                    // the copy/paste menu pop up mid-swipe
+                                    // (stray paste taps). Word selection
+                                    // happens on a stationary RELEASE
+                                    // instead; dragging steers the cursor.
+                                    trackpadIndicator = down.position
+                                    currentHaptics.value.performHapticFeedback(
+                                        HapticFeedbackType.LongPress,
                                     )
+                                    dragMode = DragMode.ArrowTrackpad
                                     continue
                                 }
 
                                 lastEventUptime = event.changes.maxOfOrNull { it.uptimeMillis } ?: lastEventUptime
                                 val pressed = event.changes.filter { it.pressed }
                                 if (pressed.isEmpty()) {
-                                    autoScrollDir = 0
-                                    autoScrollingSelection = false
                                     val releasedDragMode = dragMode
                                     dragMode = DragMode.None
                                     if (releasedDragMode == DragMode.ArrowTrackpad) {
@@ -570,8 +549,6 @@ fun TerminalCanvas(
                                     // tai cho dat tay. Truoc day no bam theo tay nen
                                     // luc nao cung co mot dom di chuyen giua man
                                     // hinh, che mat chinh chu dang can nhin.
-                                    autoScrollDir = 0
-                                    autoScrollingSelection = false
                                     if (!trackpadMoved) {
                                         val fromDown = hypot(
                                             (changePos.x - downPos.x).toDouble(),
@@ -809,8 +786,6 @@ fun TerminalCanvas(
                                         selectionCleared = true
                                     }
                                 }
-                                autoScrollDir = 0
-                                autoScrollingSelection = false
                                 val verticalIntent = abs(dragY) > abs(dragX) * 1.2f
                                 if (verticalIntent) {
                                     dragRemainder += dragY / currentCellHeight.value
@@ -837,7 +812,6 @@ fun TerminalCanvas(
                             // khi he thong cuop chuoi cham (vuot canh de back,
                             // keo thanh thong bao, dialog bat len).
                             trackpadAxisHint = TrackpadAxis.None
-                            autoScrollingSelection = false
                         }
                     }
                 }
@@ -944,8 +918,9 @@ fun TerminalCanvas(
                         else -> snapshot.fgArgb[i]
                     }
                     val styleBits = firstFlags and TEXT_STYLE_MASK
-                    val firstExtras = snapshot.graphemeExtras[i]
-                    val firstGlyph = if (firstExtras == null || firstExtras.isEmpty()) null else snapshot.glyphAt(i)
+                    // Check flag truoc khi cham Map<Int,IntArray>: lookup map
+                    // box Int key cho MOI cell moi frame (hang nghin alloc/frame).
+                    val firstGlyph = if (!snapshot.hasGrapheme(i)) null else snapshot.glyphAt(i)
                     val firstPaintChoice = if (firstGlyph == null) {
                         pickPaintChoice(
                             codepoint = cp,
@@ -995,8 +970,7 @@ fun TerminalCanvas(
                             continue
                         }
 
-                        val extras = snapshot.graphemeExtras[j]
-                        val glyph = if (extras == null || extras.isEmpty()) null else snapshot.glyphAt(j)
+                        val glyph = if (!snapshot.hasGrapheme(j)) null else snapshot.glyphAt(j)
                         val nextPaintChoice = if (glyph == null) {
                             pickPaintChoice(
                                 codepoint = c,
@@ -1035,7 +1009,9 @@ fun TerminalCanvas(
                     paint.isUnderlineText = (styleBits and TerminalSnapshot.CELL_FLAG_UNDERLINE) != 0
                     paint.textSkewX = if ((styleBits and TerminalSnapshot.CELL_FLAG_ITALIC) != 0) -0.25f else 0f
                     paint.alpha = if ((styleBits and TerminalSnapshot.CELL_FLAG_FAINT) != 0) FAINT_TEXT_ALPHA else 255
-                    nCanvas.drawText(sb.toString(), startCol * cellWidth, baseline, paint)
+                    // drawText nhan CharSequence truc tiep — sb.toString() la
+                    // mot String moi cho moi text-run, moi frame.
+                    nCanvas.drawText(sb, 0, sb.length, startCol * cellWidth, baseline, paint)
                     i = j
                 }
             }
@@ -1044,18 +1020,16 @@ fun TerminalCanvas(
             // on the grid); size is libghostty's scaled dest_w/dest_h, already
             // centered by cell_*_offset. Don't recompute size as grid*cell.
             for (img in snapshot.images) {
-                val srcRect = Rect(img.srcX, img.srcY, img.srcX + img.srcW, img.srcY + img.srcH)
+                imageSrcRect.set(img.srcX, img.srcY, img.srcX + img.srcW, img.srcY + img.srcH)
                 val imgDestX = (img.cellCol * cellWidth + img.cellXOffset.toFloat()).toInt()
                 val imgDestY = (img.cellRow * cellHeight + img.cellYOffset.toFloat()).toInt()
-                val imgDestW = img.destW
-                val imgDestH = img.destH
-                val dstRect = RectF(
+                imageDstRect.set(
                     imgDestX.toFloat(),
                     imgDestY.toFloat(),
-                    (imgDestX + imgDestW).toFloat(),
-                    (imgDestY + imgDestH).toFloat(),
+                    (imgDestX + img.destW).toFloat(),
+                    (imgDestY + img.destH).toFloat(),
                 )
-                nCanvas.drawBitmap(img.bitmap, srcRect, dstRect, null)
+                nCanvas.drawBitmap(img.bitmap, imageSrcRect, imageDstRect, null)
             }
 
             if (snapshot.cursorVisible && snapshot.cursorX in 0 until cols && snapshot.cursorY in 0 until rows) {
@@ -1074,13 +1048,13 @@ fun TerminalCanvas(
                 if (cursorTextColorArgb != null && cursorIndex in snapshot.codepoints.indices) {
                     val codepoint = snapshot.codepoints[cursorIndex]
                     if (codepoint != 0 && codepoint != 32) {
-                        val extras = snapshot.graphemeExtras[cursorIndex]
-                        val glyph = if (extras == null || extras.isEmpty()) {
+                        val cursorHasGrapheme = snapshot.hasGrapheme(cursorIndex)
+                        val glyph = if (!cursorHasGrapheme) {
                             singleGlyphCache.getOrPut(codepoint) { String(Character.toChars(codepoint)) }
                         } else {
                             snapshot.glyphAt(cursorIndex)
                         }
-                        val cursorPaintChoice = if (extras == null || extras.isEmpty()) {
+                        val cursorPaintChoice = if (!cursorHasGrapheme) {
                             pickPaintChoice(
                                 codepoint = codepoint,
                                 glyphCache = singleGlyphCache,
@@ -1199,23 +1173,10 @@ private fun startSelection(
     return selectedCell != null
 }
 
-private fun updateSelectionDrag(
-    existing: TerminalSelection?,
-    selectedCell: Int,
-    onSelectionChange: (TerminalSelection?) -> Unit,
-) {
-    if (existing == null || existing.focusIndex != selectedCell) {
-        onSelectionChange(
-            (existing ?: TerminalSelection(selectedCell, selectedCell)).copy(focusIndex = selectedCell),
-        )
-    }
-}
-
 private fun remapSelectionForViewportScroll(
     snapshot: TerminalSnapshot,
     selection: TerminalSelection?,
     baseline: Int?,
-    autoScrollingSelection: Boolean,
     onBaselineChange: (Int) -> Unit,
     onSelectionChange: (TerminalSelection?) -> Unit,
 ) {
@@ -1226,8 +1187,7 @@ private fun remapSelectionForViewportScroll(
     val deltaCells = (startBaseline - cur) * max(snapshot.cols, 1)
     onBaselineChange(cur)
     onSelectionChange(
-        if (autoScrollingSelection) sel.copy(anchorIndex = sel.anchorIndex + deltaCells)
-        else sel.copy(anchorIndex = sel.anchorIndex + deltaCells, focusIndex = sel.focusIndex + deltaCells),
+        sel.copy(anchorIndex = sel.anchorIndex + deltaCells, focusIndex = sel.focusIndex + deltaCells),
     )
 }
 
@@ -1240,6 +1200,10 @@ private fun TerminalSnapshot.cellAt(x: Float, y: Float, cellWidth: Float, cellHe
 
 internal fun TerminalSnapshot.isSpacerContinuation(cellIndex: Int): Boolean {
     return ((flags[cellIndex].toInt() and 0xFF) and TerminalSnapshot.CELL_FLAG_SPACER) != 0
+}
+
+internal fun TerminalSnapshot.hasGrapheme(cellIndex: Int): Boolean {
+    return ((flags[cellIndex].toInt() and 0xFF) and TerminalSnapshot.CELL_FLAG_HAS_GRAPHEME) != 0
 }
 
 internal fun TerminalSnapshot.glyphAt(cellIndex: Int): String {

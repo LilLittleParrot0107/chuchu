@@ -138,7 +138,9 @@ class DbtopClient(
                     }
                 }
             } finally {
-                conn.disconnect()
+                // KHONG conn.disconnect(): dong han socket lam moi poll 20s mo
+                // TCP/TLS moi. Dong not errorStream la du de tra ve keep-alive pool.
+                runCatching { conn.errorStream?.close() }
             }
         } catch (e: SocketTimeoutException) {
             FetchResult.Failed("Connection timed out — check the host or Tailscale")

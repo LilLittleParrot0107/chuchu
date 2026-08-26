@@ -3,30 +3,39 @@ package com.jossephus.chuchu.ui.screens.Dbtop
 import android.app.Application
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.windowInsetsTopHeight
-import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.jossephus.chuchu.data.model.dbtop.DataFreshness
+import com.jossephus.chuchu.ui.components.ChuText
 import com.jossephus.chuchu.ui.components.KohiNoticeBand
 import com.jossephus.chuchu.ui.components.KohiSectionBand
 import com.jossephus.chuchu.ui.theme.ChuColors
+import com.jossephus.chuchu.ui.theme.ChuTypography
 import java.util.Locale
 
 /** dbtop's stacked mobile hierarchy with one selection rail and detail pane. */
@@ -41,9 +50,10 @@ fun DbtopScreen(
     val colors = ChuColors.current
     val haptics = LocalHapticFeedback.current
     val ui by viewModel.ui.collectAsStateWithLifecycle()
-    val nowSec = System.currentTimeMillis() / 1_000L
+    val nowSec = androidx.compose.runtime.remember(ui.state) { System.currentTimeMillis() / 1_000L }
     val currentPerDay = ui.currentPerDay(nowSec)
     val selectedRow = ui.state.rows.firstOrNull { it.positionKey() == ui.selectedPositionKey }
+    val watchlistItems = androidx.compose.runtime.remember(ui.state) { ui.state.buildWatchlist() }
 
     BackHandler(onBack = onClose)
     LifecycleResumeEffect(Unit) {
@@ -51,120 +61,159 @@ fun DbtopScreen(
         onPauseOrDispose { viewModel.stopPolling() }
     }
 
-    Box(
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
             .background(colors.background),
     ) {
-        // Scrim status bar = surface khop voi DBTOP command band ngay duoi.
-        Spacer(
-            Modifier
-                .align(Alignment.TopCenter)
-                .fillMaxWidth()
-                .windowInsetsTopHeight(WindowInsets.statusBars)
-                .background(colors.background),
-        )
+        val wide = maxWidth >= 600.dp
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .windowInsetsPadding(WindowInsets.safeDrawing),
         ) {
-        DbtopTopBar(
-            // Suy lai tu ts SNAPSHOT moi lan ve: ui.freshness la gia tri dong
-            // bang tai luc fetch — server chet thi no bao "UPDATED 5M AGO"
-            // xanh mai mai. state.freshness(nowSec) tra Dead khi ts=0 (chua
-            // load) hoac qua lau, trung thuc hon.
-            freshness = ui.state.freshness(nowSec),
-            isRefreshing = ui.isRefreshing,
-            onRefresh = {
-                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                viewModel.refreshNow()
-            },
-            onClose = onClose,
-        )
-
-        // Loi mang da do ca man roi thi khong xep them banner OFFLINE thu hai
-        if (ui.error == null && ui.everLoaded && ui.state.freshness(nowSec) is DataFreshness.Dead) {
-            KohiNoticeBand(
-                text = "SCAN OFFLINE — YIELD AND APR ARE HIDDEN · RESTART DEBANK/RUN.SH",
-                color = colors.error,
-                urgent = true,
+            DbtopTopBar(
+                freshness = ui.state.freshness(nowSec),
+                isRefreshing = ui.isRefreshing,
+                onRefresh = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    viewModel.refreshNow()
+                },
+                onClose = onClose,
             )
-        }
-        ui.criticalLendingRow?.let { critical ->
-            KohiNoticeBand(
-                text = "⚠ HIGH RISK · ${critical.name} · HF ${String.format(Locale.US, "%.2fx", critical.health ?: 0.0)}",
-                color = colors.warning,
-            )
-        }
 
-        DashboardSummary(
-            netWorth = ui.state.netWorth,
-            wallet = ui.state.wallet,
-            perDay = currentPerDay,
-            debt = ui.state.rows.sumOf { it.debt ?: 0.0 },
-        )
-        DashboardViewBand(
-            selected = ui.selectedView,
-            positionCount = ui.state.rows.size,
-            onSelect = { nextView ->
-                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                viewModel.selectView(nextView)
-            },
-        )
-
-        KohiSectionBand(
-            label = ui.selectedView.label,
-            meta = "${ui.itemCount()} ITEMS",
-        )
-
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f),
-        ) {
-            when (ui.selectedView) {
-                DbtopView.CHARTS -> ChartsView(
-                    netWorth = ui.state.netWorth,
-                    currentPerDay = currentPerDay,
-                    curve = ui.state.curve,
-                    daily = ui.state.daily,
+            if (ui.error == null && ui.everLoaded && ui.state.freshness(nowSec) is DataFreshness.Dead) {
+                KohiNoticeBand(
+                    text = "SCAN OFFLINE — YIELD AND APR ARE HIDDEN · RESTART DEBANK/RUN.SH",
+                    color = colors.error,
+                    urgent = true,
                 )
-                DbtopView.POSITIONS -> PositionsView(
-                    rows = ui.state.rows,
-                    selectedKey = ui.selectedPositionKey,
-                    showYield = currentPerDay != null,
-                    nowSec = nowSec,
-                    onSelect = { row ->
+            }
+            ui.criticalLendingRow?.let { critical ->
+                KohiNoticeBand(
+                    text = "⚠ HIGH RISK · ${critical.name} · HF ${String.format(Locale.US, "%.2fx", critical.health ?: 0.0)} · TAP TO VIEW",
+                    color = colors.warning,
+                    modifier = Modifier.clickable {
                         haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        viewModel.togglePosition(row.positionKey())
+                        viewModel.selectView(DbtopView.POSITIONS)
+                        viewModel.togglePosition(critical.positionKey())
                     },
                 )
             }
-        }
 
-        if (ui.selectedView == DbtopView.POSITIONS) {
-            selectedRow?.let { row ->
-                PositionDetailPane(
-                    row = row,
-                    showYield = currentPerDay != null && (row.expiry == null || row.expiry > nowSec),
-                    onClose = { viewModel.togglePosition(row.positionKey()) },
-                )
+            DashboardSummary(
+                netWorth = ui.state.netWorth,
+                wallet = ui.state.wallet,
+                perDay = currentPerDay,
+                debt = ui.state.rows.sumOf { it.debt ?: 0.0 },
+            )
+            DashboardViewBand(
+                selected = ui.selectedView,
+                onSelect = { nextView ->
+                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    viewModel.selectView(nextView)
+                },
+            )
+
+            KohiSectionBand(
+                label = ui.selectedView.label,
+                meta = "${ui.itemCount(watchlistItems.size)} ITEMS",
+            )
+
+            if (wide && ui.selectedView == DbtopView.POSITIONS) {
+                // Layout Master-Detail tối ưu cho màn hình gập mở rộng của Vivo X Fold 5
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1.1f)
+                            .fillMaxHeight(),
+                    ) {
+                        PositionsView(
+                            rows = ui.state.rows,
+                            selectedKey = ui.selectedPositionKey,
+                            showYield = currentPerDay != null,
+                            nowSec = nowSec,
+                            onSelect = { row ->
+                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                viewModel.togglePosition(row.positionKey())
+                            },
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .background(colors.surface),
+                    ) {
+                        if (selectedRow != null) {
+                            PositionDetailPane(
+                                row = selectedRow,
+                                showYield = currentPerDay != null && (selectedRow.expiry == null || selectedRow.expiry > nowSec),
+                                onClose = { viewModel.togglePosition(selectedRow.positionKey()) },
+                            )
+                        } else {
+                            YieldInsightPane(
+                                state = ui.state,
+                                currentPerDay = currentPerDay,
+                            )
+                        }
+                    }
+                }
+            } else {
+                // Layout chuẩn cho màn hình ngoài / màn hình hẹp
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                ) {
+                    when (ui.selectedView) {
+                        DbtopView.CHARTS -> ChartsView(
+                            netWorth = ui.state.netWorth,
+                            currentPerDay = currentPerDay,
+                            curve = ui.state.curve,
+                            daily = ui.state.daily,
+                        )
+                        DbtopView.WATCHLIST -> WatchlistView(
+                            items = watchlistItems,
+                        )
+                        DbtopView.SPENDING -> SpendingView(
+                            spending = ui.spending,
+                        )
+                        DbtopView.POSITIONS -> PositionsView(
+                            rows = ui.state.rows,
+                            selectedKey = ui.selectedPositionKey,
+                            showYield = currentPerDay != null,
+                            nowSec = nowSec,
+                            onSelect = { row ->
+                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                viewModel.togglePosition(row.positionKey())
+                            },
+                        )
+                    }
+                }
+
+                if (ui.selectedView == DbtopView.POSITIONS) {
+                    selectedRow?.let { row ->
+                        PositionDetailPane(
+                            row = row,
+                            showYield = currentPerDay != null && (row.expiry == null || row.expiry > nowSec),
+                            onClose = { viewModel.togglePosition(row.positionKey()) },
+                        )
+                    }
+                }
             }
         }
-
-        DashboardHint(
-            when {
-                ui.selectedView == DbtopView.CHARTS -> "CURVE AND DAILY YIELD FOLLOW THE LATEST DBTOP SNAPSHOT"
-                selectedRow != null -> "${selectedRow.name.uppercase()} SELECTED · TAP AGAIN TO CLOSE"
-                else -> "SELECT A POSITION TO INSPECT ITS BREAKDOWN"
-            },
-        )
     }
 }
-}
 
-private fun DbtopUiState.itemCount(): Int = when (selectedView) {
+private fun DbtopUiState.itemCount(watchlistCount: Int): Int = when (selectedView) {
     DbtopView.POSITIONS -> state.rows.size
+    DbtopView.WATCHLIST -> watchlistCount
     DbtopView.CHARTS -> 2
+    DbtopView.SPENDING -> spending?.count ?: 0
 }

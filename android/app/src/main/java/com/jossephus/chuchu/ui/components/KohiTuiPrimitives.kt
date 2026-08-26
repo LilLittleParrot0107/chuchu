@@ -22,6 +22,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.jossephus.chuchu.ui.theme.CHU_HAIRLINE_ALPHA
 import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTypography
 
@@ -166,9 +167,10 @@ fun KohiNoticeBand(
 }
 
 /**
- * Transient, in-flow feedback used after a user action. Unlike the old
- * floating cards this takes its own layout space, so it never covers an input
- * or a task row.
+ * Transient feedback sau mot user action. Caller quyet dinh cach hien thi:
+ * Queue dung nhu OVERLAY dap len vung band agents (fade ra theo TTL) de
+ * layout danh sach khong nhuc chuyen; nen giu nen surface dac + vien mau
+ * tone de doc duoc khi de chong len noi dung ben duoi.
  */
 @Composable
 fun KohiFeedbackBand(
@@ -183,7 +185,8 @@ fun KohiFeedbackBand(
         modifier = modifier
             .fillMaxWidth()
             .height(IntrinsicSize.Min)
-            .background(color.copy(alpha = 0.14f)),
+            .background(colors.surface)
+            .border(1.dp, color.copy(alpha = 0.4f)),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
@@ -278,12 +281,10 @@ fun KohiSelectableRow(
         modifier = modifier
             .fillMaxWidth()
             .height(IntrinsicSize.Min)
-            .background(if (selected) colors.surface else colors.surfaceVariant)
-            // Selection phai thay bang BACKGROUND + BORDER, khong dung dot/icon —
-            // dot chi danh cho runtime status de khong luong tuong selected.
+            .background(if (selected) colors.surface else Color.Transparent)
             .border(
                 width = 1.dp,
-                color = if (selected) tone.copy(alpha = 0.6f) else Color.Transparent,
+                color = if (selected) tone.copy(alpha = 0.6f) else colors.border.copy(alpha = CHU_HAIRLINE_ALPHA),
             )
             .clickable(onClick = onClick),
         verticalAlignment = Alignment.CenterVertically,
@@ -306,8 +307,6 @@ fun KohiSelectableRow(
         modifier = Modifier
             .fillMaxWidth()
             .height(1.dp)
-            // Divider phai im lang hon selection border — truoc day alpha 0.65
-            // canh tranh voi duong vien cua row dang chon.
-            .background(colors.border.copy(alpha = 0.32f)),
+            .background(colors.border.copy(alpha = CHU_HAIRLINE_ALPHA)),
     )
 }

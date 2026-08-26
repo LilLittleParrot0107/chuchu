@@ -774,16 +774,6 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
         sendPrimaryMouseEvent(TerminalMouseAction.Release, x, y, anyButtonPressed = false, trackLastCell = false)
     }
 
-    fun onAppSelectionDrag(action: Int, x: Float, y: Float) {
-        sendPrimaryMouseEvent(
-            action = action,
-            x = x,
-            y = y,
-            anyButtonPressed = action != TerminalMouseAction.Release,
-            trackLastCell = true,
-        )
-    }
-
     private fun sendPrimaryMouseEvent(
         action: Int,
         x: Float,

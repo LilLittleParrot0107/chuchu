@@ -52,13 +52,13 @@ import kotlin.math.max
 @Composable
 fun YieldComboChart(
     dailyData: List<DailyYield>,
+    barColor: Color,
+    accumColor: Color,
+    accentColor: Color,
+    tooltipBg: Color,
+    gridColor: Color,
+    textColor: Color,
     modifier: Modifier = Modifier,
-    barColor: Color = Color(0xFF38BDF8),
-    accumColor: Color = Color(0xFFA6E3A1),
-    accentColor: Color = Color(0xFF4ADE80),
-    tooltipBg: Color = Color(0xFF11111B),
-    gridColor: Color = Color(0xFF45475A).copy(alpha = 0.35f),
-    textColor: Color = Color(0xFFA6ADC8),
     height: Dp = 190.dp,
 ) {
     if (dailyData.isEmpty()) return
@@ -128,6 +128,10 @@ fun YieldComboChart(
     val linePath = remember { Path() }
     // Hoist khoi draw: allocation moi frame khi keo tooltip la lang phi.
     val dashEffect = remember { PathEffect.dashPathEffect(floatArrayOf(4f, 4f), 0f) }
+    // 2 brush dung chung cho moi bar (gradient trai het plot, bar lay doan cua
+    // minh) — truoc day moi bar tao 1 Brush + 1 List moi frame khi keo tooltip.
+    val barBrushHolder = remember(barColor, accentColor) { GradientBrushHolder() }
+    val selectedBarBrushHolder = remember(barColor, accentColor) { GradientBrushHolder() }
 
     // Cache text layout: measure trong draw chay moi frame khi keo tooltip.
     val dateLayouts = remember(dailyData, labelStyle) {
@@ -244,20 +248,27 @@ fun YieldComboChart(
                     else -> 0.35f
                 }
 
-                val barBrush = Brush.verticalGradient(
-                    colors = listOf(
-                        (if (isSelected) accentColor else barColor).copy(alpha = alpha),
-                        accentColor.copy(alpha = alpha * 0.7f),
-                    ),
-                    startY = barTop,
-                    endY = topPadding + plotHeight,
-                )
+                if (barBrushHolder.geometry != plotHeight || barBrushHolder.brush == null) {
+                    barBrushHolder.geometry = plotHeight
+                    barBrushHolder.brush = Brush.verticalGradient(
+                        colors = listOf(barColor, accentColor.copy(alpha = 0.7f)),
+                        startY = topPadding,
+                        endY = topPadding + plotHeight,
+                    )
+                    selectedBarBrushHolder.geometry = plotHeight
+                    selectedBarBrushHolder.brush = Brush.verticalGradient(
+                        colors = listOf(accentColor, accentColor.copy(alpha = 0.7f)),
+                        startY = topPadding,
+                        endY = topPadding + plotHeight,
+                    )
+                }
 
                 drawRoundRect(
-                    brush = barBrush,
+                    brush = (if (isSelected) selectedBarBrushHolder else barBrushHolder).brush!!,
                     topLeft = Offset(barLeft, barTop),
                     size = Size(barWidth, animatedBarHeight),
                     cornerRadius = cornerRadius,
+                    alpha = alpha,
                 )
 
                 val dateLayout = dateLayouts[i]

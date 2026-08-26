@@ -92,6 +92,27 @@ const PreparedImageData = struct {
     free_mode: ImageFreeMode,
 };
 
+/// Mot entry RGBA da decode, thuoc so huu cua image_decode_cache.
+/// src_ptr/src_len la van tay cua image.data goc: kitty retransmit cung
+/// image_id se doi buffer nguon → van tay lech → decode lai.
+const CachedImageDecode = struct {
+    src_ptr: usize,
+    src_len: usize,
+    img_w: u32,
+    img_h: u32,
+    data: []u8,
+    free_mode: ImageFreeMode,
+    gen: u64,
+
+    fn freeData(self: *const CachedImageDecode) void {
+        switch (self.free_mode) {
+            .malloc_buf => allocator.free(self.data),
+            .zignal => zignal_png.freePixels(@ptrCast(self.data.ptr), self.img_w, self.img_h),
+            .none => {},
+        }
+    }
+};
+
 const MouseEncodingSize = struct {
     screen_width: u32 = 1,
     screen_height: u32 = 1,
@@ -137,6 +158,10 @@ const ChuchuTerminal = struct {
     snapshot_buffer: std.ArrayListUnmanaged(u8) = .empty,
     snapshot_extras_scratch: std.ArrayListUnmanaged(u32) = .empty,
     image_snapshot_buffer: std.ArrayListUnmanaged(u8) = .empty,
+    // Cache RGBA da decode theo image_id: khong co no thi moi image snapshot
+    // (toi ~60/s) decode lai PNG/expand RGB tu dau cho ca anh tinh.
+    image_decode_cache: std.AutoHashMapUnmanaged(u32, CachedImageDecode) = .empty,
+    image_decode_gen: u64 = 0,
     pty_write_buffer: std.ArrayListUnmanaged(u8) = .empty,
     pty_write_len: usize = 0,
     snapshot_perf_calls: u64 = 0,
@@ -527,6 +552,9 @@ export fn chuchu_destroy_terminal(handle: c.jlong) callconv(.c) void {
     terminal.snapshot_buffer.deinit(allocator);
     terminal.snapshot_extras_scratch.deinit(allocator);
     terminal.image_snapshot_buffer.deinit(allocator);
+    var cache_it = terminal.image_decode_cache.iterator();
+    while (cache_it.next()) |entry| entry.value_ptr.freeData();
+    terminal.image_decode_cache.deinit(allocator);
     terminal.pty_write_buffer.deinit(allocator);
     if (terminal.title) |buf| allocator.free(buf);
     if (terminal.pwd) |buf| allocator.free(buf);
@@ -1071,7 +1099,52 @@ fn allocRgba(pixel_count: usize) ?[]u8 {
     return allocator.alloc(u8, pixel_count * 4) catch null;
 }
 
-fn prepareImageData(image_id: u32, image: ghostty.kitty.graphics.Image) ?PreparedImageData {
+/// Tra RGBA da san sang ve; uu tien cache cua terminal. Ket qua free_mode
+/// .none nghia la caller KHONG duoc free (cache hoac kitty storage so huu).
+fn prepareImageData(terminal: *ChuchuTerminal, image_id: u32, image: ghostty.kitty.graphics.Image) ?PreparedImageData {
+    // .rgba khong can transform: tra thang con tro vao storage cua kitty,
+    // khong cache (cache se giu con tro minh khong so huu).
+    if (image.format == .rgba) return decodeImageData(image_id, image);
+
+    const fp_ptr: usize = if (image.data.len == 0) 0 else @intFromPtr(image.data.ptr);
+    const fp_len: usize = image.data.len;
+    if (terminal.image_decode_cache.getPtr(image_id)) |entry| {
+        if (entry.src_ptr == fp_ptr and entry.src_len == fp_len) {
+            entry.gen = terminal.image_decode_gen;
+            return .{
+                .data_ptr = entry.data.ptr,
+                .data_len = entry.data.len,
+                .img_w = entry.img_w,
+                .img_h = entry.img_h,
+                .free_mode = .none,
+            };
+        }
+        // Retransmit cung id: buffer nguon doi → entry cu vo hieu.
+        entry.freeData();
+        _ = terminal.image_decode_cache.remove(image_id);
+    }
+
+    const decoded = decodeImageData(image_id, image) orelse return null;
+    if (decoded.free_mode == .none) return decoded;
+    terminal.image_decode_cache.put(allocator, image_id, .{
+        .src_ptr = fp_ptr,
+        .src_len = fp_len,
+        .img_w = decoded.img_w,
+        .img_h = decoded.img_h,
+        .data = @constCast(decoded.data_ptr[0..decoded.data_len]),
+        .free_mode = decoded.free_mode,
+        .gen = terminal.image_decode_gen,
+    }) catch return decoded; // het RAM cache: dung 1 lan, caller free
+    return .{
+        .data_ptr = decoded.data_ptr,
+        .data_len = decoded.data_len,
+        .img_w = decoded.img_w,
+        .img_h = decoded.img_h,
+        .free_mode = .none,
+    };
+}
+
+fn decodeImageData(image_id: u32, image: ghostty.kitty.graphics.Image) ?PreparedImageData {
     var data_ptr: [*c]const u8 = if (image.data.len == 0) null else image.data.ptr;
     var data_len: usize = image.data.len;
     var img_w = image.width;
@@ -1191,10 +1264,33 @@ fn prepareImageData(image_id: u32, image: ghostty.kitty.graphics.Image) ?Prepare
     };
 }
 
+/// Giu cache decode trong gioi han MAX_KITTY_IMAGES: bo entry khong duoc
+/// cham toi trong frame hien tai (anh da bi xoa/thay khoi man hinh).
+fn pruneImageDecodeCache(terminal: *ChuchuTerminal) void {
+    const cur = terminal.image_decode_gen;
+    while (terminal.image_decode_cache.count() > MAX_KITTY_IMAGES) {
+        var stale_keys: [16]u32 = undefined;
+        var n: usize = 0;
+        var it = terminal.image_decode_cache.iterator();
+        while (it.next()) |entry| {
+            if (entry.value_ptr.gen != cur and n < stale_keys.len) {
+                stale_keys[n] = entry.key_ptr.*;
+                n += 1;
+            }
+        }
+        if (n == 0) return;
+        for (stale_keys[0..n]) |k| {
+            if (terminal.image_decode_cache.getPtr(k)) |e| e.freeData();
+            _ = terminal.image_decode_cache.remove(k);
+        }
+    }
+}
+
 export fn chuchu_build_image_snapshot(handle: c.jlong, out_size: [*c]usize) callconv(.c) ?[*]u8 {
     const terminal = chuchuFromHandle(handle) orelse return null;
     if (out_size == null) return null;
     logKittyState("image_snapshot_begin", terminal);
+    terminal.image_decode_gen +%= 1;
 
     var placements: [MAX_KITTY_IMAGES]PlacementInfo = undefined;
     var count: usize = 0;
@@ -1217,7 +1313,7 @@ export fn chuchu_build_image_snapshot(handle: c.jlong, out_size: [*c]usize) call
             );
             continue;
         };
-        const prepared = prepareImageData(entry.key_ptr.image_id, image) orelse continue;
+        const prepared = prepareImageData(terminal, entry.key_ptr.image_id, image) orelse continue;
         const rect = placementSourceRect(placement, prepared.img_w, prepared.img_h);
         const orig_grid_size = placement.gridSize(image, &terminal.terminal);
         var grid_size = orig_grid_size;
@@ -1276,7 +1372,7 @@ export fn chuchu_build_image_snapshot(handle: c.jlong, out_size: [*c]usize) call
                 continue;
             };
 
-            const prepared = prepareImageData(virtual_placement.image_id, image) orelse continue;
+            const prepared = prepareImageData(terminal, virtual_placement.image_id, image) orelse continue;
             placements[count] = .{
                 .cell_col = @intCast(viewport.viewport.x),
                 .cell_row = @intCast(viewport.viewport.y),
@@ -1302,6 +1398,7 @@ export fn chuchu_build_image_snapshot(handle: c.jlong, out_size: [*c]usize) call
     }
 
     if (count == 0) {
+        pruneImageDecodeCache(terminal);
         out_size.* = 0;
         return null;
     }
@@ -1342,6 +1439,7 @@ export fn chuchu_build_image_snapshot(handle: c.jlong, out_size: [*c]usize) call
         }
     }
 
+    pruneImageDecodeCache(terminal);
     out_size.* = total;
     return buf;
 }
@@ -1446,7 +1544,9 @@ export fn chuchu_write_remote(handle: c.jlong, data_ptr: [*c]const u8, data_len:
     if (data_ptr == null or data_len == 0) return;
     const data = data_ptr[0..data_len];
     terminal.stream.nextSlice(data);
-    update_render_state(terminal);
+    // KHONG update_render_state o day: ham nay chay theo nhip doc SSH (toi
+    // ~500 lan/s khi du lieu do ve) trong khi chi ~60 snapshot/s duoc dung —
+    // chuchu_build_text_snapshot da tu refresh render_state truoc khi doc.
 }
 
 export fn chuchu_resize(handle: c.jlong, cols: c.jint, rows: c.jint, cell_width: c.jint, cell_height: c.jint) callconv(.c) void {

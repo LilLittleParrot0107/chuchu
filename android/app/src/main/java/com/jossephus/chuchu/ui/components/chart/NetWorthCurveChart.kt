@@ -50,12 +50,13 @@ import java.util.Locale
 @Composable
 fun NetWorthCurveChart(
     points: List<CurvePoint>,
+    lineColor: Color,
+    tooltipBg: Color,
+    tooltipText: Color,
+    gridColor: Color,
+    textColor: Color,
+    markerColor: Color,
     modifier: Modifier = Modifier,
-    lineColor: Color = Color(0xFF38BDF8),
-    tooltipBg: Color = Color(0xFF181825),
-    tooltipText: Color = Color(0xFFCDD6F4),
-    gridColor: Color = Color(0xFF45475A).copy(alpha = 0.4f),
-    textColor: Color = Color(0xFFA6ADC8),
     height: Dp = 200.dp,
 ) {
     if (points.isEmpty()) return
@@ -79,6 +80,10 @@ fun NetWorthCurveChart(
     val curvePath = remember { Path() }
     val fillPath = remember { Path() }
     val tooltipPath = remember { Path() }
+    // Toa do tinh lai moi frame (phu thuoc size) nhung mang thi tai su dung —
+    // truoc day 2 FloatArray moi duoc alloc trong draw lambda moi frame.
+    val xCoords = remember(points) { FloatArray(points.size) }
+    val yCoords = remember(points) { FloatArray(points.size) }
 
     val minVal = remember(points) { points.minOfOrNull { it.nw } ?: 0.0 }
     val maxVal = remember(points) { points.maxOfOrNull { it.nw } ?: 1.0 }
@@ -97,6 +102,9 @@ fun NetWorthCurveChart(
     // Hoist khoi DrawScope: allocation moi frame.
     val dashedEffectCached = remember { PathEffect.dashPathEffect(floatArrayOf(6f, 6f), 0f) }
     val markerDashCached = remember { PathEffect.dashPathEffect(floatArrayOf(4f, 4f), 0f) }
+    // Holder thuong (khong phai State): ghi State trong draw lambda se tu
+    // invalidate va ve lai vo han.
+    val fillBrushHolder = remember(lineColor) { GradientBrushHolder() }
 
     // Cache nhan truc: measure trong draw chay moi frame keo tooltip.
     val gridLabels = remember(minVal, maxVal, labelTextStyle) {
@@ -194,8 +202,6 @@ fun NetWorthCurveChart(
 
             // 2. Data points
             val pointCount = points.size
-            val xCoords = FloatArray(pointCount)
-            val yCoords = FloatArray(pointCount)
 
             for (i in 0 until pointCount) {
                 val normX = if (pointCount > 1) i.toFloat() / (pointCount - 1) else 0.5f
@@ -239,22 +245,27 @@ fun NetWorthCurveChart(
             fillPath.close()
 
             // 4. Draw Gradient Fill & Line
+            // Brush co dinh, alpha cua drawPath lo phan animation — truoc day
+            // Brush + List + 3 Color.copy duoc tao lai moi frame suot 650ms.
             val progress = animationProgress.value
             if (progress > 0f) {
-                val fillGradient = Brush.verticalGradient(
-                    colors = listOf(
-                        lineColor.copy(alpha = 0.30f * progress),
-                        lineColor.copy(alpha = 0.05f * progress),
-                        Color.Transparent,
-                    ),
-                    startY = topPadding,
-                    endY = topPadding + plotHeight,
-                )
-
-                drawPath(path = fillPath, brush = fillGradient, style = Fill)
+                if (fillBrushHolder.geometry != plotHeight || fillBrushHolder.brush == null) {
+                    fillBrushHolder.geometry = plotHeight
+                    fillBrushHolder.brush = Brush.verticalGradient(
+                        colors = listOf(
+                            lineColor.copy(alpha = 0.30f),
+                            lineColor.copy(alpha = 0.05f),
+                            Color.Transparent,
+                        ),
+                        startY = topPadding,
+                        endY = topPadding + plotHeight,
+                    )
+                }
+                drawPath(path = fillPath, brush = fillBrushHolder.brush!!, style = Fill, alpha = progress)
                 drawPath(
                     path = curvePath,
-                    color = lineColor.copy(alpha = progress),
+                    color = lineColor,
+                    alpha = progress,
                     style = Stroke(
                         width = 2.dp.toPx(),
                         cap = StrokeCap.Round,
@@ -302,7 +313,7 @@ fun NetWorthCurveChart(
                     center = Offset(markerX, markerY),
                 )
                 drawCircle(
-                    color = Color.White,
+                    color = markerColor,
                     radius = 2.dp.toPx(),
                     center = Offset(markerX, markerY),
                 )
@@ -320,9 +331,7 @@ fun NetWorthCurveChart(
                 val boxHeight = titleLayout.size.height + tooltipPaddingV * 2
 
                 var boxLeft = markerX - boxWidth / 2f
-                if (boxLeft < leftPadding) boxLeft = leftPadding
                 if (boxLeft + boxWidth > canvasWidth - rightPadding) boxLeft = canvasWidth - rightPadding - boxWidth
-                if (boxLeft < leftPadding) boxLeft = leftPadding
                 if (boxLeft < leftPadding) boxLeft = leftPadding
 
                 var boxTop = markerY - boxHeight - 10.dp.toPx()
@@ -357,4 +366,10 @@ fun NetWorthCurveChart(
             }
         }
     }
+}
+
+/** Cache brush theo hinh hoc canvas, dung chung cho cac chart trong package. */
+internal class GradientBrushHolder {
+    var geometry: Float = Float.NaN
+    var brush: Brush? = null
 }

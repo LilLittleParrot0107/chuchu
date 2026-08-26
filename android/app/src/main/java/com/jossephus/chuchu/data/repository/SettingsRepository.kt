@@ -65,6 +65,14 @@ class SettingsRepository(context: Context) {
             return if (portal.isNotEmpty()) "$portal/debank/state.json" else DEFAULT_DBTOP_URL
         }
 
+    /** spending.json do spending-scan tren Legion sinh, phuc vu cung goc dufs voi state.json. */
+    val resolvedSpendingUrl: String
+        get() {
+            val portal = _webPortalUrl.value.trim().trimEnd('/')
+            val base = if (portal.isNotEmpty()) portal else DEFAULT_WEB_PORTAL_URL.trimEnd('/')
+            return "$base/chuchu/spending/spending.json"
+        }
+
     fun setDbtopUrl(value: String) {
         val v = value.trim()
         prefs.edit().putString(KEY_DBTOP_URL, v).apply()

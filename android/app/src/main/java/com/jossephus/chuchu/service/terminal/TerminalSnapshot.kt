@@ -54,6 +54,13 @@ data class TerminalSnapshot(
      * building a grid-wide client-side selection that crosses pane borders.
      */
     val appHandlesSelectionDrag: Boolean = false,
+    /**
+     * FNV-1a 64-bit over the full cell grid + grapheme extras, computed in a
+     * single pass during parse. equals/hashCode compare THIS instead of
+     * content-scanning four whole-grid arrays on every StateFlow emit (up to
+     * 60/s) — that scan was doubling the per-frame snapshot cost.
+     */
+    val contentHash: Long = 0L,
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -63,11 +70,7 @@ data class TerminalSnapshot(
             cursorVisible == other.cursorVisible &&
             defaultBgArgb == other.defaultBgArgb &&
             defaultFgArgb == other.defaultFgArgb &&
-            codepoints.contentEquals(other.codepoints) &&
-            fgArgb.contentEquals(other.fgArgb) &&
-            bgArgb.contentEquals(other.bgArgb) &&
-            flags.contentEquals(other.flags) &&
-            graphemeExtrasEquals(graphemeExtras, other.graphemeExtras) &&
+            contentHash == other.contentHash &&
             images == other.images &&
             viewportScrollY == other.viewportScrollY &&
             appHandlesSelectionDrag == other.appHandlesSelectionDrag
@@ -81,17 +84,60 @@ data class TerminalSnapshot(
         result = 31 * result + cursorVisible.hashCode()
         result = 31 * result + defaultBgArgb
         result = 31 * result + defaultFgArgb
-        result = 31 * result + codepoints.contentHashCode()
-        result = 31 * result + fgArgb.contentHashCode()
-        result = 31 * result + bgArgb.contentHashCode()
-        result = 31 * result + flags.contentHashCode()
-        result = 31 * result + graphemeExtras.entries.fold(0) { acc, (key, arr) ->
-            acc + key + arr.contentHashCode()
-        }
+        result = 31 * result + contentHash.hashCode()
         result = 31 * result + images.hashCode()
         result = 31 * result + viewportScrollY
         result = 31 * result + appHandlesSelectionDrag.hashCode()
         return result
+    }
+
+    /**
+     * Scratch parse tai su dung giua cac frame. CHI chua buffer trung gian
+     * khong bao gio thoat khoi fromByteBuffer — cac mang publish
+     * (codepoints/fg/bg/flags) van cap phat moi vi UI thread co the con giu
+     * snapshot cu (xem comment trong ham).
+     */
+    class ParseScratch {
+        internal var cellBytes: ByteArray = ByteArray(0)
+
+        internal fun obtain(size: Int): ByteArray {
+            if (cellBytes.size < size) cellBytes = ByteArray(size)
+            return cellBytes
+        }
+    }
+
+    /**
+     * Cache Bitmap theo noi dung (dims + len + FNV mau ~768 byte cua pixel)
+     * — truoc day moi image snapshot (toi ~60/s) goi Bitmap.createBitmap +
+     * copyPixelsFromBuffer cho CA anh kitty tinh, tuc la cap phat va upload
+     * lai nguyen bitmap moi frame.
+     */
+    class BitmapCache {
+        private class Entry(val bitmap: Bitmap, var gen: Long)
+
+        private val entries = HashMap<Long, Entry>()
+        private var gen = 0L
+
+        internal fun beginFrame() {
+            gen++
+        }
+
+        internal fun obtain(key: Long, imgW: Int, imgH: Int, pixels: ByteBuffer): Bitmap {
+            entries[key]?.let { entry ->
+                entry.gen = gen
+                return entry.bitmap
+            }
+            val bitmap = Bitmap.createBitmap(imgW, imgH, Bitmap.Config.ARGB_8888)
+            bitmap.copyPixelsFromBuffer(pixels)
+            entries[key] = Entry(bitmap, gen)
+            return bitmap
+        }
+
+        internal fun endFrame() {
+            // Giu lai 1 the he: list cua frame truoc co the van dang duoc UI
+            // ve. Khong recycle() — tha cho GC de khoi dung bitmap dang hien thi.
+            entries.entries.removeAll { (_, entry) -> gen - entry.gen > 1 }
+        }
     }
 
     companion object {
@@ -106,18 +152,8 @@ data class TerminalSnapshot(
         private const val HEADER_I32_COUNT = 14
         private const val CELL_SIZE_BYTES = 11
         private const val IMAGE_HEADER_BYTES = 52
-
-        private fun graphemeExtrasEquals(
-            a: Map<Int, IntArray>,
-            b: Map<Int, IntArray>,
-        ): Boolean {
-            if (a.size != b.size) return false
-            for ((k, v) in a) {
-                val o = b[k] ?: return false
-                if (!v.contentEquals(o)) return false
-            }
-            return true
-        }
+        private const val FNV_OFFSET_BASIS = -0x340d631b7bdddcdbL // 0xcbf29ce484222325
+        private const val FNV_PRIME = 0x100000001b3L
 
         private fun packArgb(r: Int, g: Int, b: Int): Int =
             (0xFF shl 24) or (r shl 16) or (g shl 8) or b
@@ -125,6 +161,7 @@ data class TerminalSnapshot(
         fun fromByteBuffer(
             buffer: ByteBuffer,
             images: List<ImagePlacement> = emptyList(),
+            scratch: ParseScratch? = null,
         ): TerminalSnapshot {
             val wrapped = buffer.duplicate().order(ByteOrder.LITTLE_ENDIAN)
             wrapped.position(0)
@@ -157,7 +194,7 @@ data class TerminalSnapshot(
             // previous TerminalSnapshot visible to the UI thread, so reusing
             // them would cause a data race.
             val cellDataLen = cellCount * CELL_SIZE_BYTES
-            val cellBytes = ByteArray(cellDataLen)
+            val cellBytes = scratch?.obtain(cellDataLen) ?: ByteArray(cellDataLen)
             wrapped.get(cellBytes, 0, cellDataLen)
 
             val codepoints = IntArray(cellCount)
@@ -166,6 +203,7 @@ data class TerminalSnapshot(
             val flags = ByteArray(cellCount)
 
             var off = 0
+            var hash = FNV_OFFSET_BASIS
             for (i in 0 until cellCount) {
                 // codepoint: little-endian i32 from 4 bytes
                 codepoints[i] = (cellBytes[off].toInt() and 0xFF) or
@@ -182,6 +220,10 @@ data class TerminalSnapshot(
                 fgArgb[i] = packArgb(fgR, fgG, fgB)
                 bgArgb[i] = packArgb(bgR, bgG, bgB)
                 flags[i] = cellBytes[off]; off++
+                hash = (hash xor codepoints[i].toLong()) * FNV_PRIME
+                hash = (hash xor fgArgb[i].toLong()) * FNV_PRIME
+                hash = (hash xor bgArgb[i].toLong()) * FNV_PRIME
+                hash = (hash xor flags[i].toLong()) * FNV_PRIME
             }
 
             val graphemeExtras: Map<Int, IntArray> =
@@ -208,6 +250,8 @@ data class TerminalSnapshot(
                             val cps = IntArray(count)
                             for (j in 0 until count) cps[j] = extras.int
                             parsed[cellIndex] = cps
+                            hash = (hash xor cellIndex.toLong()) * FNV_PRIME
+                            for (cp in cps) hash = (hash xor cp.toLong()) * FNV_PRIME
                         }
                         if (valid) parsed else emptyMap()
                     }
@@ -231,17 +275,22 @@ data class TerminalSnapshot(
                 images = images,
                 viewportScrollY = viewportScrollY,
                 appHandlesSelectionDrag = appHandlesSelectionDrag,
+                contentHash = hash,
             )
 
             return snapshot
         }
 
-        fun parseImages(buffer: ByteBuffer?): List<ImagePlacement> {
+        fun parseImages(buffer: ByteBuffer?, cache: BitmapCache? = null): List<ImagePlacement> {
             if (buffer == null || buffer.capacity() < 4) return emptyList()
             val wrapped = buffer.duplicate().order(ByteOrder.LITTLE_ENDIAN)
             wrapped.position(0)
             val count = wrapped.int
-            if (count <= 0) return emptyList()
+            cache?.beginFrame()
+            if (count <= 0) {
+                cache?.endFrame()
+                return emptyList()
+            }
 
             val images = ArrayList<ImagePlacement>(count)
             for (i in 0 until count) {
@@ -276,8 +325,28 @@ data class TerminalSnapshot(
                 val pixelBytes = wrapped.slice().order(ByteOrder.nativeOrder())
                 pixelBytes.limit(dataLen)
 
-                val bitmap = Bitmap.createBitmap(imgW, imgH, Bitmap.Config.ARGB_8888)
-                bitmap.copyPixelsFromBuffer(pixelBytes)
+                val bitmap = if (cache != null) {
+                    // Key noi dung: dims + len + FNV cua 3 lat cat 256 byte
+                    // (dau/giua/cuoi) — du de phan biet anh that ma khong
+                    // phai hash ca MB moi frame.
+                    var key = FNV_OFFSET_BASIS
+                    key = (key xor imgW.toLong()) * FNV_PRIME
+                    key = (key xor imgH.toLong()) * FNV_PRIME
+                    key = (key xor dataLen.toLong()) * FNV_PRIME
+                    val base = wrapped.position()
+                    val sampleStarts = intArrayOf(0, (dataLen / 2 - 128).coerceAtLeast(0), (dataLen - 256).coerceAtLeast(0))
+                    for (start in sampleStarts) {
+                        val end = (start + 256).coerceAtMost(dataLen)
+                        for (p in start until end) {
+                            key = (key xor wrapped.get(base + p).toLong()) * FNV_PRIME
+                        }
+                    }
+                    cache.obtain(key, imgW, imgH, pixelBytes)
+                } else {
+                    Bitmap.createBitmap(imgW, imgH, Bitmap.Config.ARGB_8888).also {
+                        it.copyPixelsFromBuffer(pixelBytes)
+                    }
+                }
                 wrapped.position(wrapped.position() + dataLen)
 
                 images += ImagePlacement(
@@ -296,6 +365,7 @@ data class TerminalSnapshot(
                     bitmap = bitmap,
                 )
             }
+            cache?.endFrame()
             return images
         }
     }

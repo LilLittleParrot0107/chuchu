@@ -5,10 +5,13 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.ime
@@ -27,9 +30,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material.icons.outlined.List
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.automirrored.outlined.List
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.Image
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -72,7 +76,7 @@ enum class KohiTab(val route: String, val contentDescription: String) {
 /** Đường net-worth thu nhỏ làm icon DASHBOARD — vẽ tay, không dùng glyph. */
 @Composable
 private fun CurveDashboardIcon(tint: Color) {
-    Canvas(modifier = Modifier.size(24.dp)) {
+    Canvas(modifier = Modifier.size(22.dp)) {
         val w = size.width
         val h = size.height
         val pts = arrayOf(
@@ -102,17 +106,17 @@ private fun VectorIcon(vec: ImageVector, tint: Color) {
         imageVector = vec,
         contentDescription = null,
         colorFilter = ColorFilter.tint(tint),
-        modifier = Modifier.size(24.dp),
+        modifier = Modifier.size(22.dp),
     )
 }
 
 /** Folder outline vẽ tay — material-icons-core khong co Folder. */
 @Composable
 private fun FolderIcon(tint: Color) {
-    Canvas(modifier = Modifier.size(24.dp)) {
+    Canvas(modifier = Modifier.size(22.dp)) {
         val w = size.width
         val h = size.height
-        val stroke = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
+        val stroke = Stroke(width = 2.0.dp.toPx(), cap = StrokeCap.Round)
         val p = Path().apply {
             // tab thu muc
             moveTo(0.10f * w, 0.30f * h)
@@ -137,13 +141,13 @@ private fun tabIcon(tab: KohiTab, selected: Boolean, tint: Color) {
             FolderIcon(tint)
         KohiTab.DASHBOARD -> CurveDashboardIcon(tint)
         KohiTab.QUEUE ->
-            if (selected) VectorIcon(Icons.Filled.List, tint) else VectorIcon(Icons.Outlined.List, tint)
+            if (selected) VectorIcon(Icons.AutoMirrored.Filled.List, tint) else VectorIcon(Icons.AutoMirrored.Outlined.List, tint)
     }
 }
 
 /**
  * Một ô tab: viên pill (surfaceVariant) sau lưng khi đang chọn, icon phía
- * trên, badge số việc ở góc khi có. Icon-box 56x40dp chuẩn M3.
+ * trên, badge số việc ở góc khi có. Kích thước 56x34dp gọn gàng, bo góc 10dp.
  */
 @Composable
 private fun KohiNavItem(
@@ -156,30 +160,46 @@ private fun KohiNavItem(
 ) {
     val colors = ChuColors.current
     val tint = if (selected) colors.textPrimary else colors.textSecondary
+    val targetBgColor = if (selected) (pillColor ?: colors.surfaceVariant) else Color.Transparent
+    val animatedBgColor by animateColorAsState(
+        targetValue = targetBgColor,
+        animationSpec = tween(200, easing = LinearOutSlowInEasing),
+        label = "pillBgColor",
+    )
     Box(
         modifier = modifier
-            .size(width = 56.dp, height = 40.dp)
-            .semantics { contentDescription = tab.contentDescription }
-            .clip(RoundedCornerShape(12.dp))
-            .background(if (selected) (pillColor ?: colors.surfaceVariant) else Color.Transparent)
-            .clickable(onClick = onClick),
+            .fillMaxHeight()
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            )
+            .semantics { contentDescription = tab.contentDescription },
         contentAlignment = Alignment.Center,
     ) {
-        tabIcon(tab, selected, tint)
-        if (badge != null && badge > 0) {
-            // Badge số việc: nền border (trung tính), chữ primary — không accent.
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(colors.border)
-                    .padding(horizontal = 4.dp),
-            ) {
-                ChuText(
-                    "$badge",
-                    style = ChuTypography.current.labelSmall,
-                    color = colors.textPrimary,
-                )
+        Box(
+            modifier = Modifier
+                .size(width = 56.dp, height = 34.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(animatedBgColor),
+            contentAlignment = Alignment.Center,
+        ) {
+            tabIcon(tab, selected, tint)
+            if (badge != null && badge > 0) {
+                // Badge số việc: nền border (trung tính), chữ primary — không accent.
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(colors.border)
+                        .padding(horizontal = 3.dp),
+                ) {
+                    ChuText(
+                        "$badge",
+                        style = ChuTypography.current.labelSmall,
+                        color = colors.textPrimary,
+                    )
+                }
             }
         }
     }
@@ -195,17 +215,16 @@ private fun KohiSideRail(
     val colors = ChuColors.current
     Column(
         modifier = Modifier
-            .width(80.dp)
+            .width(64.dp)
             .fillMaxHeight()
-            // Nen rail CUNG MAU theme (background), khong sang hon content —
-            // thu vien pill moi la lop sang (surface = bac tren mocha).
+            // Nền rail giữ nguyên CÙNG MÀU theme (background) khi mở rộng màn hình
             .background(colors.background)
             .statusBarsPadding()
             .navigationBarsPadding(),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(10.dp))
         KohiTab.entries.forEach { tab ->
             KohiNavItem(
                 tab = tab,
@@ -213,6 +232,7 @@ private fun KohiSideRail(
                 badge = if (tab == KohiTab.QUEUE) queueBadge else null,
                 onClick = { onSelect(tab) },
                 pillColor = colors.surface,
+                modifier = Modifier.size(width = 64.dp, height = 44.dp),
             )
         }
         Spacer(Modifier.weight(1f))
@@ -231,81 +251,91 @@ fun KohiNavShell(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
+    // Terminal va queue-mo-tu-terminal deu la fullscreen modal: an toan bo
+    // chrome tab de back tu session-queue ve dung terminal va tab-switch khong
+    // xen vao giua cap man hinh nay.
+    val isFullscreenTerminal =
+        selectedRoute?.startsWith("terminal") == true ||
+            selectedRoute?.startsWith("session-queue") == true
+
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         val wide = maxWidth >= 600.dp
         if (wide) {
-            Row(modifier = Modifier.fillMaxSize()) {
-                KohiSideRail(
-                    selectedRoute = selectedRoute ?: "",
-                    queueBadge = queueBadge,
-                    onSelect = onSelect,
-                )
-                Box(modifier = Modifier.weight(1f)) { content() }
+            if (isFullscreenTerminal) {
+                // Fullscreen cho Terminal trên màn hình rộng / máy gập mở: Terminal chiếm 100% diện tích
+                Box(modifier = Modifier.fillMaxSize()) { content() }
+            } else {
+                Row(modifier = Modifier.fillMaxSize()) {
+                    KohiSideRail(
+                        selectedRoute = selectedRoute ?: "",
+                        queueBadge = queueBadge,
+                        onSelect = onSelect,
+                    )
+                    Box(modifier = Modifier.weight(1f)) { content() }
+                }
             }
         } else {
-            // IME mo -> an bar: neu khong, composer/terminal bi day cao THUA
-            // dung chieu cao bar (ime inset do tu day manh, content lai bi
-            // cat tai dinh bar) = dung dai trang giua content va keyboard.
-            // Con navigationBars luon duoc tieu thu o content: bar tu xu ly
-            // khi hien, keyboard de len khi an.
-            //
-            // derivedStateOf: doc ime inset trong composition thi subcribe
-            // TUNG FRAME animation keyboard (ca shell + NavHost recompose
-            // ~18 lan/300ms = jank). Bo qua gia tri trung gian, chi thong
-            // bao khi Boolean doi trang thai.
-            val density = LocalDensity.current
-            // WindowInsets.ime la property @Composable — bat INSTANCE o scope
-            // composable, roi derivedStateOf doc getBottom (state-backed):
-            // chi thong bao khi Boolean doi, khong recompose tung frame.
-            val imeInsets = WindowInsets.ime
-            val imeVisible by remember {
-                derivedStateOf { imeInsets.getBottom(density) > 0 }
-            }
-            Column(modifier = Modifier.fillMaxSize()) {
-                // consume navigationBars CHI KHI bar dang hien (ime dong):
-                // content khong bi cong don nav inset voi bar. Khi IME mo thi
-                // KHONG consume — nav inset van duoc bao (keyboard che no),
-                // nuot vao se day composer/accessory bar CAO hon keyboard
-                // dung 1 khoang = chieu cao nav bar.
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .then(
-                            if (!imeVisible) Modifier.consumeWindowInsets(WindowInsets.navigationBars)
-                            else Modifier
-                        ),
-                ) { content() }
-                // Strip CỐ ĐỊNH chiều cao (bar + nav inset): layout không bao
-                // giờ đổi khi keyboard nâng/hạ -> hết giật. Bar chỉ FADE alpha
-                // trong strip; khi IME mở keyboard che toàn strip.
+            if (isFullscreenTerminal) {
+                // Fullscreen 100% cho Terminal trên màn hình điện thoại / compact:
+                // Ẩn hoàn toàn Bottom Tab Bar, loại bỏ đệm đáy để Terminal vẽ tràn viền
+                Box(modifier = Modifier.fillMaxSize()) { content() }
+            } else {
+                val density = LocalDensity.current
+                val imeBottomPx = WindowInsets.ime.getBottom(density)
+                val navBarBottomPx = WindowInsets.navigationBars.getBottom(density)
+                val tabBarHeightPx = with(density) { 54.dp.roundToPx() }
+                val closedBottomInsetPx = tabBarHeightPx + navBarBottomPx
+                // Cơ chế Inset liên tục: bottom inset luôn là max(tabBar + navBar, imeBottom).
+                // Khi bàn phím trượt lên/xuống, chiều cao di chuyển mượt mà liên tục, không bị
+                // giật/khựng reflow layout do gắn/tháo view đột ngột.
+                val effectiveBottomInsetPx = maxOf(closedBottomInsetPx, imeBottomPx)
+                val effectiveBottomInsetDp = with(density) { effectiveBottomInsetPx.toDp() }
+
+                val barAlpha by animateFloatAsState(
+                    targetValue = if (imeBottomPx > closedBottomInsetPx) 0f else 1f,
+                    animationSpec = tween(50, easing = LinearOutSlowInEasing),
+                    label = "tabBarAlpha",
+                )
+
                 val stripColors = ChuColors.current
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(stripColors.surface)
-                        .navigationBarsPadding(),
-                ) {
-                    val barAlpha by animateFloatAsState(
-                        targetValue = if (imeVisible) 0f else 1f,
-                        animationSpec = tween(150),
-                        label = "tabBarAlpha",
-                    )
-                    Row(
+
+                Box(modifier = Modifier.fillMaxSize()) {
+                    // 1. Content chiếm toàn màn hình, được đẩy đáy theo effectiveBottomInsetDp
+                    Box(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .height(64.dp)
-                            .alpha(barAlpha),
-                        horizontalArrangement = Arrangement.SpaceEvenly,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        KohiTab.entries.forEach { tab ->
-                            KohiNavItem(
-                                tab = tab,
-                                selected = selectedRoute == tab.route,
-                                badge = if (tab == KohiTab.QUEUE) queueBadge else null,
-                                onClick = { onSelect(tab) },
-                            )
+                            .fillMaxSize()
+                            .padding(bottom = effectiveBottomInsetDp)
+                            .consumeWindowInsets(PaddingValues(bottom = effectiveBottomInsetDp)),
+                    ) { content() }
+
+                    // 2. Thanh tab dưới đổi sang màu surface (khớp với accessory bar),
+                    // fade mượt mà theo alpha khi bàn phím mở/đóng.
+                    if (barAlpha > 0f) {
+                        Column(
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .fillMaxWidth()
+                                .alpha(barAlpha)
+                                .background(stripColors.surface)
+                                .navigationBarsPadding(),
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(54.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                KohiTab.entries.forEach { tab ->
+                                    KohiNavItem(
+                                        tab = tab,
+                                        selected = selectedRoute == tab.route,
+                                        badge = if (tab == KohiTab.QUEUE) queueBadge else null,
+                                        onClick = { onSelect(tab) },
+                                        pillColor = stripColors.surfaceVariant,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                }
+                            }
                         }
                     }
                 }

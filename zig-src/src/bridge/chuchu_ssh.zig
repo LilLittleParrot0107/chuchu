@@ -51,7 +51,9 @@ const NativeSshSession = struct {
     hostkey_type: c_int = 0,
     hostkey_copy: ?[]u8 = null,
     last_error: std.ArrayListUnmanaged(u8) = .empty,
-    empty_reads: u32 = 0,
+    // Buffer doc tai su dung: read() bi goi toi ~500 lan/s khi active, alloc
+    // 64KiB moi lan (ke ca poll rong) la malloc churn vo ich.
+    read_buffer: std.ArrayListUnmanaged(u8) = .empty,
 };
 
 fn sessionFromHandle(handle: c.jlong) ?*NativeSshSession {
@@ -215,6 +217,7 @@ fn destroyNativeSshSession(session: *NativeSshSession) void {
     if (session.username) |username| allocator.free(username);
     clearHostKeyCopy(session);
     session.last_error.deinit(allocator);
+    session.read_buffer.deinit(allocator);
     allocator.destroy(session);
 }
 
@@ -470,11 +473,12 @@ fn writeChannel(session: *NativeSshSession, bytes: []const u8) c.jint {
     return @intCast(total_written);
 }
 
-fn readChannel(alloc: std.mem.Allocator, session: *NativeSshSession, max_bytes: usize) ?[]u8 {
+/// Ket qua tro vao session.read_buffer — chi hop le den lan readChannel sau.
+fn readChannel(session: *NativeSshSession, max_bytes: usize) ?[]const u8 {
     const channel = session.channel orelse return null;
     const cap = @max(max_bytes, 1);
-    const buf = alloc.alloc(u8, cap) catch return null;
-    defer alloc.free(buf);
+    session.read_buffer.resize(allocator, cap) catch return null;
+    const buf = session.read_buffer.items;
     var total_read: usize = 0;
     // Read both stdout and stderr — exec channels may send
     // diagnostics on stderr, blocking EOF if we ignore it.
@@ -484,7 +488,6 @@ fn readChannel(alloc: std.mem.Allocator, session: *NativeSshSession, max_bytes: 
             if (total_read >= buf.len) break;
             const rc = c.libssh2_channel_read_ex(channel, stream_id, @ptrCast(buf.ptr + total_read), @intCast(buf.len - total_read));
             if (rc == c.LIBSSH2_ERROR_EAGAIN) {
-                session.empty_reads +%= 1;
                 break;
             }
             if (rc == 0) {
@@ -495,13 +498,9 @@ fn readChannel(alloc: std.mem.Allocator, session: *NativeSshSession, max_bytes: 
                 return null;
             }
             total_read += @intCast(rc);
-            session.empty_reads = 0;
         }
     }
-    if (total_read == 0) {
-        return alloc.dupe(u8, &.{}) catch null;
-    }
-    return alloc.dupe(u8, buf[0..total_read]) catch null;
+    return buf[0..total_read];
 }
 
 fn readJByteArray(env: *c.JNIEnv, array: c.jbyteArray) ?[]u8 {
@@ -531,6 +530,21 @@ export fn Java_com_jossephus_chuchu_service_ssh_NativeSshBridge_nativeDestroySes
     _ = thiz;
     const session = sessionFromHandle(handle) orelse return;
     destroyNativeSshSession(session);
+}
+
+/// Don dep fd + libssh2 session khi connect that bai giua chung. Truoc day
+/// cac duong loi sau khi da gan socket_fd/session cu the return thang, de
+/// tai nguyen song lay lat toi lan close()/destroy ke tiep.
+fn abortConnect(session: *NativeSshSession) c.jboolean {
+    if (session.session) |ssh_session| {
+        _ = c.libssh2_session_free(ssh_session);
+        session.session = null;
+    }
+    if (session.socket_fd >= 0) {
+        closeSocket(session.socket_fd);
+        session.socket_fd = -1;
+    }
+    return c.JNI_FALSE;
 }
 
 export fn Java_com_jossephus_chuchu_service_ssh_NativeSshBridge_nativeConnect(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong, host: c.jstring, port: c.jint, username: c.jstring) callconv(.c) c.jboolean {
@@ -572,9 +586,7 @@ export fn Java_com_jossephus_chuchu_service_ssh_NativeSshBridge_nativeConnect(en
 
     const ssh_session = c.libssh2_session_init_ex(null, null, null, null) orelse {
         setError(session, "libssh2_session_init_ex failed", .{});
-        closeSocket(fd);
-        session.socket_fd = -1;
-        return c.JNI_FALSE;
+        return abortConnect(session);
     };
     session.session = ssh_session;
     c.libssh2_session_set_blocking(ssh_session, 0);
@@ -585,12 +597,12 @@ export fn Java_com_jossephus_chuchu_service_ssh_NativeSshBridge_nativeConnect(en
         if (handshake_rc != c.LIBSSH2_ERROR_EAGAIN) {
             logError("SSH handshake failed rc={}", .{handshake_rc});
             setLibssh2Error(session, "SSH handshake failed", handshake_rc);
-            return c.JNI_FALSE;
+            return abortConnect(session);
         }
         if (!waitSocket(session, setup_wait_timeout_ms)) {
             logError("SSH handshake timed out", .{});
             setError(session, "SSH handshake timed out", .{});
-            return c.JNI_FALSE;
+            return abortConnect(session);
         }
     }
     logInfo("SSH handshake completed", .{});
@@ -599,11 +611,11 @@ export fn Java_com_jossephus_chuchu_service_ssh_NativeSshBridge_nativeConnect(en
     const hostkey_ptr = c.libssh2_session_hostkey(ssh_session, &hostkey_len, &session.hostkey_type);
     if (hostkey_ptr == null or hostkey_len == 0) {
         setError(session, "Missing server host key", .{});
-        return c.JNI_FALSE;
+        return abortConnect(session);
     }
     const hostkey_copy = allocator.alloc(u8, hostkey_len) catch {
         setError(session, "Host key copy alloc failed", .{});
-        return c.JNI_FALSE;
+        return abortConnect(session);
     };
     @memcpy(hostkey_copy, hostkey_ptr[0..hostkey_len]);
     session.hostkey_copy = hostkey_copy;
@@ -1160,11 +1172,10 @@ export fn Java_com_jossephus_chuchu_service_ssh_NativeSshBridge_nativeIpcExchang
                 return jniNewByteArrayOrNull(env, response.items);
             }
             const max_bytes = std.mem.bytesToValue(u32, frame.payload[0..@sizeOf(u32)]);
-            const bytes = readChannel(allocator, session, @intCast(@max(max_bytes, 1))) orelse {
+            const bytes = readChannel(session, @intCast(@max(max_bytes, 1))) orelse {
                 appendErrorFrame(&response, session, "Read failed");
                 return jniNewByteArrayOrNull(env, response.items);
             };
-            defer allocator.free(bytes);
             ipc.appendMessage(allocator, &response, .Data, bytes) catch {};
         },
         else => {
@@ -1472,15 +1483,28 @@ export fn Java_com_jossephus_chuchu_service_ssh_NativeSshBridge_nativeSftpReadFi
     defer out.deinit(allocator);
     const limit: usize = if (max_bytes <= 0) 4096 else @intCast(max_bytes);
     var buf: [32768]u8 = undefined;
+    // Idle budget nhu readdir: mot nhip mang im 120ms KHONG duoc phep huy ca
+    // lan tai — tren 4G/mang yeu day la chuyen thuong. Chi bo cuoc khi im
+    // lien tuc qua sftp_idle_limit_ms.
+    var idle_since_ms = nowMs();
     while (out.items.len < limit) {
         const want = @min(buf.len, limit - out.items.len);
         const rc = c.libssh2_sftp_read(file, &buf, want);
         if (rc > 0) {
+            idle_since_ms = nowMs();
             out.appendSlice(allocator, buf[0..@intCast(rc)]) catch return null;
             continue;
         }
         if (rc == 0) break;
-        if (rc == c.LIBSSH2_ERROR_EAGAIN and waitSocket(session, io_wait_timeout_ms)) continue;
+        if (rc == c.LIBSSH2_ERROR_EAGAIN) {
+            switch (awaitSftpProgress(session, &idle_since_ms)) {
+                .retry => continue,
+                .no_socket, .stalled => {
+                    setError(session, "SFTP read stalled (im lang qua {d}ms)", .{sftp_idle_limit_ms});
+                    return null;
+                },
+            }
+        }
         setLibssh2Error(session, "SFTP read failed", @intCast(rc));
         return null;
     }
@@ -1495,10 +1519,19 @@ export fn Java_com_jossephus_chuchu_service_ssh_NativeSshBridge_nativeSftpDelete
     defer allocator.free(path_bytes);
     const path_z = dupSentinel(path_bytes) orelse return c.JNI_FALSE;
     defer allocator.free(path_z);
+    var idle_since_ms = nowMs();
     while (true) {
         const rc = c.libssh2_sftp_unlink_ex(sftp, path_z.ptr, @intCast(path_z.len));
         if (rc == 0) return c.JNI_TRUE;
-        if (rc == c.LIBSSH2_ERROR_EAGAIN and waitSocket(session, io_wait_timeout_ms)) continue;
+        if (rc == c.LIBSSH2_ERROR_EAGAIN) {
+            switch (awaitSftpProgress(session, &idle_since_ms)) {
+                .retry => continue,
+                .no_socket, .stalled => {
+                    setError(session, "SFTP delete file stalled (im lang qua {d}ms)", .{sftp_idle_limit_ms});
+                    return c.JNI_FALSE;
+                },
+            }
+        }
         setLibssh2Error(session, "SFTP delete file failed", @intCast(rc));
         return c.JNI_FALSE;
     }
@@ -1512,10 +1545,19 @@ export fn Java_com_jossephus_chuchu_service_ssh_NativeSshBridge_nativeSftpDelete
     defer allocator.free(path_bytes);
     const path_z = dupSentinel(path_bytes) orelse return c.JNI_FALSE;
     defer allocator.free(path_z);
+    var idle_since_ms = nowMs();
     while (true) {
         const rc = c.libssh2_sftp_rmdir_ex(sftp, path_z.ptr, @intCast(path_z.len));
         if (rc == 0) return c.JNI_TRUE;
-        if (rc == c.LIBSSH2_ERROR_EAGAIN and waitSocket(session, io_wait_timeout_ms)) continue;
+        if (rc == c.LIBSSH2_ERROR_EAGAIN) {
+            switch (awaitSftpProgress(session, &idle_since_ms)) {
+                .retry => continue,
+                .no_socket, .stalled => {
+                    setError(session, "SFTP delete directory stalled (im lang qua {d}ms)", .{sftp_idle_limit_ms});
+                    return c.JNI_FALSE;
+                },
+            }
+        }
         setLibssh2Error(session, "SFTP delete directory failed", @intCast(rc));
         return c.JNI_FALSE;
     }

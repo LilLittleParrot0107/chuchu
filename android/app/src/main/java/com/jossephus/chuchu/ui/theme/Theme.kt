@@ -29,7 +29,7 @@ fun ChuTheme(
     // and become unreadable on every light theme.
     val view = LocalView.current
     if (!view.isInEditMode) {
-        val isLightBackground = palette.background.luminance() >= 0.5f
+        val isLightBackground = palette.background.isLightColor()
         SideEffect {
             val window = (view.context as? Activity)?.window ?: return@SideEffect
             val controller = WindowCompat.getInsetsController(window, view)
@@ -45,6 +45,3 @@ fun ChuTheme(
         content = content,
     )
 }
-
-private fun androidx.compose.ui.graphics.Color.luminance(): Float =
-    0.299f * red + 0.587f * green + 0.114f * blue

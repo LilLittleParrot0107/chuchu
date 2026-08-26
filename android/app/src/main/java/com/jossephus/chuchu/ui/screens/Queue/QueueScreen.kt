@@ -16,19 +16,25 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.offset
 import com.jossephus.chuchu.ui.components.KohiCommandBand
 import com.jossephus.chuchu.ui.components.KohiCompactAction
 import com.jossephus.chuchu.ui.components.KohiFeedbackBand
@@ -115,6 +121,12 @@ fun QueueScreen(
         if (!ui.needsSetup) setupPromptDismissed = false
     }
 
+    // Feedback la OVERLAY (khong in-flow): truoc day band chen vao Column roi
+    // shrink di -> roster nhun len xuong moi lan send/copy (giat). Gio no dap
+    // len vung band AGENTS ngay duoi command band, chi fade vao/ra — layout
+    // khong bao gio doi chieu cao. Do cao command band duoc do de neo dung.
+    var commandBandHeightPx by remember { mutableIntStateOf(0) }
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -133,7 +145,7 @@ fun QueueScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .windowInsetsPadding(WindowInsets.safeDrawing),
+                .statusBarsPadding(),
         ) {
             // Status ngan de title QUEUE khong bi ep thanh "QU…"; so luong agent
             // da co o band AGENTS, khong lap lai o day.
@@ -156,6 +168,7 @@ fun QueueScreen(
                 // Toi mau nen theme: status bar + band + content + rail (man
                 // rong) la MOT ton, khong con khoi surface sac bep o tren.
                 containerColor = colors.background,
+                modifier = Modifier.onSizeChanged { commandBandHeightPx = it.height },
             ) {
                 ui.state.globalActions.firstOrNull()?.let { action ->
                     val busy = action.operationKey(null) in ui.busyOps
@@ -303,20 +316,6 @@ fun QueueScreen(
             )
         }
 
-        // WHY: overlay thay vi in-flow trong Column — band feedback tu trc day
-        // composer va detail pane nhay len/xuong khi hien/tan. Neo BottomCenter
-        // + le 76dp de nam phia tren composer ma khong chiem layout cua ai.
-        ui.feedback?.let { feedback ->
-            KohiFeedbackBand(
-                text = feedback.text,
-                color = feedback.tone.color(),
-                onDismiss = { onConsumeFeedback(feedback.id) },
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 76.dp),
-            )
-        }
-
         inspectedTask?.let { task ->
             TaskDetailDialog(
                 task = task,
@@ -354,6 +353,33 @@ fun QueueScreen(
                 onRefresh = { onFetchLogs(DEFAULT_LOG_LINES) },
                 onDismiss = { logsOpen = false },
             )
+        }
+
+        // Overlay feedback: dap len vung band AGENTS (ngay duoi command band),
+        // fade vao/ra khong anh huong layout. La con truc tiep cua Box de co
+        // BoxScope.align.
+        androidx.compose.animation.AnimatedVisibility(
+            visible = ui.feedback != null,
+            enter = androidx.compose.animation.fadeIn(
+                androidx.compose.animation.core.tween(150),
+            ) + androidx.compose.animation.slideInVertically(
+                androidx.compose.animation.core.tween(150),
+            ) { -it / 3 },
+            exit = androidx.compose.animation.fadeOut(
+                androidx.compose.animation.core.tween(250),
+            ),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .offset { IntOffset(0, commandBandHeightPx) },
+        ) {
+            ui.feedback?.let { feedback ->
+                KohiFeedbackBand(
+                    text = feedback.text,
+                    color = feedback.tone.color(),
+                    onDismiss = { onConsumeFeedback(feedback.id) },
+                )
+            }
         }
     }
 }

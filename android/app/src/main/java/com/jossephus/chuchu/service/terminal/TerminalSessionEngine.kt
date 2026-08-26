@@ -34,7 +34,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
@@ -127,6 +126,9 @@ class TerminalSessionEngine(
     private var title: String? = null
     private var pwd: String? = null
     private var images: List<ImagePlacement> = emptyList()
+    private val parseScratch = TerminalSnapshot.ParseScratch()
+    private val bitmapCache = TerminalSnapshot.BitmapCache()
+    private var lastImageLoading = false
     private var pendingColorScheme: Int? = null
     private var pendingDefaultColors: DefaultColors? = null
     private var lastConnectionParams: ConnectionParams? = null
@@ -521,7 +523,7 @@ class TerminalSessionEngine(
     suspend fun checkMultiplexerAvailability(spec: TabSpec): MultiplexerAvailability =
         withContext(dispatcher) { checkMultiplexerAvailability(spec.toConnectionParams()) }
 
-    private fun checkMultiplexerAvailability(params: ConnectionParams): MultiplexerAvailability {
+    private suspend fun checkMultiplexerAvailability(params: ConnectionParams): MultiplexerAvailability {
         val type = params.multiplexer ?: return MultiplexerAvailability.Available
         val multiplexer = MultiplexerRegistry.forType(type)
             ?: return MultiplexerAvailability.UnsupportedMultiplexer(type)
@@ -582,19 +584,10 @@ class TerminalSessionEngine(
         if (spec.transport == Transport.Mosh || spec.transport == Transport.LocalShell) {
             throw IllegalStateException("${type.label} is not supported for ${spec.transport} connections")
         }
-        when (val availability = checkMultiplexerAvailability(spec.copy(multiplexer = type))) {
-            MultiplexerAvailability.Available -> Unit
-            is MultiplexerAvailability.Missing -> throw IllegalStateException(
-                "${availability.multiplexer.label} executable was not found on the remote host",
-            )
-            is MultiplexerAvailability.UnsupportedMultiplexer -> throw IllegalStateException(
-                "${availability.multiplexer.label} is not supported yet",
-            )
-            is MultiplexerAvailability.UnsupportedTransport -> throw IllegalStateException(
-                "${type.label} is not supported for ${availability.transport}",
-            )
-            is MultiplexerAvailability.Error -> throw IllegalStateException(availability.message)
-        }
+        // KHONG chay checkMultiplexerAvailability rieng o day: listSessionsCommand
+        // cua tung multiplexer da tu kiem binary va tra "X executable not found"
+        // qua stderr. Vong check rieng ton nguyen mot cu TCP+SSH handshake nua
+        // cho moi lan mo tab — new tab tung mat 3 handshake thay vi 2.
         val remoteSessions = listMultiplexerSessions(spec.copy(multiplexer = type))
         val existingName = spec.multiplexerSessionName?.takeIf { it.isNotBlank() }
         if (existingName != null && spec.multiplexerCreateIfMissing) return@withContext existingName
@@ -659,7 +652,7 @@ class TerminalSessionEngine(
         _hostKeyPrompt.value = null
     }
 
-    private fun verifyHostKey(
+    private suspend fun verifyHostKey(
         host: String,
         port: Int,
         algorithm: String,
@@ -684,7 +677,9 @@ class TerminalSessionEngine(
                             previousFingerprint = previousFingerprint,
                         )
                 }
-        val accepted = runBlocking { deferred.await() }
+        // await truc tiep: ham nay gio la suspend, khong runBlocking chiem
+        // chet thread single-thread dispatcher cua engine trong luc prompt treo.
+        val accepted = deferred.await()
         if (accepted) {
             hostKeyStore.saveKey(host, port, algorithm, keyBytes)
         }
@@ -739,14 +734,10 @@ class TerminalSessionEngine(
             }
     }
 
-    private suspend fun startSshReadLoop() {
-        val buf = ByteArray(65536)
+    private suspend fun runReadLoop(read: suspend (Int) -> ByteArray?) {
         var lastActivityMs = System.currentTimeMillis()
         while (currentCoroutineContext().isActive) {
-            val chunk = nativeSsh.read(buf.size)
-            if (chunk == null) {
-                break
-            }
+            val chunk = read(READ_CHUNK_BYTES) ?: break
             if (chunk.isEmpty()) {
                 // Adaptive poll: stay snappy while data is flowing, back off when
                 // idle so a quiet session doesn't spin at 500 wakeups/sec.
@@ -758,30 +749,19 @@ class TerminalSessionEngine(
         }
     }
 
-    private suspend fun startLocalShellReadLoop() {
-        val buf = ByteArray(65536)
-        var lastActivityMs = System.currentTimeMillis()
-        while (currentCoroutineContext().isActive) {
-            val chunk = localShellService.read(buf.size)
-            if (chunk == null) {
-                break
-            }
-            if (chunk.isEmpty()) {
-                delay(idleReadDelayMs(System.currentTimeMillis() - lastActivityMs))
-                continue
-            }
-            lastActivityMs = System.currentTimeMillis()
-            feedRemoteChunk(chunk)
-        }
-    }
+    private suspend fun startSshReadLoop() = runReadLoop { nativeSsh.read(it) }
+
+    private suspend fun startLocalShellReadLoop() = runReadLoop { localShellService.read(it) }
 
     private fun feedRemoteChunk(chunk: ByteArray) {
         if (handle == 0L) return
-        val wasImageLoading = bridge.nativeIsImageLoading(handle)
-        flushPtyWrites()
+        // wasImageLoading lay tu lan truoc thay vi goi JNI them mot lan;
+        // pre-flush cung bo — post-flush cua chunk truoc da gui het pending.
+        val wasImageLoading = lastImageLoading
         bridge.nativeWriteRemote(handle, chunk)
         flushPtyWrites()
         val isImageLoading = bridge.nativeIsImageLoading(handle)
+        lastImageLoading = isImageLoading
         when {
             wasImageLoading && !isImageLoading -> {
                 requestSnapshot(force = true)
@@ -886,7 +866,7 @@ class TerminalSessionEngine(
         localShellService.start(cols, rows, screenWidth, screenHeight)
     }
 
-    private fun establishSshConnection(params: ConnectionParams, username: String) {
+    private suspend fun establishSshConnection(params: ConnectionParams, username: String) {
         check(nativeSsh.isAvailable()) { "Native SSH unavailable" }
         nativeSsh.connect(
             host = params.host,
@@ -1026,7 +1006,7 @@ class TerminalSessionEngine(
         multiplexerCreateIfMissing = multiplexerCreateIfMissing,
     )
 
-    private fun runMultiplexerCommand(
+    private suspend fun runMultiplexerCommand(
         params: ConnectionParams,
         command: String,
         timeoutMs: Long = 20_000,
@@ -1053,7 +1033,7 @@ class TerminalSessionEngine(
     private fun withExitEnvelope(command: String): String =
         "$command; printf '\nCHUCHU_EXIT:%s\n' \"\$?\""
 
-    private fun readExecOutput(
+    private suspend fun readExecOutput(
         service: NativeSshService,
         timeoutMs: Long,
     ): MultiplexerCommandResult {
@@ -1066,14 +1046,16 @@ class TerminalSessionEngine(
             } else if (service.isChannelEof()) {
                 return parseCommandEnvelope(output.toString())
             } else {
-                Thread.sleep(25)
+                // delay chu khong Thread.sleep: ham chay tren single-thread
+                // dispatcher cua engine, sleep la ghim chet thread do toi 20s.
+                delay(25)
             }
         }
         return MultiplexerCommandResult(124, output.toString(), "Command timed out")
     }
 
     private fun parseCommandEnvelope(output: String): MultiplexerCommandResult {
-        val marker = Regex("(?:^|\\n)CHUCHU_EXIT:(\\d+)\\s*$").find(output)
+        val marker = EXIT_ENVELOPE_REGEX.find(output)
             ?: return MultiplexerCommandResult(
                 exitCode = 125,
                 stdout = output,
@@ -1260,6 +1242,8 @@ class TerminalSessionEngine(
         private const val NEAR_IDLE_DELAY_MS = 8L
         private const val IDLE_DELAY_MS = 24L
         private const val MAX_READ_DELAY_MS = 64L
+        private const val READ_CHUNK_BYTES = 65536
+        private val EXIT_ENVELOPE_REGEX = Regex("(?:^|\\n)CHUCHU_EXIT:(\\d+)\\s*$")
     }
 
     // Read-loop poll interval as a function of how long the session has been idle:
@@ -1301,8 +1285,8 @@ class TerminalSessionEngine(
         try {
             val raw = bridge.nativeSnapshot(handle)
             val rawImages = bridge.nativeSnapshotImages(handle)
-            images = TerminalSnapshot.parseImages(rawImages)
-            val snap = TerminalSnapshot.fromByteBuffer(raw, images)
+            images = TerminalSnapshot.parseImages(rawImages, bitmapCache)
+            val snap = TerminalSnapshot.fromByteBuffer(raw, images, parseScratch)
             val nextTitle = bridge.nativePollTitle(handle)
             val nextPwd = bridge.nativePollPwd(handle)
             val nextClipboard = bridge.nativePollClipboard(handle)

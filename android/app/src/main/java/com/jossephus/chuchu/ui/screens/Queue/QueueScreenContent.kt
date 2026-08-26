@@ -26,6 +26,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -80,6 +81,10 @@ internal fun QueueAgentRoster(
         if (selectedPane != ALL_AGENTS) lastFocused = selectedPane
     }
 
+    val activeTaskCounts = remember(tasks) {
+        tasks.filter { !it.isCompleted }.groupingBy { it.target }.eachCount()
+    }
+
     Column(modifier = Modifier.fillMaxWidth()) {
         KohiSectionBand(label = "AGENTS", meta = "${agents.size} LIVE") {
             val spreadMode = selectedPane == ALL_AGENTS
@@ -131,7 +136,7 @@ internal fun QueueAgentRoster(
             ) {
                 items(agents, key = QueueAgent::pane) { agent ->
                     val selected = selectedPane == agent.pane
-                    val taskCount = tasks.count { it.target == agent.pane && !it.isCompleted }
+                    val taskCount = activeTaskCounts[agent.pane] ?: 0
                     // Dot tinh 1 lan moi row: truoc day runtimeDot() bi goi 3 lan
                     // (check working, glyph, dieu kien label dac biet).
                     val dot = runtimeDot(agent)
@@ -159,7 +164,7 @@ internal fun QueueAgentRoster(
                         ChuText(
                             agent.name,
                             style = type.label.copy(fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal),
-                            color = if (selected) colors.textPrimary else colors.textSecondary,
+                            color = colors.textPrimary,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f),
@@ -237,9 +242,7 @@ internal fun QueueTaskRow(
         Spacer(Modifier.width(6.dp))
         ChuText(
             task.text.replace('\n', ' '),
-            style = type.body.copy(
-                textDecoration = if (task.isCompleted) TextDecoration.LineThrough else TextDecoration.None,
-            ),
+            style = type.body,
             color = if (task.isCompleted) colors.textMuted else colors.textPrimary,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,

@@ -27,6 +27,9 @@ const NativeLocalShellSession = struct {
     master_fd: c_int = -1,
     child_pid: c.pid_t = -1,
     last_error: std.ArrayListUnmanaged(u8) = .empty,
+    // Buffer doc tai su dung — nativeRead bi poll lien tuc, alloc 64KiB moi
+    // lan (ke ca khi khong co du lieu) la malloc churn vo ich.
+    read_buffer: std.ArrayListUnmanaged(u8) = .empty,
 };
 
 const LocalShellArgs = struct {
@@ -183,6 +186,7 @@ fn destroySession(session: *NativeLocalShellSession) void {
     closeFd(&session.master_fd);
     terminateChild(session);
     session.last_error.deinit(allocator);
+    session.read_buffer.deinit(allocator);
     allocator.destroy(session);
 }
 
@@ -441,11 +445,11 @@ export fn Java_com_jossephus_chuchu_service_terminal_NativeLocalShellBridge_nati
 
     const cap: usize = @intCast(@max(max_bytes, 1));
     const capped = @min(cap, 1024 * 1024);
-    const buf = allocator.alloc(u8, capped) catch {
+    session.read_buffer.resize(allocator, capped) catch {
         setError(session, "local shell read allocation failed", .{});
         return null;
     };
-    defer allocator.free(buf);
+    const buf = session.read_buffer.items;
 
     const rc = c.read(fd, buf.ptr, capped);
     if (rc > 0) {

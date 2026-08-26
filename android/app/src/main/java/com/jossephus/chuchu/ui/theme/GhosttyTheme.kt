@@ -67,49 +67,65 @@ data class GhosttyTheme(
     }
 }
 
-private fun Color.mix(other: Color, fraction: Float): Color {
-    val inv = 1f - fraction
-    return Color(
-        red = this.red * inv + other.red * fraction,
-        green = this.green * inv + other.green * fraction,
-        blue = this.blue * inv + other.blue * fraction,
-        alpha = this.alpha * inv + other.alpha * fraction,
-    )
-}
-
-private fun Color.luminance(): Float =
-    0.299f * red + 0.587f * green + 0.114f * blue
-
 fun GhosttyTheme.toChuColorPalette(): ChuColorPalette {
-    val isDark = background.luminance() < 0.5f
-    val white = Color(0xFFFFFFFF)
-    val black = Color(0xFF000000)
-    val contrast = if (isDark) white else black
+    val isDark = !background.isLightColor()
+    val contrast = if (isDark) Color.White else Color.Black
 
     // Panels: lighter touch on light themes so pale sage/cream backgrounds
     // don't get muddied; keep the existing weight on dark themes.
     val surface = background.mix(contrast, if (isDark) 0.15f else 0.06f)
-    val surfaceVariant = background.mix(contrast, if (isDark) 0.04f else 0.02f)
+    // surfaceVariant phai tach duoc khoi background bang mat thuong —
+    // 0.04 cu chi ~1.1:1, track/inset gan nhu tang hinh tren OLED.
+    val surfaceVariant = background.mix(contrast, if (isDark) 0.08f else 0.05f)
     // Borders need more punch on light themes — the eye is less forgiving
     // of low-contrast outlines on bright backgrounds.
     val border = background.mix(contrast, if (isDark) 0.22f else 0.28f)
 
     val textPrimary = foreground
-    val textSecondary = foreground.mix(background, 0.28f)
-    // 0.5 lam chu meta phang nhu tren nen sang (Latte ~2.1:1). 0.22 dua ve
-    // >= 4.5:1 ma van thap hon secondary (mix 0.28) mot bac.
-    val textMuted = foreground.mix(background, 0.22f)
+    // secondary mix IT hon muted nen luon gan foreground hon (truoc day
+    // 0.28/0.22 bi nguoc bac). ensureContrast keo ca hai ve muc san khi
+    // theme von it tuong phan; san 5.5 vs 4.5 giu khoang cach giua hai bac
+    // ngay ca khi phai keo.
+    val textSecondary = ensureContrast(foreground.mix(background, 0.22f), surface, 5.5f)
+    val textMuted = ensureContrast(foreground.mix(background, 0.40f), surface, 4.5f)
 
-    // Brand accent is derived from the theme's own foreground rather than
-    // ANSI palette[4]. Borrowing ANSI blue makes every UI button clash with
-    // non-blue themes (sage, sepia, rose…); deriving from foreground gives
-    // the classic terminal "inverted text" button that always harmonises.
-    val accent = foreground.mix(background, if (isDark) 0.15f else 0.08f)
-    val accentSecondary = palette[4].mix(background, if (isDark) 0.15f else 0.35f)
-    val onAccent = background
+    // Brand accent: prefer the theme's own cursor-color — it is the one
+    // slot where theme authors put their identity color (Adventure Time's
+    // yellow, Dracula's pink…) and it harmonises by construction. Fall back
+    // to the "inverted text" foreground derivation when the cursor is just
+    // a copy of fg/bg or too close to the background to read.
+    val cursorAccent = cursorColor.takeIf {
+        it != foreground && it != background && contrastRatio(it, background) >= 2.5f
+    }
+    val accent = ensureContrast(
+        cursorAccent ?: foreground.mix(background, if (isDark) 0.15f else 0.08f),
+        surface,
+        4.5f,
+    )
+    // Nut Filled GIU cong thuc "inverted text" cu (fg pha bg) — khong an theo
+    // cursor-color nhu accent: nut to ban nen vang identity bi choi (user
+    // chot 26/8, task #136). onAccent = background van doc tot tren nen nay.
+    val buttonFill = ensureContrast(
+        foreground.mix(background, if (isDark) 0.15f else 0.08f),
+        surface,
+        4.5f,
+    )
+    // Nhieu theme de ANSI blue rat toi (Adventure Time #0f4ac6 ~1.2:1 tren
+    // surface) — dung tho la chu tang hinh. Keo ve AA, giu hue.
+    val accentSecondary = ensureContrast(
+        palette[4].mix(background, if (isDark) 0.15f else 0.35f),
+        surface,
+        4.5f,
+    )
+    // onAccent di cap chu yeu voi buttonFill (chu tren nut Filled). Da so
+    // theme background dat san 4.5 va giu nguyen; vai theme mid-tone (Blue
+    // Dolphin, Grass, Hot Dog Stand…) can day nhe ve phia toi/sang.
+    val onAccent = ensureContrast(background, buttonFill, 4.5f)
 
     val disabledSurface = surface.mix(background, 0.5f)
-    val disabledText = textMuted
+    // Phai TOI hon textMuted mot bac — bang nhau thi control disabled
+    // khong phan biet duoc voi metadata thuong.
+    val disabledText = foreground.mix(background, 0.55f)
 
     return ChuColorPalette(
         name = this.name,
@@ -121,10 +137,14 @@ fun GhosttyTheme.toChuColorPalette(): ChuColorPalette {
         textSecondary = textSecondary,
         textMuted = textMuted,
         accent = accent,
+        buttonFill = buttonFill,
         accentSecondary = accentSecondary,
-        error = palette[1],
-        success = palette[2],
-        warning = palette[3],
+        // ANSI 1/2/3 tho co the qua toi hoac qua choi so voi nen (DEBT do
+        // #BD0013 tren card chi 1.5:1) — moi mau deu duoc keo ve toi thieu
+        // AA tren surface, hue giu nguyen.
+        error = ensureContrast(palette[1], surface, 4.5f),
+        success = ensureContrast(palette[2], surface, 4.5f),
+        warning = ensureContrast(palette[3], surface, 4.5f),
         onAccent = onAccent,
         disabledSurface = disabledSurface,
         disabledText = disabledText,

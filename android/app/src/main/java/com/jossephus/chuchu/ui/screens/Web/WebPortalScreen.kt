@@ -59,6 +59,15 @@ private val VIDEO_EXT = setOf("mp4", "mkv", "webm", "mov", "avi", "m4v", "ts")
 private val AUDIO_EXT = setOf("mp3", "m4a", "flac", "ogg", "wav", "opus")
 private val IMAGE_EXT = setOf("jpg", "jpeg", "png", "webp", "gif", "bmp")
 
+private object WebPortalCache {
+    private val cache = android.util.LruCache<String, List<PortalEntry>>(50)
+
+    fun get(url: String, path: String): List<PortalEntry>? = cache.get("$url:$path")
+    fun put(url: String, path: String, entries: List<PortalEntry>) {
+        cache.put("$url:$path", entries)
+    }
+}
+
 /**
  * Native browser for the dufs file portal — kohi-styled listing over dufs'
  * `?json` API instead of a WebView (which was just a worse Edge). Videos and
@@ -76,16 +85,26 @@ fun WebPortalScreen(
     val baseUrl = remember(url) { url.trimEnd('/') }
 
     var path by remember { mutableStateOf("") } // "" = root, else "a/b"
-    var entries by remember { mutableStateOf<List<PortalEntry>>(emptyList()) }
+    var entries by remember(baseUrl, path) {
+        mutableStateOf(WebPortalCache.get(baseUrl, path) ?: emptyList())
+    }
     var error by remember { mutableStateOf<String?>(null) }
-    var loading by remember { mutableStateOf(true) }
+    var loading by remember(baseUrl, path) {
+        mutableStateOf(entries.isEmpty())
+    }
     var reloadTick by remember { mutableIntStateOf(0) }
 
     fun encodedPath(p: String): String =
         p.split('/').filter { it.isNotEmpty() }.joinToString("/") { Uri.encode(it) }
 
     LaunchedEffect(path, reloadTick) {
-        loading = true
+        val cached = WebPortalCache.get(baseUrl, path)
+        if (cached != null && cached.isNotEmpty()) {
+            entries = cached
+            loading = false
+        } else {
+            loading = true
+        }
         error = null
         val listUrl = baseUrl + "/" + encodedPath(path) + "?json"
         val result = withContext(Dispatchers.IO) {
@@ -93,10 +112,11 @@ fun WebPortalScreen(
                 val conn = URL(listUrl).openConnection() as HttpURLConnection
                 conn.connectTimeout = 8000
                 conn.readTimeout = 8000
+                val stream = conn.inputStream
                 try {
-                    conn.inputStream.bufferedReader().readText()
+                    stream.bufferedReader().readText()
                 } finally {
-                    conn.disconnect()
+                    stream.close()
                 }
             }
         }
@@ -114,13 +134,24 @@ fun WebPortalScreen(
                             mtimeMs = o.optLong("mtime", 0L),
                         )
                     }
-                    entries = list.sortedWith(
+                    val sorted = list.sortedWith(
                         compareByDescending<PortalEntry> { it.isDir }
                             .thenBy { it.name.lowercase() },
                     )
-                }.onFailure { error = "bad listing: ${it.message}" }
+                    entries = sorted
+                    WebPortalCache.put(baseUrl, path, sorted)
+                    error = null
+                }.onFailure {
+                    if (entries.isEmpty()) {
+                        error = "bad listing: ${it.message}"
+                    }
+                }
             },
-            onFailure = { error = it.message ?: "network error" },
+            onFailure = {
+                if (entries.isEmpty()) {
+                    error = it.message ?: "network error"
+                }
+            },
         )
         loading = false
     }
@@ -209,10 +240,10 @@ fun WebPortalScreen(
         }
 
         when {
-            loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            loading && entries.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 ChuText("loading…", style = typography.label, color = colors.textMuted)
             }
-            error != null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            error != null && entries.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 ChuText(error ?: "", style = typography.label, color = colors.textMuted)
             }
             else -> LazyColumn(modifier = Modifier.fillMaxSize()) {

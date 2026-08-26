@@ -16,10 +16,26 @@ fn resolveBuildTargets(b: *std.Build) []const std.Target.Query {
         "Android target triple (default: all supported ABIs)",
     ) orelse return default_build_targets;
 
+    // Tune code generation for a concrete CPU model (e.g. -Dcpu=cortex_x4 for
+    // modern ARMv9 flagships). Without it every target keeps its baseline
+    // (generic ARMv8-A), which leaves LSE atomics, dotprod and fp16 unused.
+    const maybe_cpu = b.option(
+        []const u8,
+        "cpu",
+        "CPU model to tune for (see `zig targets`); must match the target arch",
+    );
+
     var query = std.Target.Query.parse(.{ .arch_os_abi = maybe_target }) catch |err| {
         std.debug.panic("invalid -Dtarget '{s}': {s}", .{ maybe_target, @errorName(err) });
     };
     if (query.android_api_level == null) query.android_api_level = 24;
+
+    if (maybe_cpu) |cpu_name| {
+        const arch = query.cpu_arch orelse builtin.cpu.arch;
+        query.cpu_model = .{ .explicit = std.Target.Cpu.Arch.parseCpuModel(arch, cpu_name) catch {
+            std.debug.panic("unknown -Dcpu '{s}' for arch {s}", .{ cpu_name, @tagName(arch) });
+        } };
+    }
 
     const targets = b.allocator.alloc(std.Target.Query, 1) catch @panic("OOM");
     targets[0] = query;

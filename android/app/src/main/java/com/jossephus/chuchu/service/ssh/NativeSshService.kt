@@ -99,7 +99,7 @@ class NativeSshService(
 
     fun isAvailable(): Boolean = bridge.isLoaded()
 
-    fun connect(
+    suspend fun connect(
         host: String,
         port: Int,
         username: String,
