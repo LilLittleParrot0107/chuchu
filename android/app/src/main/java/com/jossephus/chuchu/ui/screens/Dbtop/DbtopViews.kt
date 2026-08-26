@@ -217,6 +217,9 @@ internal fun SpendingView(spending: SpendingState?) {
         .filter { it.key.startsWith(year) }
         .sortedByDescending { it.key }
     val days = spending.byDay.entries.sortedByDescending { it.key }
+    // UI toan tieng Anh (nguyen tac app) — thang hien dang JAN..DEC.
+    fun monthAbbr(m: String): String =
+        MONTH_ABBR.getOrElse((m.substringAfter('-').toIntOrNull() ?: 1) - 1) { m }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -251,8 +254,8 @@ internal fun SpendingView(spending: SpendingState?) {
         if (days.isNotEmpty()) {
             item(key = "days_band") {
                 KohiSectionBand(
-                    label = "THEO NGÀY",
-                    meta = "THG ${spending.month.substringAfter('-').trimStart('0')}",
+                    label = "BY DAY",
+                    meta = monthAbbr(spending.month),
                     containerColor = colors.background,
                 )
             }
@@ -286,7 +289,7 @@ internal fun SpendingView(spending: SpendingState?) {
                 ) {
                     rowMonths.forEach { (month, usd) ->
                         SpendCell(
-                            label = "THG " + month.substringAfter('-').trimStart('0'),
+                            label = monthAbbr(month),
                             value = "-${DeFiFormatter.formatUsdCompact(usd)}",
                             highlight = month == spending.month,
                             modifier = Modifier.weight(1f),
@@ -298,6 +301,11 @@ internal fun SpendingView(spending: SpendingState?) {
         }
     }
 }
+
+private val MONTH_ABBR = arrayOf(
+    "JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+    "JUL", "AUG", "SEP", "OCT", "NOV", "DEC",
+)
 
 /** O luoi chi tieu: label nho tren, so mono dam duoi, vien hairline. */
 @Composable
