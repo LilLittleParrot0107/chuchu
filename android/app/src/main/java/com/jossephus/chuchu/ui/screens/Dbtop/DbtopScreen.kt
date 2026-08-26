@@ -220,52 +220,13 @@ fun DbtopScreen(
                         // luon dung — ca man dang ne navbar bang no) roi truyen
                         // dp cung vao sheet: inset doc BEN TRONG cua so Dialog
                         // tra 0 tren may that, da lam sheet lem 2 lan (26-27/8).
-                        val navBottom = com.jossephus.chuchu.ui.components.rememberRootNavBottomDp()
-                        androidx.compose.ui.window.Dialog(
-                            onDismissRequest = dismiss,
-                            // decorFitsSystemWindows=false: cua so dialog phu ca man va TU nhan
-                            // inset — thieu no thi navigationBarsPadding trong dialog tra 0,
-                            // sheet de len navbar va "lem" mat may dong cuoi (bug 27/8).
-                            properties = androidx.compose.ui.window.DialogProperties(
-                                usePlatformDefaultWidth = false,
-                                decorFitsSystemWindows = false,
-                            ),
-                        ) {
-                            // fillMaxSize + clickable = vung scrim bat tap-ra-ngoai
-                            // (voi usePlatformDefaultWidth=false, cua so dialog chiem
-                            // ca man nen onDismissRequest khong tu bat tap nua).
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    // Scrim tu ve — dim cua window co the khong an
-                                    // khi decorFitsSystemWindows=false.
-                                    .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.45f))
-                                    .clickable(
-                                        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                                        indication = null,
-                                        onClick = dismiss,
-                                    ),
-                                contentAlignment = Alignment.BottomCenter,
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable(
-                                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                                            indication = null,
-                                        ) {}
-                                        .background(colors.surface)
-                                        .border(1.dp, colors.border)
-                                        .padding(bottom = navBottom),
-                                ) {
-                                    PositionDetailPane(
-                                        row = row,
-                                        showYield = currentPerDay != null && (row.expiry == null || row.expiry > nowSec),
-                                        onClose = dismiss,
-                                        maxHeight = 560.dp,
-                                    )
-                                }
-                            }
+                        com.jossephus.chuchu.ui.components.KohiBottomSheet(onDismiss = dismiss) {
+                            PositionDetailPane(
+                                row = row,
+                                showYield = currentPerDay != null && (row.expiry == null || row.expiry > nowSec),
+                                onClose = dismiss,
+                                maxHeight = 560.dp,
+                            )
                         }
                     }
                 }

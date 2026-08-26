@@ -94,44 +94,13 @@ internal fun TaskDetailDialog(
     // phan giua (prompt + response) tu cuon khi dai — truoc day Column de tran
     // khoi man hinh, response chi duoc 240dp nen doc rat ngop.
     val maxDialogH = (LocalConfiguration.current.screenHeightDp * 0.86f).dp
-    // Inset navbar do o composition man hinh, truyen dp cung vao dialog —
-    // doc inset trong cua so dialog tra 0 tren may that (bug lem 26-27/8).
-    val navBottom = com.jossephus.chuchu.ui.components.rememberRootNavBottomDp()
 
-    // BOTTOM SHEET nhu detail cua dashboard (user chot 27/8): scrim mo phan
-    // tren, tap vao vung mo = dong, khung nam sat day man.
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = androidx.compose.ui.window.DialogProperties(
-            usePlatformDefaultWidth = false,
-            decorFitsSystemWindows = false,
-        ),
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                // Scrim TU VE: dim cua window dialog co the khong an khi
-                // decorFitsSystemWindows=false (user bat 27/8 tren queue) —
-                // ModalBottomSheet cua Google cung tu ve scrim vi ly do nay.
-                .background(Color.Black.copy(alpha = 0.45f))
-                .clickable(
-                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                    indication = null,
-                    onClick = onDismiss,
-                ),
-            contentAlignment = Alignment.BottomCenter,
-        ) {
+    // Bottom sheet chung (scrim + truot + inset): xem KohiBottomSheet.
+    com.jossephus.chuchu.ui.components.KohiBottomSheet(onDismiss = onDismiss) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable(
-                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                    indication = null,
-                ) {}
                 .heightIn(max = maxDialogH)
-                .background(colors.surface)
-                .border(1.dp, colors.border)
-                .padding(bottom = navBottom)
                 .padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -217,7 +186,6 @@ internal fun TaskDetailDialog(
                     )
                 }
             }
-        }
         }
     }
 }
