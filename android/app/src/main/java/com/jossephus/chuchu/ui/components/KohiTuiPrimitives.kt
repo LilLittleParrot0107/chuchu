@@ -62,15 +62,21 @@ fun KohiCommandBand(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             if (onBack != null) {
+                // Nut back to ngang nut back cua man Files (user chot 27/8):
+                // chip 24dp cu vua lep vua duoi chuan touch-target.
                 ChuButton(
                     onClick = onBack,
                     variant = ChuButtonVariant.Ghost,
                     bracketed = true,
                     borderColor = colors.border,
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                    minHeight = 24.dp,
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 5.dp),
+                    minHeight = 34.dp,
                 ) {
-                    ChuText("←", style = type.labelSmall, color = colors.textSecondary)
+                    ChuText(
+                        "←",
+                        style = type.label.copy(fontWeight = FontWeight.Bold),
+                        color = colors.textPrimary,
+                    )
                 }
             }
             ChuText(
