@@ -30,6 +30,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
@@ -93,6 +94,12 @@ internal fun TaskDetailDialog(
     // phan giua (prompt + response) tu cuon khi dai — truoc day Column de tran
     // khoi man hinh, response chi duoc 240dp nen doc rat ngop.
     val maxDialogH = (LocalConfiguration.current.screenHeightDp * 0.86f).dp
+    // Inset navbar do o composition man hinh, truyen dp cung vao dialog —
+    // doc inset trong cua so dialog tra 0 tren may that (bug lem 26-27/8).
+    val sheetDensity = androidx.compose.ui.platform.LocalDensity.current
+    val navBottom = with(sheetDensity) {
+        androidx.compose.foundation.layout.WindowInsets.safeDrawing.getBottom(sheetDensity).toDp()
+    }
 
     // BOTTOM SHEET nhu detail cua dashboard (user chot 27/8): scrim mo phan
     // tren, tap vao vung mo = dong, khung nam sat day man.
@@ -127,7 +134,7 @@ internal fun TaskDetailDialog(
                 .heightIn(max = maxDialogH)
                 .background(colors.surface)
                 .border(1.dp, colors.border)
-                .navigationBarsPadding()
+                .padding(bottom = navBottom)
                 .padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
