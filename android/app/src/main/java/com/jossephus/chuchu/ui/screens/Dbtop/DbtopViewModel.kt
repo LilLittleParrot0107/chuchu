@@ -9,6 +9,7 @@ import com.jossephus.chuchu.data.model.dbtop.DataFreshness
 import com.jossephus.chuchu.data.model.dbtop.DbtopState
 import com.jossephus.chuchu.data.model.dbtop.SpendingState
 import com.jossephus.chuchu.data.network.DbtopClient
+import com.jossephus.chuchu.data.network.SpendingClient
 import com.jossephus.chuchu.data.repository.DbtopCacheManager
 import com.jossephus.chuchu.data.repository.SettingsRepository
 import kotlinx.coroutines.Dispatchers
@@ -193,6 +194,8 @@ class DbtopViewModel(
     private var pollJob: Job? = null
     private var client: DbtopClient? = null
     private var clientConfig: ClientConfig? = null
+    private var spendingClient: SpendingClient? = null
+    private var spendingClientUrl: String? = null
     private val refreshMutex = Mutex()
 
     init {
@@ -276,10 +279,12 @@ class DbtopViewModel(
             _ui.update { it.copy(isRefreshing = true) }
         }
 
-        // spending.json nho (~2KB) va doc lap voi state.json — keo kem moi
-        // vong poll, hong thi giu ban cu (khong lam do ca man dashboard).
-        withContext(Dispatchers.IO) { fetchSpending() }?.let { sp ->
-            _ui.update { it.copy(spending = sp) }
+        // spending.json doc lap voi state.json — keo kem moi vong poll qua
+        // SpendingClient (ETag/304); hong hay 304 thi giu ban cu, khong lam
+        // do ca man dashboard.
+        val spendingResult = withContext(Dispatchers.IO) { getOrCreateSpendingClient().fetch() }
+        if (spendingResult is SpendingClient.FetchResult.Fresh) {
+            _ui.update { it.copy(spending = spendingResult.state) }
         }
 
         when (val result = withContext(Dispatchers.IO) { httpClient.fetch(forceRefresh = !isBackgroundPoll) }) {
@@ -326,20 +331,15 @@ class DbtopViewModel(
         }
     }
 
-    private fun fetchSpending(): SpendingState? = runCatching {
-        val conn = java.net.URL(settings.resolvedSpendingUrl).openConnection() as java.net.HttpURLConnection
-        conn.connectTimeout = 5_000
-        conn.readTimeout = 5_000
-        conn.setRequestProperty("Accept", "application/json")
-        try {
-            if (conn.responseCode != 200) return@runCatching null
-            val body = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
-            com.jossephus.chuchu.data.model.dbtop.DbtopJson
-                .decodeFromString(SpendingState.serializer(), body)
-        } finally {
-            runCatching { conn.errorStream?.close() }
+    private fun getOrCreateSpendingClient(): SpendingClient {
+        val url = settings.resolvedSpendingUrl
+        val existing = spendingClient
+        if (existing != null && url == spendingClientUrl) return existing
+        return SpendingClient(url).also {
+            spendingClient = it
+            spendingClientUrl = url
         }
-    }.getOrNull()
+    }
 
     fun refreshNow() {
         viewModelScope.launch {

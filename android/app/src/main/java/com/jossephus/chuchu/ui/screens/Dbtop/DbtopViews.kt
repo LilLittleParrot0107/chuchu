@@ -179,8 +179,9 @@ internal fun ChartsView(
 }
 
 /**
- * Tab SPENDING — tổng chi tiêu từ spending-scan (transfer vào 2 ví đích):
- * card THÁNG NÀY / TỔNG, breakdown theo tháng, danh sách giao dịch gần nhất.
+ * Tab SPENDING — gon theo y user 26/8: card THANG NAY / TONG + cac thang
+ * cua NAM NAY thoi. Danh sach tung giao dich da bo ("1 day dai ngoang,
+ * t nao quan tam lam the"); can soi tung khoan thi xem ledger.jsonl.
  */
 @Composable
 internal fun SpendingView(spending: SpendingState?) {
@@ -190,7 +191,15 @@ internal fun SpendingView(spending: SpendingState?) {
         DashboardEmpty("NO SPENDING DATA (SCAN PENDING)")
         return
     }
-    val dateFmt = remember { java.text.SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()) }
+    val year = spending.month.substringBefore('-')
+    val thisYearMonths = spending.byMonth.entries
+        .filter { it.key.startsWith(year) }
+        .sortedByDescending { it.key }
+    val mono = type.label.copy(
+        fontFamily = FontFamily.Monospace,
+        fontFeatureSettings = "tnum",
+        fontWeight = FontWeight.Bold,
+    )
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -215,52 +224,33 @@ internal fun SpendingView(spending: SpendingState?) {
                     )
                     MetricCell(
                         label = "ALL TIME",
-                        value = "-${DeFiFormatter.formatUsd(spending.totalUsd)}",
+                        value = "-${DeFiFormatter.formatUsdCompact(spending.totalUsd)}",
                         color = colors.textPrimary,
                         alignEnd = true,
                     )
                 }
             }
         }
-        if (spending.byMonth.isNotEmpty()) {
-            item(key = "by_month_band") { KohiSectionBand("BY MONTH", containerColor = colors.background) }
-            items(spending.byMonth.entries.sortedByDescending { it.key }, key = { "m-${it.key}" }) { (month, usd) ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    ChuText(month, style = type.labelSmall, color = colors.textSecondary)
-                    ChuText(
-                        "-${DeFiFormatter.formatUsd(usd)}",
-                        style = type.label.copy(fontFamily = FontFamily.Monospace, fontFeatureSettings = "tnum", fontWeight = FontWeight.Bold),
-                        color = if (month == spending.month) colors.warning else colors.textPrimary,
-                    )
-                }
-            }
-        }
-        if (spending.recent.isNotEmpty()) {
-            item(key = "recent_band") { KohiSectionBand("RECENT", "${spending.count} TX", containerColor = colors.background) }
-            items(spending.recent, key = { "r-${it.ts}-${it.usd}" }) { entry ->
+        if (thisYearMonths.isNotEmpty()) {
+            item(key = "year_band") { KohiSectionBand(year, containerColor = colors.background) }
+            items(thisYearMonths, key = { "m-${it.key}" }) { (month, usd) ->
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
                         ChuText(
-                            "${dateFmt.format(java.util.Date(entry.ts * 1000L))} · ${entry.token}",
+                            "THG ${month.substringAfter('-').trimStart('0')}",
                             style = type.labelSmall,
-                            color = colors.textSecondary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
+                            color = if (month == spending.month) colors.textPrimary else colors.textSecondary,
                         )
                         ChuText(
-                            "-${DeFiFormatter.formatUsd(entry.usd)}",
-                            style = type.label.copy(fontFamily = FontFamily.Monospace, fontFeatureSettings = "tnum", fontWeight = FontWeight.Bold),
-                            color = colors.textPrimary,
+                            "-${DeFiFormatter.formatUsd(usd)}",
+                            style = mono,
+                            color = if (month == spending.month) colors.warning else colors.textPrimary,
                         )
                     }
                     Box(
