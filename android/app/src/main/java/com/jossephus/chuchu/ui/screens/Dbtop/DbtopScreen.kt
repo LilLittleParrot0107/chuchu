@@ -262,7 +262,7 @@ fun DbtopScreen(
                                         row = row,
                                         showYield = currentPerDay != null && (row.expiry == null || row.expiry > nowSec),
                                         onClose = dismiss,
-                                        maxHeight = 480.dp,
+                                        maxHeight = 560.dp,
                                     )
                                 }
                             }
