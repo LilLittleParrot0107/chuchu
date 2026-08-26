@@ -247,7 +247,7 @@ internal fun OptionProgressBar(
             // MoneynessGauge da noi dieu nay roi — hien ca hai la trung lap.
             if (compact && bufferPct > 0) {
                 ChuText(
-                    text = "🛡 BUFFER +${String.format(Locale.US, "%.1f%%", bufferPct)}",
+                    text = "BUFFER +${String.format(Locale.US, "%.1f%%", bufferPct)}",
                     style = type.labelSmall.copy(fontWeight = FontWeight.Bold, fontFeatureSettings = "tnum"),
                     color = colors.accentSecondary,
                 )
