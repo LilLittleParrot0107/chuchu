@@ -126,6 +126,7 @@ fun QueueScreen(
     // len vung band AGENTS ngay duoi command band, chi fade vao/ra — layout
     // khong bao gio doi chieu cao. Do cao command band duoc do de neo dung.
     var commandBandHeightPx by remember { mutableIntStateOf(0) }
+    var composerHeightPx by remember { mutableIntStateOf(0) }
 
     Box(
         modifier = modifier
@@ -302,6 +303,7 @@ fun QueueScreen(
             }
 
             QueueComposer(
+                modifier = Modifier.onSizeChanged { composerHeightPx = it.height },
                 value = prompt,
                 onValueChange = { prompt = it },
                 agent = selectedAgent,
@@ -355,23 +357,22 @@ fun QueueScreen(
             )
         }
 
-        // Overlay feedback: dap len vung band AGENTS (ngay duoi command band),
-        // fade vao/ra khong anh huong layout. La con truc tiep cua Box de co
-        // BoxScope.align.
+        // Overlay feedback: dap len canh DUOI, ngay tren composer (user doi
+        // 26/8 — truoc day o tren, che band AGENTS). Van la overlay fade
+        // vao/ra, khong anh huong layout; truot len tu duoi cho hop huong.
         androidx.compose.animation.AnimatedVisibility(
             visible = ui.feedback != null,
             enter = androidx.compose.animation.fadeIn(
                 androidx.compose.animation.core.tween(150),
             ) + androidx.compose.animation.slideInVertically(
                 androidx.compose.animation.core.tween(150),
-            ) { -it / 3 },
+            ) { it / 3 },
             exit = androidx.compose.animation.fadeOut(
                 androidx.compose.animation.core.tween(250),
             ),
             modifier = Modifier
-                .align(Alignment.TopCenter)
-                .statusBarsPadding()
-                .offset { IntOffset(0, commandBandHeightPx) },
+                .align(Alignment.BottomCenter)
+                .offset { IntOffset(0, -composerHeightPx) },
         ) {
             ui.feedback?.let { feedback ->
                 KohiFeedbackBand(

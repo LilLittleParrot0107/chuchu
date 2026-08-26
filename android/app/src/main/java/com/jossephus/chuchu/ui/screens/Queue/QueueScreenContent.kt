@@ -426,13 +426,14 @@ internal fun QueueComposer(
     agent: QueueAgent?,
     sending: Boolean,
     onSend: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val colors = ChuColors.current
     val type = ChuTypography.current
     val canSend = agent != null && value.isNotBlank() && !sending
 
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .background(colors.surface)
             .padding(horizontal = 10.dp, vertical = 6.dp),
