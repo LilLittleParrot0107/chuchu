@@ -35,6 +35,7 @@ import com.jossephus.chuchu.ui.components.ChuText
 import com.jossephus.chuchu.ui.components.KohiSectionBand
 import com.jossephus.chuchu.ui.components.chart.YieldComboChart
 import com.jossephus.chuchu.ui.components.chart.NetWorthCurveChart
+import com.jossephus.chuchu.ui.components.chart.YieldNetChart
 import com.jossephus.chuchu.ui.theme.CHU_HAIRLINE_ALPHA
 import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTypography
@@ -133,6 +134,7 @@ internal fun ChartsView(
     currentPerDay: Double?,
     curve: List<CurvePoint>,
     daily: List<DailyYield>,
+    spendByDay: Map<String, Double> = emptyMap(),
 ) {
     val colors = ChuColors.current
     val type = ChuTypography.current
@@ -181,15 +183,42 @@ internal fun ChartsView(
                         YieldComboChart(
                             dailyData = daily,
                             barColor = colors.accent,
-                            accumColor = colors.success,
-                            // accentColor phai KHAC accumColor: no la day duoi
-                            // gradient cua bar va dong tooltip thu 3 — trung mau
-                            // thi line/bar lan nhau, tooltip 3 dong doc nhu 2.
                             accentColor = colors.accentSecondary,
                             tooltipBg = colors.surfaceVariant,
                             textColor = colors.textSecondary,
                             gridColor = colors.border.copy(alpha = 0.4f),
-                            height = 190.dp,
+                            height = 170.dp,
+                        )
+                    }
+                }
+            }
+        }
+        item(key = "net_vs_spend") {
+            KohiSectionBand(
+                label = "Σ YIELD VS SPEND",
+                meta = "GAP = SPENT",
+                containerColor = colors.background,
+                accent = colors.warning,
+            )
+            ChuCard(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp, vertical = 4.dp),
+            ) {
+                Column(modifier = Modifier.fillMaxWidth().padding(10.dp)) {
+                    if (daily.isEmpty()) {
+                        ChuText("NO DAILY YIELD DATA", style = type.bodySmall, color = colors.textMuted)
+                    } else {
+                        YieldNetChart(
+                            dailyData = daily,
+                            spendByDay = spendByDay,
+                            grossColor = colors.success,
+                            netColor = colors.warning,
+                            gridColor = colors.border.copy(alpha = 0.4f),
+                            textColor = colors.textSecondary,
+                            tooltipBg = colors.surfaceVariant,
+                            tooltipText = colors.textPrimary,
+                            height = 180.dp,
                         )
                     }
                 }
@@ -216,7 +245,7 @@ internal fun SpendingView(spending: SpendingState?) {
     val thisYearMonths = spending.byMonth.entries
         .filter { it.key.startsWith(year) }
         .sortedByDescending { it.key }
-    val days = spending.byDay.entries.sortedByDescending { it.key }
+    val days = spending.byDay.entries.filter { it.key.startsWith(spending.month) }.sortedByDescending { it.key }
     // UI toan tieng Anh (nguyen tac app) — thang hien dang JAN..DEC.
     fun monthAbbr(m: String): String =
         MONTH_ABBR.getOrElse((m.substringAfter('-').toIntOrNull() ?: 1) - 1) { m }
