@@ -179,9 +179,11 @@ internal fun ChartsView(
 }
 
 /**
- * Tab SPENDING — gon theo y user 26/8: card THANG NAY / TONG + cac thang
- * cua NAM NAY thoi. Danh sach tung giao dich da bo ("1 day dai ngoang,
- * t nao quan tam lam the"); can soi tung khoan thi xem ledger.jsonl.
+ * Tab SPENDING — chi xoay quanh HIEN TAI (user chot 26/8, hai vong gop y):
+ * card THANG NAY + tong NAM NAY, duoi la tung thang cua nam nay. KHONG co
+ * all-time: 2 vi la dia chi nap san tu 2023, cong don ca lich su ra con so
+ * $250k vo nghia voi cau hoi "dang tieu bao nhieu". Khong co danh sach
+ * tung giao dich — chi tiet nam o ledger.jsonl tren Legion.
  */
 @Composable
 internal fun SpendingView(spending: SpendingState?) {
@@ -223,8 +225,8 @@ internal fun SpendingView(spending: SpendingState?) {
                         color = colors.warning,
                     )
                     MetricCell(
-                        label = "ALL TIME",
-                        value = "-${DeFiFormatter.formatUsdCompact(spending.totalUsd)}",
+                        label = "YEAR $year",
+                        value = "-${DeFiFormatter.formatUsd(thisYearMonths.sumOf { it.value })}",
                         color = colors.textPrimary,
                         alignEnd = true,
                     )
