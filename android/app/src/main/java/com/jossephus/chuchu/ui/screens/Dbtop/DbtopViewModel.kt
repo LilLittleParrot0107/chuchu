@@ -161,6 +161,7 @@ data class DbtopUiState(
     val selectedView: DbtopView = DbtopView.POSITIONS,
     val selectedPositionKey: String? = null,
     val spending: SpendingState? = null,
+    val moneyDisplay: MoneyDisplay = MoneyDisplay.USD,
 ) {
     /**
      * Vị thế có rủi ro cao nhất cần cảnh báo (Health Factor < 1.25x hoặc Option đáo hạn trong 4h).
@@ -205,6 +206,7 @@ class DbtopViewModel(
     private val refreshMutex = Mutex()
 
     init {
+        _ui.update { it.copy(moneyDisplay = MoneyDisplay.fromId(settings.dbtopMoneyDisplay)) }
         // 1. Khởi nạp Offline Cache tức thì (0ms Instant Load)
         loadCachedSnapshot()
         // 2. Chạy ngầm tải bản mới nhất từ server
@@ -351,6 +353,11 @@ class DbtopViewModel(
         viewModelScope.launch {
             refreshOnce(isBackgroundPoll = false)
         }
+    }
+
+    fun cycleMoneyDisplay() {
+        _ui.update { it.copy(moneyDisplay = it.moneyDisplay.next()) }
+        settings.dbtopMoneyDisplay = _ui.value.moneyDisplay.name
     }
 
     fun selectView(view: DbtopView) {

@@ -234,7 +234,7 @@ internal fun ChartsView(
  * Khong all-time (luat 26/8), khong danh sach giao dich (ledger.jsonl giu).
  */
 @Composable
-internal fun SpendingView(spending: SpendingState?) {
+internal fun SpendingView(spending: SpendingState?, moneyDisplay: MoneyDisplay = MoneyDisplay.USD) {
     val colors = ChuColors.current
     val type = ChuTypography.current
     if (spending == null) {
@@ -266,14 +266,16 @@ internal fun SpendingView(spending: SpendingState?) {
                         .padding(horizontal = 12.dp, vertical = 8.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
+                    val rate = spending.usdVnd
+                    val neg = if (moneyDisplay == MoneyDisplay.HIDDEN) "" else "-"
                     MetricCell(
                         label = "THIS MONTH",
-                        value = "-${DeFiFormatter.formatUsd(spending.monthUsd)}",
+                        value = neg + formatMoney(spending.monthUsd, moneyDisplay, rate),
                         color = colors.warning,
                     )
                     MetricCell(
                         label = "YEAR $year",
-                        value = "-${DeFiFormatter.formatUsd(thisYearMonths.sumOf { it.value })}",
+                        value = neg + formatMoney(thisYearMonths.sumOf { it.value }, moneyDisplay, rate),
                         color = colors.textPrimary,
                         alignEnd = true,
                     )
@@ -298,7 +300,8 @@ internal fun SpendingView(spending: SpendingState?) {
                     rowDays.forEach { (day, usd) ->
                         SpendCell(
                             label = day.substring(8) + "/" + day.substring(5, 7),
-                            value = "-${DeFiFormatter.formatUsd(usd)}",
+                            value = (if (moneyDisplay == MoneyDisplay.HIDDEN) "" else "-") +
+                                formatMoney(usd, moneyDisplay, spending.usdVnd),
                             highlight = false,
                             modifier = Modifier.weight(1f),
                         )
@@ -319,7 +322,8 @@ internal fun SpendingView(spending: SpendingState?) {
                     rowMonths.forEach { (month, usd) ->
                         SpendCell(
                             label = monthAbbr(month),
-                            value = "-${DeFiFormatter.formatUsdCompact(usd)}",
+                            value = (if (moneyDisplay == MoneyDisplay.HIDDEN) "" else "-") +
+                                formatMoney(usd, moneyDisplay, spending.usdVnd, compact = true),
                             highlight = month == spending.month,
                             modifier = Modifier.weight(1f),
                         )

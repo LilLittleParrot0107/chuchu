@@ -24,6 +24,8 @@ data class SpendingState(
      * state.json cho viec nay: do la gia cua lan quet truoc (30 phut).
      */
     val px24: Map<String, Double> = emptyMap(),
+    /** Ty gia USD/VND (open.er-api, cache 12h server-side) cho che do doi VND. */
+    @SerialName("usd_vnd") val usdVnd: Double = 0.0,
     val recent: List<SpendingEntry> = emptyList(),
 )
 

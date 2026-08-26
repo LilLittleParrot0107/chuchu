@@ -73,6 +73,13 @@ class SettingsRepository(context: Context) {
             return "$base/chuchu/spending/spending.json"
         }
 
+    /** Che do hien tien cua dashboard (USD/VND/HIDDEN) — nho qua cac lan mo app. */
+    var dbtopMoneyDisplay: String
+        get() = prefs.getString(KEY_DBTOP_MONEY, null) ?: "USD"
+        set(value) {
+            prefs.edit().putString(KEY_DBTOP_MONEY, value).apply()
+        }
+
     fun setDbtopUrl(value: String) {
         val v = value.trim()
         prefs.edit().putString(KEY_DBTOP_URL, v).apply()
@@ -308,6 +315,7 @@ class SettingsRepository(context: Context) {
         private const val DEFAULT_QUEUE_URL = "https://the-real-witch.tail26a258.ts.net/q"
         private const val KEY_WEB_PORTAL_URL = "web_portal_url"
         private const val KEY_DBTOP_URL = "dbtop_url"
+        private const val KEY_DBTOP_MONEY = "dbtop_money_display"
         private const val DEFAULT_DBTOP_URL = "https://the-real-witch.tail26a258.ts.net/home/debank/state.json"
         // dufs khong con serve o goc: 20/8 thu pham vi ve /home/a/chuchu va
         // gan vao `tailscale serve --set-path /chuchu` (goc phoi ca $HOME ra

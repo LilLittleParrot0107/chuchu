@@ -1,6 +1,7 @@
 package com.jossephus.chuchu.ui.screens.Dbtop
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -74,6 +75,9 @@ internal fun DashboardSummary(
     wallet: Double,
     perDay: Double?,
     debt: Double,
+    moneyDisplay: MoneyDisplay,
+    vndRate: Double,
+    onCycleMoney: () -> Unit,
 ) {
     val colors = ChuColors.current
     val type = ChuTypography.current
@@ -104,12 +108,15 @@ internal fun DashboardSummary(
             ) {
                 MetricCell(
                     label = "NET WORTH",
-                    value = DeFiFormatter.formatUsd(netWorth),
+                    value = formatMoney(netWorth, moneyDisplay, vndRate),
                     color = colors.accent,
+                    // Tap = xoay vong USD -> VND -> AN (user chot 27/8) —
+                    // ap cho ca Overview + tab Spending.
+                    modifier = Modifier.clickable(onClick = onCycleMoney),
                 )
                 MetricCell(
                     label = "YIELD / DAY",
-                    value = perDay?.let { (if (it >= 0) "+" else "") + DeFiFormatter.formatUsd(it) } ?: "—",
+                    value = perDay?.let { (if (it >= 0 && moneyDisplay != MoneyDisplay.HIDDEN) "+" else "") + formatMoney(it, moneyDisplay, vndRate) } ?: "—",
                     color = if (perDay != null) colors.success else colors.textMuted,
                     alignEnd = true,
                 )
@@ -128,7 +135,7 @@ internal fun DashboardSummary(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     ChuText("WALLET  ", style = type.labelSmall, color = colors.textMuted)
                     ChuText(
-                        DeFiFormatter.formatUsd(wallet),
+                        formatMoney(wallet, moneyDisplay, vndRate),
                         style = type.label.copy(
                             fontFamily = FontFamily.Monospace,
                             fontFeatureSettings = "tnum",
@@ -141,7 +148,7 @@ internal fun DashboardSummary(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         ChuText("DEBT  ", style = type.labelSmall, color = colors.error)
                         ChuText(
-                            DeFiFormatter.formatUsd(debt),
+                            formatMoney(debt, moneyDisplay, vndRate),
                             style = type.label.copy(
                                 fontFamily = FontFamily.Monospace,
                                 fontFeatureSettings = "tnum",

@@ -110,6 +110,12 @@ fun DbtopScreen(
                 wallet = ui.state.wallet,
                 perDay = currentPerDay,
                 debt = ui.state.rows.sumOf { it.debt ?: 0.0 },
+                moneyDisplay = ui.moneyDisplay,
+                vndRate = ui.spending?.usdVnd ?: 0.0,
+                onCycleMoney = {
+                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    viewModel.cycleMoneyDisplay()
+                },
             )
             DashboardViewBand(
                 selected = ui.selectedView,
@@ -189,6 +195,7 @@ fun DbtopScreen(
                         )
                         DbtopView.SPENDING -> SpendingView(
                             spending = ui.spending,
+                            moneyDisplay = ui.moneyDisplay,
                         )
                         DbtopView.POSITIONS -> PositionsView(
                             rows = ui.state.rows,
