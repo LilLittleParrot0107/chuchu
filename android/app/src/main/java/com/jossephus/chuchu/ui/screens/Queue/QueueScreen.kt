@@ -72,7 +72,6 @@ fun QueueScreen(
 
     var configOpen by remember { mutableStateOf(false) }
     var setupPromptDismissed by remember { mutableStateOf(false) }
-    var logsOpen by remember { mutableStateOf(false) }
     // WHY: chi giu ID thay vi object — poller co the cap nhat/xoa task giua luc
     // dialog mo; resolve lai tu ui.state.tasks moi lan recompose de dialog luon
     // hien trang thai moi nhat thay vi snapshot dong bang luc mo.
@@ -178,13 +177,6 @@ fun QueueScreen(
                         onClick = { onAction(action, null) },
                     )
                 }
-                KohiCompactAction(
-                    label = "LOGS",
-                    onClick = {
-                        logsOpen = true
-                        onFetchLogs(DEFAULT_LOG_LINES)
-                    },
-                )
                 // Chu cai ngan doc duoc hon icon rieng le (↻/⚙ truoc day khong
                 // ai giai thich duoc ma van giu dung do rong terminal).
                 KohiCompactAction(label = "SYNC", onClick = onRefresh)
@@ -335,15 +327,6 @@ fun QueueScreen(
             )
         }
 
-        if (logsOpen) {
-            QueueLogsDialog(
-                logs = ui.logs,
-                loading = ui.logsLoading,
-                error = ui.logsError,
-                onRefresh = { onFetchLogs(DEFAULT_LOG_LINES) },
-                onDismiss = { logsOpen = false },
-            )
-        }
 
         // Overlay feedback: dap len canh DUOI, ngay tren composer (user doi
         // 26/8 — truoc day o tren, che band AGENTS). Van la overlay fade

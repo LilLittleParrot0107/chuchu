@@ -53,7 +53,7 @@ internal fun DbtopTopBar(
         is DataFreshness.Dead -> colors.error
     }
     KohiCommandBand(
-        title = "DBTOP",
+        title = "DASHBOARD",
         status = ageText,
         statusColor = tone,
         onBack = onClose,
