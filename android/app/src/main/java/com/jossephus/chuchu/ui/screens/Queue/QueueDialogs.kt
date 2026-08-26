@@ -31,6 +31,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -105,6 +106,10 @@ internal fun TaskDetailDialog(
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                // Scrim TU VE: dim cua window dialog co the khong an khi
+                // decorFitsSystemWindows=false (user bat 27/8 tren queue) —
+                // ModalBottomSheet cua Google cung tu ve scrim vi ly do nay.
+                .background(Color.Black.copy(alpha = 0.45f))
                 .clickable(
                     interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
                     indication = null,

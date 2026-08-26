@@ -224,6 +224,9 @@ fun DbtopScreen(
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
+                                    // Scrim tu ve — dim cua window co the khong an
+                                    // khi decorFitsSystemWindows=false.
+                                    .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.45f))
                                     .clickable(
                                         interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
                                         indication = null,
