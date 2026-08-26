@@ -71,21 +71,18 @@ enum class KohiTab(val route: String, val contentDescription: String) {
     QUEUE("queue", "Queue"),
 }
 
-/**
- * Đường net-worth làm icon DASHBOARD — vẽ tay. 25dp + trục dưới + stroke dày
- * để cân độ phủ với folder FILES (22dp mảnh nhìn lép hẳn — user chê 27/8).
- */
+/** Đường net-worth thu nhỏ làm icon DASHBOARD — vẽ tay, 22dp như các tab khác. */
 @Composable
 private fun CurveDashboardIcon(tint: Color) {
-    Canvas(modifier = Modifier.size(25.dp)) {
+    Canvas(modifier = Modifier.size(22.dp)) {
         val w = size.width
         val h = size.height
         val pts = arrayOf(
-            Offset(0.04f * w, 0.62f * h),
-            Offset(0.30f * w, 0.34f * h),
-            Offset(0.55f * w, 0.52f * h),
-            Offset(0.78f * w, 0.14f * h),
-            Offset(0.96f * w, 0.28f * h),
+            Offset(0.04f * w, 0.68f * h),
+            Offset(0.30f * w, 0.42f * h),
+            Offset(0.55f * w, 0.58f * h),
+            Offset(0.78f * w, 0.22f * h),
+            Offset(0.96f * w, 0.34f * h),
         )
         val path = Path().apply {
             moveTo(pts[0].x, pts[0].y)
@@ -94,32 +91,24 @@ private fun CurveDashboardIcon(tint: Color) {
         drawPath(
             path = path,
             color = tint,
-            style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round),
-        )
-        // Truc day: cho icon co "chan", khong lo lung giua o.
-        drawLine(
-            color = tint,
-            start = Offset(0.04f * w, 0.86f * h),
-            end = Offset(0.96f * w, 0.86f * h),
-            strokeWidth = 2.0.dp.toPx(),
-            cap = StrokeCap.Round,
+            style = Stroke(width = 2.2.dp.toPx(), cap = StrokeCap.Round),
         )
     }
 }
 
-/** Icon QUEUE vẽ tay: chấm + gạch như danh sách task, cùng độ phủ folder. */
+/** Icon QUEUE chấm + gạch — 22dp, nét 2dp, cùng cỡ các tab khác. */
 @Composable
 private fun QueueListIcon(tint: Color) {
-    Canvas(modifier = Modifier.size(25.dp)) {
+    Canvas(modifier = Modifier.size(22.dp)) {
         val w = size.width
         val h = size.height
-        val stroke = 2.3.dp.toPx()
-        for ((i, y) in listOf(0.24f, 0.50f, 0.76f).withIndex()) {
-            drawCircle(tint, radius = 1.6.dp.toPx(), center = Offset(0.12f * w, y * h))
+        val stroke = 2.0.dp.toPx()
+        for ((i, y) in listOf(0.26f, 0.50f, 0.74f).withIndex()) {
+            drawCircle(tint, radius = 1.3.dp.toPx(), center = Offset(0.12f * w, y * h))
             drawLine(
                 color = tint,
                 start = Offset(0.28f * w, y * h),
-                end = Offset(if (i == 1) 0.92f * w else 0.80f * w, y * h),
+                end = Offset(if (i == 1) 0.90f * w else 0.78f * w, y * h),
                 strokeWidth = stroke,
                 cap = StrokeCap.Round,
             )
