@@ -27,6 +27,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -90,13 +93,33 @@ internal fun TaskDetailDialog(
     // khoi man hinh, response chi duoc 240dp nen doc rat ngop.
     val maxDialogH = (LocalConfiguration.current.screenHeightDp * 0.86f).dp
 
-    Dialog(onDismissRequest = onDismiss) {
+    // BOTTOM SHEET nhu detail cua dashboard (user chot 27/8): scrim mo phan
+    // tren, tap vao vung mo = dong, khung nam sat day man.
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clickable(
+                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                    indication = null,
+                    onClick = onDismiss,
+                ),
+            contentAlignment = Alignment.BottomCenter,
+        ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .clickable(
+                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                    indication = null,
+                ) {}
                 .heightIn(max = maxDialogH)
                 .background(colors.surface)
                 .border(1.dp, colors.border)
+                .navigationBarsPadding()
                 .padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -181,6 +204,7 @@ internal fun TaskDetailDialog(
                     )
                 }
             }
+        }
         }
     }
 }
