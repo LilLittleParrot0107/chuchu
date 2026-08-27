@@ -121,7 +121,11 @@ fun KohiBottomSheet(
                         ) {}
                         .background(colors.surface)
                         .border(1.dp, colors.border)
-                        .padding(bottom = navBottom),
+                        // "Dem phan trang len" (user 28/8, lan 6): navBottom
+                        // + 24dp dai trong HY SINH ben trong day sheet — he
+                        // thong co an mat dai day thi chi an khoang trong,
+                        // khong bao gio an chu. Khong duoc rut mong lai.
+                        .padding(bottom = navBottom + 24.dp),
                 ) {
                     content()
                 }
