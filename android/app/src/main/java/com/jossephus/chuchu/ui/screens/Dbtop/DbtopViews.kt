@@ -241,10 +241,21 @@ internal fun SpendingView(spending: SpendingState?, moneyDisplay: MoneyDisplay =
         return
     }
     val year = spending.month.substringBefore('-')
-    val thisYearMonths = spending.byMonth.entries
-        .filter { it.key.startsWith(year) }
-        .sortedByDescending { it.key }
-    val days = spending.byDay.entries.filter { it.key.startsWith(spending.month) }.sortedByDescending { it.key }
+    // Loc + sap xep + chunk deu nho theo spending: view nay recompose moi lan
+    // xoay che do tien (USD -> VND -> AN), khoi lam lai phan viec danh sach.
+    val monthRows = remember(spending) {
+        spending.byMonth.entries
+            .filter { it.key.startsWith(year) }
+            .sortedByDescending { it.key }
+            .chunked(3)
+    }
+    val yearTotal = remember(monthRows) { monthRows.sumOf { row -> row.sumOf { it.value } } }
+    val dayRows = remember(spending) {
+        spending.byDay.entries
+            .filter { it.key.startsWith(spending.month) }
+            .sortedByDescending { it.key }
+            .chunked(2)
+    }
     // UI toan tieng Anh (nguyen tac app) — thang hien dang JAN..DEC.
     fun monthAbbr(m: String): String =
         MONTH_ABBR.getOrElse((m.substringAfter('-').toIntOrNull() ?: 1) - 1) { m }
@@ -274,14 +285,14 @@ internal fun SpendingView(spending: SpendingState?, moneyDisplay: MoneyDisplay =
                     )
                     MetricCell(
                         label = "YEAR $year",
-                        value = neg + formatMoney(thisYearMonths.sumOf { it.value }, moneyDisplay, rate),
+                        value = neg + formatMoney(yearTotal, moneyDisplay, rate),
                         color = colors.textPrimary,
                         alignEnd = true,
                     )
                 }
             }
         }
-        if (days.isNotEmpty()) {
+        if (dayRows.isNotEmpty()) {
             item(key = "days_band") {
                 KohiSectionBand(
                     label = "BY DAY",
@@ -289,7 +300,7 @@ internal fun SpendingView(spending: SpendingState?, moneyDisplay: MoneyDisplay =
                     containerColor = colors.background,
                 )
             }
-            items(days.chunked(2), key = { row -> "d-" + row.joinToString("|") { it.key } }) { rowDays ->
+            items(dayRows, key = { row -> "d-" + row.joinToString("|") { it.key } }) { rowDays ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -309,9 +320,9 @@ internal fun SpendingView(spending: SpendingState?, moneyDisplay: MoneyDisplay =
                 }
             }
         }
-        if (thisYearMonths.isNotEmpty()) {
+        if (monthRows.isNotEmpty()) {
             item(key = "year_band") { KohiSectionBand(year, containerColor = colors.background) }
-            items(thisYearMonths.chunked(3), key = { row -> "m-" + row.joinToString("|") { it.key } }) { rowMonths ->
+            items(monthRows, key = { row -> "m-" + row.joinToString("|") { it.key } }) { rowMonths ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()

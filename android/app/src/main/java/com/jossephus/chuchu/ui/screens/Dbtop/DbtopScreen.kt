@@ -14,12 +14,9 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -53,10 +50,13 @@ fun DbtopScreen(
     val colors = ChuColors.current
     val haptics = LocalHapticFeedback.current
     val ui by viewModel.ui.collectAsStateWithLifecycle()
-    val nowSec = androidx.compose.runtime.remember(ui.state) { System.currentTimeMillis() / 1_000L }
+    val nowSec = remember(ui.state) { System.currentTimeMillis() / 1_000L }
     val currentPerDay = ui.currentPerDay(nowSec)
     val selectedRow = ui.state.rows.firstOrNull { it.positionKey() == ui.selectedPositionKey }
-    val watchlistItems = androidx.compose.runtime.remember(ui.state, ui.spending) { ui.state.buildWatchlist(ui.spending?.px24 ?: emptyMap()) }
+    val watchlistItems = remember(ui.state, ui.spending) { ui.state.buildWatchlist(ui.spending?.px24 ?: emptyMap()) }
+    // Tong debt chi phu thuoc snapshot — dung cong lai moi lan man recompose
+    // (doi tab, chon row, xoay che do tien deu recompose ca screen).
+    val totalDebt = remember(ui.state) { ui.state.rows.sumOf { it.debt ?: 0.0 } }
 
     BackHandler(onBack = onClose)
     LifecycleResumeEffect(Unit) {
@@ -109,7 +109,7 @@ fun DbtopScreen(
                 netWorth = ui.state.netWorth,
                 wallet = ui.state.wallet,
                 perDay = currentPerDay,
-                debt = ui.state.rows.sumOf { it.debt ?: 0.0 },
+                debt = totalDebt,
                 moneyDisplay = ui.moneyDisplay,
                 vndRate = ui.spending?.usdVnd ?: 0.0,
                 onCycleMoney = {
@@ -127,7 +127,9 @@ fun DbtopScreen(
 
             KohiSectionBand(
                 label = ui.selectedView.label,
-                meta = "${ui.itemCount(watchlistItems.size)} ITEMS",
+                // Chi view dang DANH SACH moi co so dem; Charts tung hien
+                // "2 ITEMS" vo nghia (user bo 27/8).
+                meta = ui.itemCount(watchlistItems.size)?.let { "$it ITEMS" },
                 containerColor = colors.background,
             )
 
@@ -239,9 +241,9 @@ fun DbtopScreen(
     }
 }
 
-private fun DbtopUiState.itemCount(watchlistCount: Int): Int = when (selectedView) {
+private fun DbtopUiState.itemCount(watchlistCount: Int): Int? = when (selectedView) {
     DbtopView.POSITIONS -> state.rows.size
     DbtopView.WATCHLIST -> watchlistCount
-    DbtopView.CHARTS -> 2
+    DbtopView.CHARTS -> null
     DbtopView.SPENDING -> spending?.count ?: 0
 }

@@ -6,8 +6,6 @@ import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,7 +13,6 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -27,12 +24,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -41,7 +33,6 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import com.jossephus.chuchu.ui.components.ChuDialog
 import com.jossephus.chuchu.ui.components.ChuText
 import com.jossephus.chuchu.ui.components.ChuTextField
@@ -280,91 +271,3 @@ internal fun QueueConfigDialog(
     }
 }
 
-private val LOG_ERROR_RE =
-    Regex("\\b(error|fatal|panic|fail(ed|ure)?)s?\\b", RegexOption.IGNORE_CASE)
-
-@Composable
-internal fun QueueLogsDialog(
-    logs: List<String>,
-    loading: Boolean,
-    error: String?,
-    onRefresh: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val colors = ChuColors.current
-    val type = ChuTypography.current
-
-    Dialog(onDismissRequest = onDismiss) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(colors.surface)
-                .border(1.dp, colors.border)
-                .padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            // Header dung dung ngu phap band cua app: ▌ LABEL · META + actions
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    ChuText("▌", style = type.labelSmall, color = colors.accent)
-                    ChuText(
-                        "DAEMON LOGS",
-                        style = type.labelSmall.copy(fontWeight = FontWeight.Bold),
-                        color = colors.textSecondary,
-                    )
-                    if (logs.isNotEmpty()) {
-                        ChuText(
-                            "· LAST ${logs.size} LINES",
-                            style = type.labelSmall,
-                            color = colors.textMuted,
-                        )
-                    }
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    KohiCompactAction(label = "↻", onClick = onRefresh)
-                    KohiCompactAction(label = "✕", onClick = onDismiss)
-                }
-            }
-            // Giữ log cũ khi refresh (trước đây loading thay toàn bộ nội dung
-            // làm scroll sụp về đầu); log mới nhất nằm cuối -> auto cuộn xuống.
-            val scrollState = rememberScrollState()
-            LaunchedEffect(logs) {
-                if (logs.isNotEmpty()) scrollState.scrollTo(scrollState.maxValue)
-            }
-            val hScroll = rememberScrollState()
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 280.dp)
-                    .background(colors.surfaceVariant)
-                    .padding(8.dp)
-                    .verticalScroll(scrollState)
-                    .horizontalScroll(hScroll),
-            ) {
-                when {
-                    error != null -> ChuText("ERROR: $error", style = type.bodySmall, color = colors.error)
-                    logs.isEmpty() && loading -> ChuText("FETCHING LOGS…", style = type.bodySmall, color = colors.textMuted)
-                    logs.isEmpty() -> ChuText("NO LOGS AVAILABLE", style = type.bodySmall, color = colors.textMuted)
-                    else -> Column {
-                        logs.forEach { line ->
-                            val isErr = LOG_ERROR_RE.containsMatchIn(line)
-                            ChuText(
-                                line,
-                                style = type.bodySmall,
-                                softWrap = false,
-                                color = if (isErr) colors.error else colors.textSecondary,
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}

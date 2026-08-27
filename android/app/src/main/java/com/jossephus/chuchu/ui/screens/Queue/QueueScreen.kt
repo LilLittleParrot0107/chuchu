@@ -57,7 +57,6 @@ fun QueueScreen(
     onAdd: (String, String?, String?) -> Unit,
     onClearDone: (String?) -> Unit,
     onRefresh: () -> Unit,
-    onFetchLogs: (Int) -> Unit = {},
     onShowFeedback: (String, QueueFeedbackTone) -> Unit = { _, _ -> },
     onConsumeFeedback: (Long) -> Unit = {},
     currentUrl: String,
@@ -374,5 +373,4 @@ private fun queueStatusText(ui: QueueUiState): String {
     }
 }
 
-private const val DEFAULT_LOG_LINES = 60
 private const val FEEDBACK_TTL_MS = 3_200L

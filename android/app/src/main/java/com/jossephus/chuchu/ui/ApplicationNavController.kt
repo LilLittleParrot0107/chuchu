@@ -488,7 +488,6 @@ private fun QueueDestination(
         onAdd = sharedQueueVm::addTask,
         onClearDone = sharedQueueVm::clearDoneTasks,
         onRefresh = sharedQueueVm::refreshNow,
-        onFetchLogs = sharedQueueVm::fetchLogs,
         onShowFeedback = sharedQueueVm::showFeedback,
         onConsumeFeedback = sharedQueueVm::consumeFeedback,
         currentUrl = qUrl,

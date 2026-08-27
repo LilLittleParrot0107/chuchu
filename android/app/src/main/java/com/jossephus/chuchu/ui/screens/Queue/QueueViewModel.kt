@@ -32,9 +32,6 @@ data class QueueUiState(
     val needsSetup: Boolean = false,
     val busyOps: Set<String> = emptySet(),
     val feedback: QueueFeedback? = null,
-    val logs: List<String> = emptyList(),
-    val logsLoading: Boolean = false,
-    val logsError: String? = null,
 )
 
 class QueueViewModel(
@@ -345,26 +342,6 @@ class QueueViewModel(
                 }
             } finally {
                 _ui.update { it.copy(busyOps = it.busyOps - key) }
-            }
-        }
-    }
-
-    fun fetchLogs(n: Int = 60) {
-        viewModelScope.launch {
-            _ui.update { it.copy(logsLoading = true, logsError = null) }
-            val c = client() ?: run {
-                _ui.update { it.copy(logsLoading = false, logsError = "QSRV URL is not configured") }
-                return@launch
-            }
-            val result = withContext(Dispatchers.IO) { c.fetchLogs(n) }
-            persistAuthRecovery(c)
-            when (val r = result) {
-                is QueueClient.FetchLogs.Success -> {
-                    _ui.update { it.copy(logs = r.lines, logsLoading = false, logsError = null) }
-                }
-                is QueueClient.FetchLogs.Failed -> {
-                    _ui.update { it.copy(logsLoading = false, logsError = r.message) }
-                }
             }
         }
     }
