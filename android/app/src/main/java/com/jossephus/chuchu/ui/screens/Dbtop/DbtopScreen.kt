@@ -33,7 +33,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.jossephus.chuchu.data.model.dbtop.DataFreshness
 import com.jossephus.chuchu.ui.components.ChuText
 import com.jossephus.chuchu.ui.components.KohiNoticeBand
-import com.jossephus.chuchu.ui.components.KohiSectionBand
 import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTypography
 import java.util.Locale
@@ -125,14 +124,9 @@ fun DbtopScreen(
                 },
             )
 
-            KohiSectionBand(
-                label = ui.selectedView.label,
-                // Chi view dang DANH SACH moi co so dem; Charts tung hien
-                // "2 ITEMS" vo nghia (user bo 27/8).
-                meta = ui.itemCount(watchlistItems.size)?.let { "$it ITEMS" },
-                containerColor = colors.background,
-            )
-
+            // Band "POSITIONS · 10 ITEMS" duoi tab da bo han (user 28/8:
+            // "vo gia tri") — tab band tu noi ta dang o dau, so item khong
+            // giup quyet dinh gi.
             if (wide && ui.selectedView == DbtopView.POSITIONS) {
                 // Layout Master-Detail tối ưu cho màn hình gập mở rộng của Vivo X Fold 5
                 Row(
@@ -241,9 +235,3 @@ fun DbtopScreen(
     }
 }
 
-private fun DbtopUiState.itemCount(watchlistCount: Int): Int? = when (selectedView) {
-    DbtopView.POSITIONS -> state.rows.size
-    DbtopView.WATCHLIST -> watchlistCount
-    DbtopView.CHARTS -> null
-    DbtopView.SPENDING -> spending?.count ?: 0
-}
