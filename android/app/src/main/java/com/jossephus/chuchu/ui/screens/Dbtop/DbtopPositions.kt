@@ -24,11 +24,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.jossephus.chuchu.data.model.dbtop.DappRow
 import com.jossephus.chuchu.data.model.dbtop.DbtopState
 import com.jossephus.chuchu.data.model.dbtop.DeFiFormatter
@@ -39,7 +40,6 @@ import com.jossephus.chuchu.ui.components.ChuCard
 import com.jossephus.chuchu.ui.components.ChuText
 import com.jossephus.chuchu.ui.components.KohiCompactAction
 import com.jossephus.chuchu.ui.components.KohiSelectableRow
-import com.jossephus.chuchu.ui.theme.CHU_HAIRLINE_ALPHA
 import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTypography
 import java.util.Locale
@@ -178,9 +178,11 @@ internal fun OptionProgressBar(
     modifier: Modifier = Modifier,
     compact: Boolean = false,
     nowSec: Long = System.currentTimeMillis() / 1000L,
+    // Detail pane truyen bodySmall (12sp) cho khop ramp cua no; list/row
+    // dung mac dinh labelSmall (11sp).
+    labelStyle: TextStyle = ChuTypography.current.labelSmall,
 ) {
     val colors = ChuColors.current
-    val type = ChuTypography.current
 
     val expiry = option.expiry ?: 0L
     // option.dte trong state.json la TONG KY HAN cua option (expiry - sold),
@@ -225,12 +227,12 @@ internal fun OptionProgressBar(
         ) {
             ChuText(
                 text = "${(progressPct * 100).toInt()}% ELAPSED",
-                style = type.labelSmall.copy(fontWeight = FontWeight.Bold, fontFeatureSettings = "tnum"),
+                style = labelStyle.copy(fontWeight = FontWeight.Bold, fontFeatureSettings = "tnum"),
                 color = barColor,
             )
             ChuText(
                 text = if (daysLeft > 0) String.format(Locale.US, "%.1fD LEFT", daysLeft) else "EXPIRED",
-                style = type.labelSmall.copy(fontWeight = FontWeight.Bold, fontFeatureSettings = "tnum"),
+                style = labelStyle.copy(fontWeight = FontWeight.Bold, fontFeatureSettings = "tnum"),
                 color = if (daysLeft <= 1.0) colors.warning else colors.textSecondary,
             )
         }
@@ -256,8 +258,8 @@ internal fun OptionProgressBar(
         ) {
             ChuText(
                 text = if (prem > 0) "+${DeFiFormatter.formatUsd(harvestedPrem)} / ${DeFiFormatter.formatUsd(prem)}" else "THETA DECAY",
-                style = type.labelSmall.copy(fontFeatureSettings = "tnum"),
-                color = colors.textMuted,
+                style = labelStyle.copy(fontFeatureSettings = "tnum"),
+                color = colors.textSecondary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f, fill = false),
@@ -268,7 +270,7 @@ internal fun OptionProgressBar(
             if (compact && bufferPct > 0) {
                 ChuText(
                     text = "BUFFER +${String.format(Locale.US, "%.1f%%", bufferPct)}",
-                    style = type.labelSmall.copy(fontWeight = FontWeight.Bold, fontFeatureSettings = "tnum"),
+                    style = labelStyle.copy(fontWeight = FontWeight.Bold, fontFeatureSettings = "tnum"),
                     color = colors.accentSecondary,
                 )
             }
@@ -287,9 +289,9 @@ internal fun LendingHealthBar(
     modifier: Modifier = Modifier,
     compact: Boolean = false,
     liqDrop: Double? = null,
+    labelStyle: TextStyle = ChuTypography.current.labelSmall,
 ) {
     val colors = ChuColors.current
-    val type = ChuTypography.current
 
     val fillPct = ((health - 1.0).toFloat()).coerceIn(0f, 1f)
     val tone = when {
@@ -311,13 +313,13 @@ internal fun LendingHealthBar(
         ) {
             ChuText(
                 text = "HF ${String.format(Locale.US, "%.2fx", health)}",
-                style = type.labelSmall.copy(fontWeight = FontWeight.Bold, fontFeatureSettings = "tnum"),
+                style = labelStyle.copy(fontWeight = FontWeight.Bold, fontFeatureSettings = "tnum"),
                 color = tone,
             )
             if (liqDrop != null && liqDrop > 0) {
                 ChuText(
                     text = String.format(Locale.US, "-%.1f%% TO LIQ", liqDrop),
-                    style = type.labelSmall.copy(fontFeatureSettings = "tnum"),
+                    style = labelStyle.copy(fontFeatureSettings = "tnum"),
                     color = colors.textSecondary,
                 )
             }
@@ -339,23 +341,17 @@ internal fun LendingHealthBar(
     }
 }
 
-// Phong chu rieng cua detail pane: +20% so voi list (user ha tu 25% ngay
-// 27/8 sau khi chu de len nhau). KHONG ap vao OptionProgressBar/
-// LendingHealthBar (dung chung voi row).
-private const val DETAIL_FONT_SCALE = 1.2f
-
-// PHAI scale ca lineHeight cung fontSize: typography co lineHeight co dinh,
-// chi phong fontSize la dong wrap de len nhau (bug 27/8 user chui dung).
-private fun androidx.compose.ui.text.TextStyle.detailScaled() = copy(
-    fontSize = fontSize * DETAIL_FONT_SCALE,
-    lineHeight = lineHeight * DETAIL_FONT_SCALE,
-)
-
 /**
  * Detail pane kieu "the spec TUI" (de xuat 26/8, user duyet): label trai ngan
  * gon, gia tri phai mono thang cot, chia section RISK / YIELD / OPTION /
- * TOKENS, kem thanh co cau von va thuoc moneyness. Ky luat man hep: label
- * <= 8 ky tu, so dung dang compact, gia tri dai duoc wrap dong 2.
+ * TOKENS, kem thanh co cau von va thuoc moneyness.
+ *
+ * Ramp chu 28/8 (review 3 mat, user giao toan quyen) — thay phep nhan 1.2x
+ * tung de moi thu cung 13.2sp lem nhem: so NGUYEN theo thang chung cua app,
+ * label 12 / gia tri 14 SemiBold / ten 16 Bold / section 11. Gia tri va label
+ * dung CUNG font theme (bo ep FontFamily.Monospace — tron 2 font mono khac
+ * nhau tren 1 dong la ly do "font xau"). Ky luat man hep: label <= 8 ky tu,
+ * so dang compact, gia tri 1 dong cat "…" — khong wrap.
  */
 @Composable
 internal fun PositionDetailPane(
@@ -390,15 +386,15 @@ internal fun PositionDetailPane(
             Column(modifier = Modifier.weight(1f)) {
                 ChuText(
                     row.name.uppercase(),
-                    style = type.label.detailScaled().copy(fontWeight = FontWeight.Bold),
+                    style = type.title.copy(fontWeight = FontWeight.Bold),
                     color = colors.accent,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
                 ChuText(
                     "${row.proto.ifBlank { "—" }.uppercase()} · ${DeFiFormatter.formatUsdCompact(row.cap)}",
-                    style = type.labelSmall.detailScaled(),
-                    color = colors.textMuted,
+                    style = type.bodySmall,
+                    color = colors.textSecondary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -410,7 +406,7 @@ internal fun PositionDetailPane(
         if (hasRisk) {
             DetailSection("RISK")
             row.health?.takeIf { it > 0.0 }?.let { hf ->
-                LendingHealthBar(health = hf, liqDrop = row.liqDrop)
+                LendingHealthBar(health = hf, liqDrop = row.liqDrop, labelStyle = type.bodySmall)
             }
             if (row.liqAt != null && row.liqAt > 0) {
                 SpecRow(
@@ -431,15 +427,18 @@ internal fun PositionDetailPane(
             SpecRow("APR", DeFiFormatter.formatPercent(row.apr, false))
         }
         if (!showYield && (row.perday != 0.0 || row.apr != null)) {
-            SpecRow("YIELD", "HIDDEN (SCAN OFFLINE)", colors.textMuted)
+            SpecRow("YIELD", "HIDDEN (SCAN OFFLINE)", colors.textSecondary)
         }
         row.detail?.asLendingBreakdown()?.let { bd ->
-            val mix = buildList {
-                if (bd.stake != 0.0) add("stake ${DeFiFormatter.formatPercent(bd.stake, false)}")
-                if (bd.dust != 0.0) add("dust ${DeFiFormatter.formatPercent(bd.dust, false)}·keep ${(bd.keep * 100).toInt()}%")
-                if (bd.borrow_base != 0.0) add("borrow -${DeFiFormatter.formatPercent(Math.abs(bd.borrow_base), false)}")
-            }.joinToString(" + ")
-            if (mix.isNotBlank()) SpecRow("MIX", mix, colors.textSecondary)
+            // Tung thanh phan mot dong rieng: chuoi MIX gop (~50 ky tu) la
+            // dong duy nhat trong pane tung wrap roi bi cat lem (28/8).
+            if (bd.stake != 0.0) SpecRow("STAKE", DeFiFormatter.formatPercent(bd.stake, false))
+            if (bd.dust != 0.0) {
+                SpecRow("DUST", "${DeFiFormatter.formatPercent(bd.dust, false)} · KEEP ${(bd.keep * 100).toInt()}%")
+            }
+            if (bd.borrow_base != 0.0) {
+                SpecRow("BORROW", "-${DeFiFormatter.formatPercent(Math.abs(bd.borrow_base), false)}", colors.error)
+            }
         }
 
         row.detail?.option?.let { option ->
@@ -448,7 +447,7 @@ internal fun PositionDetailPane(
             option.strike?.let { SpecRow("STRIKE", DeFiFormatter.formatTokenPrice(it)) }
             option.prem?.let { SpecRow("PREM", "+${DeFiFormatter.formatUsd(it)}", colors.success) }
             MoneynessGauge(option)
-            OptionProgressBar(option = option, compact = false)
+            OptionProgressBar(option = option, compact = false, labelStyle = type.bodySmall)
         }
 
         if (tokens.isNotEmpty()) {
@@ -457,7 +456,13 @@ internal fun PositionDetailPane(
             tokens.forEach { (kind, color, t) -> TokenRow(kind, color, t) }
         }
         if (row.detail?.option == null && tokens.isEmpty() && row.detail?.breakdown == null) {
-            ChuText("BREAKDOWN UNAVAILABLE IN THIS SNAPSHOT", style = type.labelSmall, color = colors.textMuted)
+            ChuText(
+                "BREAKDOWN UNAVAILABLE IN THIS SNAPSHOT",
+                style = type.bodySmall,
+                color = colors.textSecondary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }
@@ -474,19 +479,27 @@ private fun DetailSection(label: String) {
     ) {
         ChuText(
             label,
-            style = type.labelSmall.detailScaled().copy(fontWeight = FontWeight.Bold),
-            color = colors.textMuted,
+            // Section lui lai bang CO NHO + gian ky tu, khong tranh cham voi
+            // gia tri (truoc day cung 13.2sp voi moi thu).
+            style = type.labelSmall.copy(fontWeight = FontWeight.SemiBold, letterSpacing = 0.6.sp),
+            color = colors.textSecondary,
         )
         Box(
             modifier = Modifier
                 .weight(1f)
                 .height(1.dp)
-                .background(colors.border.copy(alpha = CHU_HAIRLINE_ALPHA)),
+                // border tren surface chi ~1.27:1, nhan them alpha hairline la
+                // tang hinh (do 28/8) — lay xam cua chu lam duong ke thay.
+                .background(colors.textMuted.copy(alpha = 0.4f)),
         )
     }
 }
 
-/** Hang spec 2 cot: label trai co dinh, gia tri phai mono thang cot, cho wrap. */
+/**
+ * Hang spec 2 cot: label 12 thuong / gia tri 14 SemiBold cung font theme.
+ * Gia tri LUON 1 dong cat "…" — bang spec khong duoc wrap (28/8); cot label
+ * 72dp (92dp cu du thua ~37dp, chinh la thu doat cho khien gia tri gay dong).
+ */
 @Composable
 private fun SpecRow(
     label: String,
@@ -495,24 +508,23 @@ private fun SpecRow(
 ) {
     val colors = ChuColors.current
     val type = ChuTypography.current
-    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         ChuText(
             label,
-            style = type.labelSmall.detailScaled(),
-            color = colors.textMuted,
+            style = type.bodySmall,
+            color = colors.textSecondary,
             maxLines = 1,
-            modifier = Modifier.width(92.dp),
+            modifier = Modifier.width(72.dp),
         )
         ChuText(
             value,
-            style = type.labelSmall.detailScaled().copy(
-                fontFamily = FontFamily.Monospace,
-                fontFeatureSettings = "tnum",
-                fontWeight = FontWeight.Bold,
+            style = type.body.copy(
+                fontWeight = FontWeight.SemiBold,
+                lineHeight = 18.sp,
                 textAlign = TextAlign.End,
             ),
             color = valueColor ?: colors.textPrimary,
-            maxLines = 2,
+            maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
@@ -567,13 +579,14 @@ private fun MoneynessGauge(option: OptionDetail) {
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            val gaugeStyle = type.labelSmall.detailScaled().copy(fontFeatureSettings = "tnum")
             // 3 cot trong so + ellipsis: SpaceBetween voi chu to tung lam
-            // ba nhan va cham nhau khi gia dai (bug 27/8).
+            // ba nhan va cham nhau khi gia dai (bug 27/8). 12sp du cho
+            // "STRIKE $79,475.57" trong cot ben tren man 360dp.
+            val gaugeStyle = type.bodySmall
             ChuText(
                 "STRIKE ${DeFiFormatter.formatTokenPrice(strike)}",
                 style = gaugeStyle,
-                color = colors.textMuted,
+                color = colors.textSecondary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
@@ -615,10 +628,6 @@ private fun MoneynessGauge(option: OptionDetail) {
 private fun TokenRow(kind: String, dotColor: Color, token: TokenPosition) {
     val colors = ChuColors.current
     val type = ChuTypography.current
-    val mono = type.labelSmall.detailScaled().copy(
-        fontFamily = FontFamily.Monospace,
-        fontFeatureSettings = "tnum",
-    )
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -627,7 +636,7 @@ private fun TokenRow(kind: String, dotColor: Color, token: TokenPosition) {
         Spacer(Modifier.width(5.dp))
         ChuText(
             "$kind ${token.sym}",
-            style = type.labelSmall.detailScaled(),
+            style = type.bodySmall,
             color = colors.textSecondary,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -635,14 +644,14 @@ private fun TokenRow(kind: String, dotColor: Color, token: TokenPosition) {
         )
         ChuText(
             formatAmountCompact(token.amt),
-            style = mono,
-            color = colors.textMuted,
+            style = type.bodySmall,
+            color = colors.textSecondary,
             maxLines = 1,
         )
         Spacer(Modifier.width(10.dp))
         ChuText(
             DeFiFormatter.formatUsdCompact(token.usd),
-            style = mono.copy(fontWeight = FontWeight.Bold),
+            style = type.body.copy(fontWeight = FontWeight.SemiBold),
             color = colors.textPrimary,
             maxLines = 1,
         )

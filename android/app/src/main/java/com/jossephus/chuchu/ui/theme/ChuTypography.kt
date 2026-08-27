@@ -50,6 +50,11 @@ private fun monoFamily(option: ChuFontOption): FontFamily = FontFamily(
     Font(option.regularFontResId, FontWeight.Normal),
     Font(option.regularFontResId, FontWeight.Medium),
     Font(option.regularFontResId, FontWeight.SemiBold),
+    // JetBrains Mono / Fira Code / Geist Mono la variable font: Font() tu ap
+    // wght theo weight khai bao (API 26+), nen co dong nay Bold moi render
+    // 700 that. Truoc day thieu -> moi FontWeight.Bold trong app bi ghim 600
+    // (Hack la font tinh: khai bao them khong doi gi, van an toan).
+    Font(option.regularFontResId, FontWeight.Bold),
 )
 
 fun chuTypographyFor(option: ChuFontOption): ChuTypeScale {
