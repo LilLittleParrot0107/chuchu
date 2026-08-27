@@ -32,6 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.offset
@@ -76,6 +77,14 @@ fun QueueScreen(
     // hien trang thai moi nhat thay vi snapshot dong bang luc mo.
     var inspectedTaskId by remember { mutableStateOf<Int?>(null) }
     val inspectedTask = inspectedTaskId?.let { id -> ui.state.tasks.firstOrNull { it.id == id } }
+    // Composer da cham vao la GIU focus mai; sheet detail la cua so Dialog
+    // rieng, dong lai thi cua so app lay lai focus va Android tu dung IME cho
+    // o dang focus — "back khoi detail la ban phim doi len" (user 28/8). Xoa
+    // focus ngay khi mo detail: dong sheet xong khong con o nao doi keyboard.
+    val focusManager = LocalFocusManager.current
+    LaunchedEffect(inspectedTaskId) {
+        if (inspectedTaskId != null) focusManager.clearFocus()
+    }
     var selectedPane by remember(initialPane) { mutableStateOf(initialPane) }
     var prompt by remember { mutableStateOf("") }
 
