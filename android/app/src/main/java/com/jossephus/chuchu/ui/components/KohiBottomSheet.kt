@@ -41,10 +41,9 @@ import com.jossephus.chuchu.ui.theme.ChuColors
 private const val SHEET_IN_MS = 300
 private const val SHEET_OUT_MS = 220
 
-// Sheet NOI len khoi day man them khoang nay (ngoai inset navbar): ho scrim
-// nhin thay duoc duoi vien day = bang chung ca sheet nam tren man. User 27/8
-// lan 5 van "chim mat 1 doan" — chot phuong an "keo len + dem khoang trong".
-private val SHEET_LIFT_GAP = 16.dp
+// KHONG float sheet len khoi day man (thu 27/8, user che "nhin thay day
+// la do"): sheet lien day, phan ne navbar la padding TRONG nen surface.
+// Chong "sheet dai bi cat day" da co window anchor MATCH_PARENT+BOTTOM.
 
 /**
  * Bottom sheet chung cho detail dashboard/queue: scrim tu ve fade cung nhip,
@@ -116,16 +115,13 @@ fun KohiBottomSheet(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        // Padding TRUOC background: khoang nang la scrim ho ra
-                        // ben duoi vien day sheet, khong phai nen surface keo
-                        // dai xuong — mat thay duoc sheet ket thuc o dau.
-                        .padding(bottom = navBottom + SHEET_LIFT_GAP)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
                         ) {}
                         .background(colors.surface)
-                        .border(1.dp, colors.border),
+                        .border(1.dp, colors.border)
+                        .padding(bottom = navBottom),
                 ) {
                     content()
                 }
