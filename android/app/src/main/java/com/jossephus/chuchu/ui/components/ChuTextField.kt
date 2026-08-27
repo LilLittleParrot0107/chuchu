@@ -59,6 +59,10 @@ fun ChuTextField(
     isError: Boolean = false,
     // Gate input từ caller (vd khoá form khi đang submit) thay vì disable cả Column.
     enabled: Boolean = true,
+    // Caller tự quyết màu viền thay cho logic focus→accent (compose box của
+    // terminal: viền thường, CÓ CHỮ mới ánh vàng nhạt — user chốt 28/8).
+    // isError vẫn thắng để validation không bị che.
+    borderColor: Color? = null,
 ) {
     val colors = ChuColors.current
     val typography = ChuTypography.current
@@ -93,13 +97,14 @@ fun ChuTextField(
                 .semantics { contentDescription = label }
                 .focusRequester(focusRequester)
                 .background(if (focused) colors.surface else Color.Transparent, shape)
-                // Ưu tiên: focus → accent, lỗi → error, còn lại viền tĩnh.
+                // Ưu tiên: lỗi → error, caller override, focus → accent, còn lại viền tĩnh.
                 .border(
                     BorderStroke(
                         1.dp,
                         when {
-                            focused -> colors.accent
                             isError -> colors.error
+                            borderColor != null -> borderColor
+                            focused -> colors.accent
                             else -> colors.border
                         },
                     ),

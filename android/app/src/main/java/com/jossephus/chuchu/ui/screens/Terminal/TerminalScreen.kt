@@ -1802,6 +1802,17 @@ fun TerminalScreen(
                                         composeBoxText = ""
                                         showComposeBox = false
                                     }
+                                    // Quiet border when empty; soft accent only
+                                    // once there is text — mirrors the queue
+                                    // composer (user 28/8). The field autofocuses,
+                                    // so without the override it sat permanently
+                                    // on the loud focus-accent border.
+                                    val composeBorder =
+                                        if (composeBoxText.isNotBlank()) {
+                                            colors.accent.copy(alpha = 0.45f)
+                                        } else {
+                                            colors.border
+                                        }
                                     Column(
                                         modifier =
                                             Modifier.align(Alignment.BottomCenter)
@@ -1837,6 +1848,7 @@ fun TerminalScreen(
                                                         onSend = { sendComposeBox() },
                                                     ),
                                                 verticalPadding = 7.dp,
+                                                borderColor = composeBorder,
                                             )
                                             // [×]: dismiss the compose box and
                                             // leave the keyboard AS IT IS.
@@ -1894,7 +1906,7 @@ fun TerminalScreen(
                                                 onClick = sendComposeBox,
                                                 variant = ChuButtonVariant.Outlined,
                                                 bracketed = true,
-                                                borderColor = colors.accent,
+                                                borderColor = composeBorder,
                                                 contentPadding =
                                                     PaddingValues(
                                                         horizontal = 10.dp,
