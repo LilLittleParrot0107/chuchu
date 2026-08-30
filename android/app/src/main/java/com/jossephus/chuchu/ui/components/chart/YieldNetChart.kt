@@ -134,10 +134,12 @@ object CashflowEngine {
         if (basePoints.isEmpty()) return emptyList()
 
         val safeCap = if (cap > 0.0) cap else 1.0
-        val baseGrossApr = grossApr ?: if (dailyData.isNotEmpty()) {
-            val avgDaily = dailyData.sumOf { it.yieldUsd } / dailyData.size.coerceAtLeast(1)
+        // Thieu APR thi suy tu trung binh yield thuc do; thieu ca hai -> 0.
+        // Khong duoc dong dinh APR cua mot thoi diem vao code lam fallback.
+        val baseGrossApr = grossApr ?: run {
+            val avgDaily = if (dailyData.isEmpty()) 0.0 else dailyData.sumOf { it.yieldUsd } / dailyData.size
             (avgDaily * 365.0 / safeCap) * 100.0
-        } else 35.84
+        }
 
         return basePoints.mapIndexed { index, point ->
             val cumSpend = basePoints.take(index + 1).sumOf { it.spend }
@@ -148,15 +150,15 @@ object CashflowEngine {
                 spending.monthUsd / 30.416
             } else 0.0
 
-            val currentGross = point.gross.takeIf { it > 0 } ?: (baseGrossApr * safeCap / 36500.0)
-            val dailyNet = currentGross - effectiveSpendPerDay
+            // Ngay yield = 0 giu nguyen 0 — khong che so tu APR de lap lo hong du lieu.
+            val dailyNet = point.gross - effectiveSpendPerDay
             val netApr = (dailyNet * 365.0 / safeCap) * 100.0
 
             NetAprPoint(
                 date = point.date,
                 grossApr = baseGrossApr,
                 netApr = netApr,
-                dailyGross = currentGross,
+                dailyGross = point.gross,
                 dailySpend = effectiveSpendPerDay,
                 dailyNet = dailyNet,
             )
@@ -413,8 +415,8 @@ fun YieldNetChart(
             fillPath.lineTo(xCoords[n - 1], yZero)
             fillPath.close()
 
-            val latestNetApr = points.lastOrNull()?.netApr ?: 0.0
-            val curveColor = if (latestNetApr >= 0) netColor else Color(0xFFF38BA8)
+            // Mau am/duong da do caller chon theo palette (463 theme) — khong hardcode.
+            val curveColor = netColor
 
             drawPath(
                 path = fillPath,

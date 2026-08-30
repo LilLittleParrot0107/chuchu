@@ -157,5 +157,42 @@ class YieldNetChartTest {
         assertEquals(0.0, kpis.burnRatioPct!!, 0.001)
         assertEquals(0.0, kpis.trailingNetUsd, 0.001)
     }
+
+    @Test
+    fun testCashflowEngine_ZeroYieldDayIsNotFabricated() {
+        // Ngay khong co yield phai giu gross = 0 — khong suy nguoc tu APR ra so gia.
+        val daily = listOf(
+            DailyYield(date = "2026-08-20", yieldUsd = 50.0, coverageDays = 1.0),
+            DailyYield(date = "2026-08-21", yieldUsd = 0.0, coverageDays = 1.0),
+        )
+        val aprPoints = CashflowEngine.calculateAprPoints(
+            dailyData = daily,
+            spendByDay = emptyMap(),
+            cap = 50000.0,
+            grossApr = 30.0,
+            spending = null,
+        )
+
+        assertEquals(2, aprPoints.size)
+        assertEquals(0.0, aprPoints[1].dailyGross, 0.001)
+        assertEquals(0.0, aprPoints[1].dailyNet, 0.001)
+        assertEquals(0.0, aprPoints[1].netApr, 0.001)
+    }
+
+    @Test
+    fun testCashflowEngine_NoAprNoDailyData_FallsBackToZeroNotMagicNumber() {
+        // Khong co APR va khong co daily data -> gross APR = 0, khong phai hang so dong dinh.
+        val aprPoints = CashflowEngine.calculateAprPoints(
+            dailyData = emptyList(),
+            spendByDay = mapOf("2026-08-20" to 10.0),
+            cap = 1000.0,
+            grossApr = null,
+            spending = null,
+        )
+
+        assertEquals(1, aprPoints.size)
+        assertEquals(0.0, aprPoints[0].grossApr, 0.001)
+        assertEquals(0.0, aprPoints[0].dailyGross, 0.001)
+    }
 }
 
