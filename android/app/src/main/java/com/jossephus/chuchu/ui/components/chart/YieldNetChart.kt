@@ -8,10 +8,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -27,7 +25,6 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -43,16 +40,13 @@ import java.util.Locale
 import kotlin.math.abs
 
 /**
- * Data model representing daily cashflow delta:
- * Gross yield, Spend outflow, Net remainder, and soft-clamped outlier info.
+ * Data model representing daily cashflow delta: gross yield, spend outflow, net remainder.
  */
 data class DailyCashflowPoint(
     val date: String,          // "YYYY-MM-DD"
     val gross: Double,         // Daily yield in USD
     val spend: Double,         // Daily spend in USD
     val net: Double,           // gross - spend
-    val clampedNet: Double,    // Soft-clamped value for bar height
-    val isClamped: Boolean,    // true if spend was an outlier clamped to floor
 )
 
 /**
@@ -98,39 +92,21 @@ object CashflowEngine {
             .distinct()
             .sorted()
 
-        val rawList = unionDates.map { date ->
+        return unionDates.map { date ->
             val gross = dailyMap[date]?.yieldUsd ?: 0.0
             val spend = spendByDay[date] ?: 0.0
-            val net = gross - spend
-            Triple(date, gross, spend) to net
-        }
-
-        val maxGross = rawList.maxOfOrNull { it.first.second }?.takeIf { it > 0.0 } ?: 10.0
-        val clampFloor = -maxOf(maxGross * 2.5, 50.0)
-
-        return rawList.map { (info, net) ->
-            val (date, gross, spend) = info
-            val isClamped = net < clampFloor
-            val clampedNet = if (isClamped) clampFloor else net
-            DailyCashflowPoint(
-                date = date,
-                gross = gross,
-                spend = spend,
-                net = net,
-                clampedNet = clampedNet,
-                isClamped = isClamped,
-            )
+            DailyCashflowPoint(date = date, gross = gross, spend = spend, net = gross - spend)
         }
     }
 
+    /** Nhan [basePoints] tu ngoai vao — caller tinh mot lan roi dung chung cho ca KPI lan curve. */
     fun calculateAprPoints(
         dailyData: List<DailyYield>,
-        spendByDay: Map<String, Double>,
+        basePoints: List<DailyCashflowPoint>,
         cap: Double,
         grossApr: Double?,
         spending: SpendingState?,
     ): List<NetAprPoint> {
-        val basePoints = calculatePoints(dailyData, spendByDay)
         if (basePoints.isEmpty()) return emptyList()
 
         val safeCap = if (cap > 0.0) cap else 1.0
@@ -141,14 +117,16 @@ object CashflowEngine {
             (avgDaily * 365.0 / safeCap) * 100.0
         }
 
+        val fallbackSpendPerDay = if (spending != null && spending.monthUsd > 0) {
+            spending.monthUsd / 30.416
+        } else 0.0
+
+        // Cong don chay — truoc day moi diem quet lai ca tien to (O(n^2) + cap phat list).
+        var cumSpend = 0.0
         return basePoints.mapIndexed { index, point ->
-            val cumSpend = basePoints.take(index + 1).sumOf { it.spend }
+            cumSpend += point.spend
             val windowLen = maxOf(index + 1, 7)
-            val effectiveSpendPerDay = if (cumSpend > 0) {
-                cumSpend / windowLen
-            } else if (spending != null && spending.monthUsd > 0) {
-                spending.monthUsd / 30.416
-            } else 0.0
+            val effectiveSpendPerDay = if (cumSpend > 0) cumSpend / windowLen else fallbackSpendPerDay
 
             // Ngay yield = 0 giu nguyen 0 — khong che so tu APR de lap lo hong du lieu.
             val dailyNet = point.gross - effectiveSpendPerDay
@@ -189,9 +167,11 @@ object CashflowEngine {
 
         val netApr = if (cap > 0.0) (runRatePerDay * 365.0 / safeCap) * 100.0 else null
 
+        // Tieu ma khong co yield thi ty le "tren yield" khong dinh nghia duoc —
+        // tra null de UI hien "--", dung bao 100% (nghe nhu vua du, thuc ra dang an vao von).
         val burnRatio = when {
             dailyGross > 0.0 -> (avgDailySpend / dailyGross) * 100.0
-            avgDailySpend > 0.0 -> 100.0
+            avgDailySpend > 0.0 -> null
             else -> 0.0
         }
 
@@ -218,8 +198,7 @@ object CashflowEngine {
  */
 @Composable
 fun YieldNetChart(
-    dailyData: List<DailyYield>,
-    spendByDay: Map<String, Double>,
+    points: List<NetAprPoint>,
     grossColor: Color,
     netColor: Color,
     gridColor: Color,
@@ -228,13 +207,7 @@ fun YieldNetChart(
     tooltipText: Color,
     modifier: Modifier = Modifier,
     height: Dp = 190.dp,
-    cap: Double = 0.0,
-    grossApr: Double? = null,
-    spending: SpendingState? = null,
 ) {
-    val points = remember(dailyData, spendByDay, cap, grossApr, spending) {
-        CashflowEngine.calculateAprPoints(dailyData, spendByDay, cap, grossApr, spending)
-    }
     if (points.isEmpty()) return
 
     val haptic = LocalHapticFeedback.current

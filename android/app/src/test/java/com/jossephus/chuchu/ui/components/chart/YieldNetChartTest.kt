@@ -3,7 +3,6 @@ package com.jossephus.chuchu.ui.components.chart
 import com.jossephus.chuchu.data.model.dbtop.DailyYield
 import com.jossephus.chuchu.data.model.dbtop.SpendingState
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -37,35 +36,27 @@ class YieldNetChartTest {
     }
 
     @Test
-    fun testCashflowEngine_OutlierSoftClamping() {
+    fun testCashflowEngine_OutlierSpendKeepsRawNet() {
         val daily = listOf(
             DailyYield(date = "2026-08-20", yieldUsd = 50.0, coverageDays = 1.0),
             DailyYield(date = "2026-08-21", yieldUsd = 50.0, coverageDays = 1.0),
         )
         val spend = mapOf(
-            "2026-08-20" to 10.0,     // Net = +$40.0 (unclamped)
+            "2026-08-20" to 10.0,     // Net = +$40.0
             "2026-08-21" to 1500.0,   // Net = -$1450.0 (huge outlier spike!)
         )
 
         val points = CashflowEngine.calculatePoints(daily, spend)
         assertEquals(2, points.size)
-
-        val regularPoint = points[0]
-        assertFalse(regularPoint.isClamped)
-        assertEquals(40.0, regularPoint.net, 0.001)
-        assertEquals(40.0, regularPoint.clampedNet, 0.001)
-
-        val outlierPoint = points[1]
-        assertTrue(outlierPoint.isClamped)
-        assertEquals(-1450.0, outlierPoint.net, 0.001) // Raw unclamped net preserved for tooltip
-        // maxGross is 50.0, clampFloor is -maxOf(50.0 * 2.5, 50.0) = -125.0
-        assertEquals(-125.0, outlierPoint.clampedNet, 0.001)
+        assertEquals(40.0, points[0].net, 0.001)
+        // Outlier day keeps its real net — the curve amortizes spend instead of clamping it.
+        assertEquals(-1450.0, points[1].net, 0.001)
     }
 
     @Test
     fun testCashflowEngine_ZeroCapitalDivision() {
         val points = listOf(
-            DailyCashflowPoint("2026-08-20", gross = 50.0, spend = 20.0, net = 30.0, clampedNet = 30.0, isClamped = false)
+            DailyCashflowPoint("2026-08-20", gross = 50.0, spend = 20.0, net = 30.0)
         )
         val kpis = CashflowEngine.computeKpis(
             cap = 0.0,
@@ -82,8 +73,8 @@ class YieldNetChartTest {
     @Test
     fun testCashflowEngine_ComputeKpis_RunRateAndBurnRatio() {
         val points = listOf(
-            DailyCashflowPoint("2026-08-20", gross = 77.90, spend = 0.0, net = 77.90, clampedNet = 77.90, isClamped = false),
-            DailyCashflowPoint("2026-08-21", gross = 77.90, spend = 100.0, net = -22.10, clampedNet = -22.10, isClamped = false),
+            DailyCashflowPoint("2026-08-20", gross = 77.90, spend = 0.0, net = 77.90),
+            DailyCashflowPoint("2026-08-21", gross = 77.90, spend = 100.0, net = -22.10),
         )
         val spending = SpendingState(monthUsd = 976.66, totalUsd = 12450.0)
         val kpis = CashflowEngine.computeKpis(
@@ -120,7 +111,7 @@ class YieldNetChartTest {
 
         val aprPoints = CashflowEngine.calculateAprPoints(
             dailyData = daily,
-            spendByDay = spend,
+            basePoints = CashflowEngine.calculatePoints(daily, spend),
             cap = 79338.74,
             grossApr = 35.84,
             spending = spending,
@@ -142,7 +133,7 @@ class YieldNetChartTest {
         val points = CashflowEngine.calculatePoints(emptyList(), emptyMap())
         assertTrue(points.isEmpty())
 
-        val aprPoints = CashflowEngine.calculateAprPoints(emptyList(), emptyMap(), 50000.0, null, null)
+        val aprPoints = CashflowEngine.calculateAprPoints(emptyList(), emptyList(), 50000.0, null, null)
         assertTrue(aprPoints.isEmpty())
 
         val kpis = CashflowEngine.computeKpis(
@@ -167,7 +158,7 @@ class YieldNetChartTest {
         )
         val aprPoints = CashflowEngine.calculateAprPoints(
             dailyData = daily,
-            spendByDay = emptyMap(),
+            basePoints = CashflowEngine.calculatePoints(daily, emptyMap()),
             cap = 50000.0,
             grossApr = 30.0,
             spending = null,
@@ -182,9 +173,10 @@ class YieldNetChartTest {
     @Test
     fun testCashflowEngine_NoAprNoDailyData_FallsBackToZeroNotMagicNumber() {
         // Khong co APR va khong co daily data -> gross APR = 0, khong phai hang so dong dinh.
+        val spend = mapOf("2026-08-20" to 10.0)
         val aprPoints = CashflowEngine.calculateAprPoints(
             dailyData = emptyList(),
-            spendByDay = mapOf("2026-08-20" to 10.0),
+            basePoints = CashflowEngine.calculatePoints(emptyList(), spend),
             cap = 1000.0,
             grossApr = null,
             spending = null,
@@ -193,6 +185,45 @@ class YieldNetChartTest {
         assertEquals(1, aprPoints.size)
         assertEquals(0.0, aprPoints[0].grossApr, 0.001)
         assertEquals(0.0, aprPoints[0].dailyGross, 0.001)
+    }
+
+    @Test
+    fun testCashflowEngine_SpendWithoutYield_BurnRatioIsUndefined() {
+        // Tieu tien khi khong co yield = an vao von; ty le "tren yield" khong dinh
+        // nghia duoc, phai la null (UI hien "--") thay vi 100% nghe nhu vua du.
+        val points = listOf(
+            DailyCashflowPoint("2026-08-20", gross = 0.0, spend = 40.0, net = -40.0),
+        )
+        val kpis = CashflowEngine.computeKpis(
+            cap = 50000.0,
+            currentPerDay = 0.0,
+            grossApr = null,
+            spending = null,
+            points = points,
+        )
+
+        assertNull(kpis.burnRatioPct)
+        assertEquals(-40.0, kpis.netRunRatePerDay, 0.001)
+    }
+
+    @Test
+    fun testCashflowEngine_AmortizedSpendMatchesRunningSum() {
+        // Chi tieu duoc dan deu theo cua so >= 7 ngay: cong don chay phai cho ket
+        // qua y het cach quet lai tien to cu.
+        val daily = (1..10).map { d ->
+            DailyYield(date = String.format("2026-08-%02d", d), yieldUsd = 20.0, coverageDays = 1.0)
+        }
+        val spend = mapOf("2026-08-03" to 70.0, "2026-08-08" to 140.0)
+        val basePoints = CashflowEngine.calculatePoints(daily, spend)
+
+        val aprPoints = CashflowEngine.calculateAprPoints(daily, basePoints, 10000.0, 30.0, null)
+
+        assertEquals(10, aprPoints.size)
+        aprPoints.forEachIndexed { i, p ->
+            val cumSpend = basePoints.take(i + 1).sumOf { it.spend }
+            val expected = if (cumSpend > 0) cumSpend / maxOf(i + 1, 7) else 0.0
+            assertEquals(expected, p.dailySpend, 0.0001)
+        }
     }
 }
 

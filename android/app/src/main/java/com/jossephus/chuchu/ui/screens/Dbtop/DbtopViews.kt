@@ -196,9 +196,11 @@ internal fun PerformanceKpiCard(
                     color = netPerDayColor,
                     modifier = Modifier.weight(1f),
                 )
+                // Bo hau to "(∞)/(DEFICIT)": surplus hay thieu hut da nam o band
+                // va o o DAILY NET CASHFLOW ngay ben canh — o nay chi tra loi
+                // "chi tieu an bao nhieu phan yield".
                 val burnRatioText = kpis.burnRatioPct?.let {
-                    val runway = if (kpis.netRunRatePerDay >= 0) "∞" else "DEFICIT"
-                    String.format(Locale.US, "%.0f%% (%s)", it, runway)
+                    String.format(Locale.US, "%.0f%% OF YIELD", it)
                 } ?: "--"
                 val burnColor = when {
                     kpis.burnRatioPct == null -> colors.textMuted
@@ -232,9 +234,15 @@ internal fun ChartsView(
     val colors = ChuColors.current
     val type = ChuTypography.current
 
-    val kpiSummary = remember(cap, currentPerDay, apr, spending, daily, spendByDay) {
-        val points = CashflowEngine.calculatePoints(daily, spendByDay)
-        CashflowEngine.computeKpis(cap, currentPerDay, apr, spending, points)
+    // Mot lan tinh dong tien theo ngay, dung chung cho ca the KPI lan duong Net APR.
+    val cashflowPoints = remember(daily, spendByDay) {
+        CashflowEngine.calculatePoints(daily, spendByDay)
+    }
+    val kpiSummary = remember(cap, currentPerDay, apr, spending, cashflowPoints) {
+        CashflowEngine.computeKpis(cap, currentPerDay, apr, spending, cashflowPoints)
+    }
+    val aprPoints = remember(daily, cashflowPoints, cap, apr, spending) {
+        CashflowEngine.calculateAprPoints(daily, cashflowPoints, cap, apr, spending)
     }
 
     LazyColumn(modifier = Modifier.fillMaxSize()) {
@@ -325,8 +333,7 @@ internal fun ChartsView(
                         ChuText("NO DAILY DATA", style = type.bodySmall, color = colors.textMuted)
                     } else {
                         YieldNetChart(
-                            dailyData = daily,
-                            spendByDay = spendByDay,
+                            points = aprPoints,
                             grossColor = colors.accent,
                             netColor = if (netAprVal >= 0) colors.success else colors.error,
                             gridColor = colors.border.copy(alpha = 0.4f),
@@ -334,9 +341,6 @@ internal fun ChartsView(
                             tooltipBg = colors.surfaceVariant,
                             tooltipText = colors.textPrimary,
                             height = 180.dp,
-                            cap = cap,
-                            grossApr = apr,
-                            spending = spending,
                         )
                     }
                 }
