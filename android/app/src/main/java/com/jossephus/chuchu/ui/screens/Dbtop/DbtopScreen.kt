@@ -188,7 +188,10 @@ fun DbtopScreen(
                             currentPerDay = currentPerDay,
                             curve = ui.state.curve,
                             daily = ui.state.daily,
+                            spending = ui.spending,
                             spendByDay = ui.spending?.byDay ?: emptyMap(),
+                            cap = ui.state.cap.takeIf { it > 0 } ?: ui.state.rows.sumOf { it.cap }.takeIf { it > 0 } ?: ui.state.netWorth,
+                            apr = ui.state.apr,
                         )
                         DbtopView.WATCHLIST -> WatchlistView(
                             items = watchlistItems,
