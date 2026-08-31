@@ -36,8 +36,7 @@ import com.jossephus.chuchu.ui.components.KohiSectionBand
 import com.jossephus.chuchu.ui.components.chart.CashflowEngine
 import com.jossephus.chuchu.ui.components.chart.CashflowKpiSummary
 import com.jossephus.chuchu.ui.components.chart.NetWorthCurveChart
-import com.jossephus.chuchu.ui.components.chart.YieldComboChart
-import com.jossephus.chuchu.ui.components.chart.YieldNetChart
+import com.jossephus.chuchu.ui.components.chart.NetRateChart
 import com.jossephus.chuchu.ui.theme.CHU_HAIRLINE_ALPHA
 import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTypography
@@ -234,16 +233,20 @@ internal fun ChartsView(
     val colors = ChuColors.current
     val type = ChuTypography.current
 
-    // Mot lan tinh dong tien theo ngay, dung chung cho ca the KPI lan duong Net APR.
+    // Mot lan tinh dong tien theo ngay, dung chung cho ca the KPI lan chart NET RATE.
     val cashflowPoints = remember(daily, spendByDay) {
         CashflowEngine.calculatePoints(daily, spendByDay)
     }
     val kpiSummary = remember(cap, currentPerDay, apr, spending, cashflowPoints) {
         CashflowEngine.computeKpis(cap, currentPerDay, apr, spending, cashflowPoints)
     }
-    val aprPoints = remember(daily, cashflowPoints, cap, apr, spending) {
-        CashflowEngine.calculateAprPoints(daily, cashflowPoints, cap, apr, spending)
+    // Chi dung tong thang lam chi tieu/ngay khi KHONG co du lieu theo ngay nao.
+    val fallbackSpendPerDay = spending?.monthUsd?.takeIf { it > 0.0 }?.div(30.416) ?: 0.0
+    val ratePoints = remember(cashflowPoints, fallbackSpendPerDay) {
+        CashflowEngine.calculateRatePoints(cashflowPoints, fallbackSpendPerDay = fallbackSpendPerDay)
     }
+    // %APR ung voi moi 1 USD/ngay — chinh he so bien truc USD thanh truc APR.
+    val aprFactor = remember(cap) { if (cap > 0.0) 365.0 / cap * 100.0 else null }
 
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         item(key = "performance_kpis") {
@@ -285,12 +288,19 @@ internal fun ChartsView(
                 }
             }
         }
-        item(key = "daily_yield") {
+        item(key = "net_rate") {
+            val netAprVal = kpiSummary.netRunRateApr
+            val perDay = kpiSummary.netRunRatePerDay
+            val meta = when {
+                currentPerDay == null && daily.isEmpty() -> "SCAN OFFLINE"
+                netAprVal != null -> "${if (netAprVal >= 0) "+" else ""}${String.format(Locale.US, "%.1f%% NET APR", netAprVal)}"
+                else -> "${if (perDay >= 0) "+" else "-"}${DeFiFormatter.formatUsd(abs(perDay))}/D NET"
+            }
             KohiSectionBand(
-                label = "YIELD · DAILY",
-                meta = currentPerDay?.let { "+${DeFiFormatter.formatUsd(it)}/D" } ?: "SCAN OFFLINE",
+                label = "NET RATE · TRAILING",
+                meta = meta,
                 containerColor = colors.background,
-                accent = if (currentPerDay != null) colors.success else colors.error,
+                accent = if (perDay >= 0) colors.success else colors.error,
             )
             ChuCard(
                 modifier = Modifier
@@ -298,49 +308,20 @@ internal fun ChartsView(
                     .padding(horizontal = 10.dp, vertical = 4.dp),
             ) {
                 Column(modifier = Modifier.fillMaxWidth().padding(10.dp)) {
-                    if (daily.isEmpty()) {
+                    if (ratePoints.isEmpty()) {
                         ChuText("NO DAILY YIELD DATA", style = type.bodySmall, color = colors.textMuted)
                     } else {
-                        YieldComboChart(
-                            dailyData = daily,
-                            barColor = colors.accent,
-                            accentColor = colors.accentSecondary,
-                            tooltipBg = colors.surfaceVariant,
-                            textColor = colors.textSecondary,
-                            gridColor = colors.border.copy(alpha = 0.4f),
-                            height = 170.dp,
-                        )
-                    }
-                }
-            }
-        }
-        item(key = "net_vs_spend") {
-            val netAprVal = kpiSummary.netRunRateApr ?: 0.0
-            val netMeta = "${if (netAprVal >= 0) "+" else ""}${String.format(Locale.US, "%.1f%%", netAprVal)} NET APR"
-            KohiSectionBand(
-                label = "NET APR · TRAILING",
-                meta = netMeta,
-                containerColor = colors.background,
-                accent = if (netAprVal >= 0) colors.success else colors.error,
-            )
-            ChuCard(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 10.dp, vertical = 4.dp),
-            ) {
-                Column(modifier = Modifier.fillMaxWidth().padding(10.dp)) {
-                    if (daily.isEmpty()) {
-                        ChuText("NO DAILY DATA", style = type.bodySmall, color = colors.textMuted)
-                    } else {
-                        YieldNetChart(
-                            points = aprPoints,
+                        NetRateChart(
+                            points = ratePoints,
                             grossColor = colors.accent,
-                            netColor = if (netAprVal >= 0) colors.success else colors.error,
+                            netColor = if (perDay >= 0) colors.success else colors.error,
+                            spendColor = colors.warning,
                             gridColor = colors.border.copy(alpha = 0.4f),
                             textColor = colors.textSecondary,
                             tooltipBg = colors.surfaceVariant,
                             tooltipText = colors.textPrimary,
-                            height = 180.dp,
+                            aprFactor = aprFactor,
+                            height = 200.dp,
                         )
                     }
                 }
