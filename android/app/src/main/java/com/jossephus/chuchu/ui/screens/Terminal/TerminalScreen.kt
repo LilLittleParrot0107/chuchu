@@ -114,6 +114,7 @@ import com.jossephus.chuchu.ui.terminal.TerminalSelectionHandle
 import com.jossephus.chuchu.ui.terminal.TerminalSelectionState
 import com.jossephus.chuchu.ui.terminal.TerminalSpecialKey
 import com.jossephus.chuchu.ui.terminal.decodeCustomActionValue
+import com.jossephus.chuchu.ui.terminal.joinSelectionLines
 import com.jossephus.chuchu.ui.terminal.modifierStateForCustomAction
 import com.jossephus.chuchu.ui.terminal.toGhosttyKey
 import com.jossephus.chuchu.ui.theme.ChuColors
@@ -1061,14 +1062,14 @@ fun TerminalScreen(
                      * Đây là hành động RIÊNG, không phải sửa ngầm nút copy: nối dòng
                      * đúng cho lệnh nhưng sai cho đoạn code nhiều dòng, nên phải để
                      * người dùng chọn chứ không tự đoán.
+                     *
+                     * Chỗ nối do [joinSelectionLines] quyết: dòng bị bẻ vì hết bề ngang
+                     * thì dính liền, xuống dòng thật mới thêm một dấu cách.
                      */
                     fun copySelectionJoined() {
-                        val raw = selectionState?.text ?: return
-                        val joined = raw.split('\n')
-                            .map { it.trim() }
-                            .filter { it.isNotEmpty() }
-                            .joinToString(" ")
-                        putOnClipboard(joined, "Đã copy (nối dòng)")
+                        val state = selectionState ?: return
+                        val raw = state.text ?: return
+                        putOnClipboard(joinSelectionLines(raw, state.cols), "Đã copy (nối dòng)")
                     }
 
                     val importFileLauncher =

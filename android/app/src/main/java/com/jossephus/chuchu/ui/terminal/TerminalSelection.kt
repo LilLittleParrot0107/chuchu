@@ -232,3 +232,74 @@ internal fun TerminalSelectionHandle(
         }
     }
 }
+
+/**
+ * Noi vung chon nhieu dong thanh MOT dong cho nut "copy 1 dòng".
+ *
+ * Cho dau cach vao cho xuong dong la SAI khi dong do bi be chi vi het be ngang:
+ * ghostty (va cac app tu ve nhu herdr/Claude Code) cat giua chung mot tu, noi
+ * lai co dau cach thi duong dan gay doi, lenh dan ra khong chay.
+ *
+ * Khong co co bao "dong nay bi be do het cho" trong chuoi da lay ra, nen dung
+ * hinh hoc: dong nao trai kin [cols] o thi la bi be do het be ngang -> noi
+ * DINH LIEN; dong ngan hon la xuong dong that -> noi bang mot dau cach.
+ * Dong ket thuc bang dau cach da bi cat duoi (trim) nen do rong < cols, tu dong
+ * roi vao nhanh "mot dau cach" — dung y nghia goc.
+ */
+internal fun joinSelectionLines(raw: String, cols: Int): String {
+    val builder = StringBuilder(raw.length)
+    var glueNext = false
+    for (line in raw.split('\n')) {
+        val body = line.trim()
+        if (body.isEmpty()) {
+            // Dong trong la ngat that, khong bao gio dinh lien qua no.
+            glueNext = false
+            continue
+        }
+        if (builder.isNotEmpty() && !glueNext) builder.append(' ')
+        builder.append(body)
+        glueNext = cols > 0 && terminalDisplayWidth(line.trimEnd()) >= cols
+    }
+    return builder.toString()
+}
+
+/** Do rong theo O TERMINAL, khong phai so ky tu: chu rong an 2 o, dau to hop an 0. */
+internal fun terminalDisplayWidth(text: String): Int {
+    var width = 0
+    var i = 0
+    while (i < text.length) {
+        val cp = text.codePointAt(i)
+        i += Character.charCount(cp)
+        width += when {
+            isZeroWidthCodePoint(cp) -> 0
+            isWideCodePoint(cp) -> 2
+            else -> 1
+        }
+    }
+    return width
+}
+
+private fun isZeroWidthCodePoint(cp: Int): Boolean = when (Character.getType(cp).toByte()) {
+    Character.NON_SPACING_MARK,
+    Character.ENCLOSING_MARK,
+    Character.COMBINING_SPACING_MARK,
+    Character.FORMAT,
+    -> true
+    else -> false
+}
+
+private fun isWideCodePoint(cp: Int): Boolean =
+    (cp in 0x1100..0x115F) ||
+        (cp in 0x2E80..0x303E) ||
+        (cp in 0x3041..0x33FF) ||
+        (cp in 0x3400..0x4DBF) ||
+        (cp in 0x4E00..0x9FFF) ||
+        (cp in 0xA000..0xA4CF) ||
+        (cp in 0xAC00..0xD7A3) ||
+        (cp in 0xF900..0xFAFF) ||
+        (cp in 0xFE30..0xFE6F) ||
+        (cp in 0xFF00..0xFF60) ||
+        (cp in 0xFFE0..0xFFE6) ||
+        (cp in 0x1F300..0x1F64F) ||
+        (cp in 0x1F900..0x1F9FF) ||
+        (cp in 0x20000..0x3FFFD)
