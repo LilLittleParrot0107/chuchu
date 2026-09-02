@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.height
@@ -335,8 +336,13 @@ internal fun QueueComposer(
     val type = ChuTypography.current
     val canSend = agent != null && value.isNotBlank() && !sending
 
+    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+    // Man hep: bo "@ten-agent" di, o nhap moi la thu can cho. Agent dang nhan
+    // da hien ro o hang AGENTS ngay tren, khong can nhac lai. Man rong (may gap
+    // mo ra) thi con cho, hien lai.
+    val wide = maxWidth >= 600.dp
     Row(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxWidth()
             .background(colors.surface)
             .padding(horizontal = 10.dp, vertical = 6.dp),
@@ -352,7 +358,7 @@ internal fun QueueComposer(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            agent?.let {
+            if (wide) agent?.let {
                 ChuText(
                     "@${it.name}",
                     style = type.label,
@@ -416,5 +422,6 @@ internal fun QueueComposer(
                 },
             )
         }
+    }
     }
 }

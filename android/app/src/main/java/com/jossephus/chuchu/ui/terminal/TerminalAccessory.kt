@@ -197,7 +197,7 @@ object TerminalAccessoryLayoutStore {
         AccessoryKeyItem("queue", "⚡", AccessoryAction.OpenQueue, "hàng đợi queue"),
         AccessoryKeyItem("files", "kohi", AccessoryAction.OpenFiles, "web portal / file"),
         AccessoryKeyItem("settings", "⚙", AccessoryAction.OpenSettings, "cài đặt"),
-        AccessoryKeyItem("attach", "📎", AccessoryAction.AttachFile, "gửi ảnh/file lên máy"),
+        AccessoryKeyItem("attach", "⊕", AccessoryAction.AttachFile, "gửi ảnh/file lên máy"),
         AccessoryKeyItem("tab", "Tab", AccessoryAction.SendSpecialKey(TerminalSpecialKey.Tab)),
         AccessoryKeyItem("enter", TerminalSpecialKey.Enter.label, AccessoryAction.SendSpecialKey(TerminalSpecialKey.Enter)),
         AccessoryKeyItem("space", "Space", AccessoryAction.SendText(" ")),
