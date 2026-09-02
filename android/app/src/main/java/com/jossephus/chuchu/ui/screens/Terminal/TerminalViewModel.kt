@@ -728,10 +728,16 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
             .any { it.substringBefore('\t') == name }
 
     suspend fun beginUpload(fileName: String, dir: String? = null) {
-        val tabId = activeTabId.value ?: return
-        val current = _fileBrowserStateByTab.value[tabId] ?: return
-        val targetPath = (dir ?: current.currentPath).trimEnd('/') + "/" + fileName
-        sessionRepository.sftpOpenWrite(tabId, targetPath)
+        // KHONG duoc `return` im lang o day. Truoc 3/9 ham nay bo cuoc khi tab
+        // Files chua tung mo (map trang thai chua co muc cho tab do) — bam ⊕ tu
+        // terminal la roi vao dung canh do: khong mo file nao, roi ghi chunk moi
+        // hong, va thong bao hien ra la LOI CU con sot trong session. Nem loi
+        // that o day de biet duong ma sua.
+        val tabId = activeTabId.value
+            ?: error("No active session to upload into")
+        val base = dir ?: _fileBrowserStateByTab.value[tabId]?.currentPath
+            ?: error("No target directory on the host — open the Files tab once, then retry")
+        sessionRepository.sftpOpenWrite(tabId, base.trimEnd('/') + "/" + fileName)
     }
 
     suspend fun writeUploadChunk(data: ByteArray) {
