@@ -87,6 +87,8 @@ class NativeSshBridge {
 
     external fun nativeSftpReadFile(handle: Long, path: String, maxBytes: Int): ByteArray?
 
+    external fun nativeSftpMkdir(handle: Long, path: String): Boolean
+
     external fun nativeSftpDeleteFile(handle: Long, path: String): Boolean
 
     external fun nativeSftpDeleteDirectory(handle: Long, path: String): Boolean

@@ -361,6 +361,17 @@ class NativeSshService(
             )
     }
 
+    /** Tao thu muc; tra false neu khong tao duoc (ke ca khi no da co san). */
+    fun sftpMkdir(path: String): Boolean {
+        check(handle != 0L) { "Not connected" }
+        if (!bridge.nativeSftpInit(handle)) {
+            throw IllegalStateException(
+                bridge.nativeGetLastError(handle) ?: "Native SFTP init failed"
+            )
+        }
+        return bridge.nativeSftpMkdir(handle, path)
+    }
+
     fun sftpDeleteFile(path: String) {
         check(handle != 0L) { "Not connected" }
         if (!bridge.nativeSftpInit(handle)) {

@@ -1563,6 +1563,35 @@ export fn Java_com_jossephus_chuchu_service_ssh_NativeSshBridge_nativeSftpDelete
     }
 }
 
+export fn Java_com_jossephus_chuchu_service_ssh_NativeSshBridge_nativeSftpMkdir(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong, path: c.jstring) callconv(.c) c.jboolean {
+    _ = thiz;
+    const session = sessionFromHandle(handle) orelse return c.JNI_FALSE;
+    const sftp = ensureSftp(session) orelse return c.JNI_FALSE;
+    const path_bytes = jniDupString(env, path) orelse return c.JNI_FALSE;
+    defer allocator.free(path_bytes);
+    const path_z = dupSentinel(path_bytes) orelse return c.JNI_FALSE;
+    defer allocator.free(path_z);
+    var idle_since_ms = nowMs();
+    while (true) {
+        // 0o755: thu muc nhan file upload, chu khong phai cho nguoi khac ghi vao.
+        const rc = c.libssh2_sftp_mkdir_ex(sftp, path_z.ptr, @intCast(path_z.len), 0o755);
+        if (rc == 0) return c.JNI_TRUE;
+        if (rc == c.LIBSSH2_ERROR_EAGAIN) {
+            switch (awaitSftpProgress(session, &idle_since_ms)) {
+                .retry => continue,
+                .no_socket, .stalled => {
+                    setError(session, "SFTP mkdir stalled (im lang qua {d}ms)", .{sftp_idle_limit_ms});
+                    return c.JNI_FALSE;
+                },
+            }
+        }
+        // Thu muc da ton tai cung roi vao day — nguoi goi coi that bai la
+        // "khong tao duoc", roi cu upload tiep; co san thi upload van chay.
+        setLibssh2Error(session, "SFTP mkdir failed", @intCast(rc));
+        return c.JNI_FALSE;
+    }
+}
+
 fn sftpOpenFile(session: *NativeSshSession, sftp: *c.LIBSSH2_SFTP, path_z: [:0]u8, flags: c_ulong, mode: c_long) ?*c.LIBSSH2_SFTP_HANDLE {
     while (true) {
         const file = c.libssh2_sftp_open(sftp, path_z.ptr, flags, mode);

@@ -612,10 +612,31 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
         return pwd
     }
 
-    suspend fun beginUpload(fileName: String) {
+    /**
+     * `~/inbox` — mot cho duy nhat cho file gui tu dien thoai, tao san neu chua co.
+     *
+     * Nut dinh kem tren accessory bar do vao day chu khong do thang ra thu muc
+     * dang dung: anh khong vai ra home, va den luc don thi xoa mot cho la xong
+     * (user chot 2/9). Tab Files van upload vao dung cho dang duyet — o do nguoi
+     * dung da tu chon roi.
+     */
+    suspend fun ensureInboxDir(): String? {
+        val tabId = activeTabId.value ?: return null
+        val home = resolveRealpath(tabId, "~")?.takeIf { it.isNotBlank() }
+            ?: fileHomeByTab[tabId]
+            ?: ensureUploadDir()
+            ?: return null
+        val inbox = home.trimEnd('/') + "/inbox"
+        // Co san thi mkdir bao that bai — ke, upload van chay. Chi that su hong
+        // khi khong tao duoc VA khong co san, luc do upload se bao loi ro rang.
+        runCatching { sessionRepository.sftpMkdir(tabId, inbox) }
+        return inbox
+    }
+
+    suspend fun beginUpload(fileName: String, dir: String? = null) {
         val tabId = activeTabId.value ?: return
         val current = _fileBrowserStateByTab.value[tabId] ?: return
-        val targetPath = current.currentPath.trimEnd('/') + "/" + fileName
+        val targetPath = (dir ?: current.currentPath).trimEnd('/') + "/" + fileName
         sessionRepository.sftpOpenWrite(tabId, targetPath)
     }
 

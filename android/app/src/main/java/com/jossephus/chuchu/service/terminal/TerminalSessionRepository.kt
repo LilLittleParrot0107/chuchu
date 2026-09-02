@@ -441,6 +441,9 @@ class TerminalSessionRepository private constructor(application: Application) {
     suspend fun sftpReadFile(tabId: String, path: String, maxBytes: Int): ByteArray =
         sftpEngineForTab(tabId)?.sftpReadFile(path, maxBytes) ?: ByteArray(0)
 
+    suspend fun sftpMkdir(tabId: String, path: String): Boolean =
+        sftpEngineForTab(tabId)?.sftpMkdir(path) ?: false
+
     suspend fun sftpDelete(tabId: String, path: String, isDirectory: Boolean) {
         sftpEngineForTab(tabId)?.sftpDelete(path, isDirectory)
     }

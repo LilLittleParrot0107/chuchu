@@ -984,17 +984,26 @@ fun TerminalScreen(
                     }
 
 
+                    // Nut ⊕ tren accessory bar do vao inbox/; nut import trong tab
+                    // Files do vao thu muc dang duyet.
+                    var attachToInbox by remember { mutableStateOf(false) }
+
                     val importFileLauncher =
                         rememberLauncherForActivityResult(
                             contract = ActivityResultContracts.GetMultipleContents()
                         ) { uris: List<Uri> ->
                             if (uris.isEmpty()) return@rememberLauncherForActivityResult
+                            val toInbox = attachToInbox
+                            attachToInbox = false
                             scope.launch(Dispatchers.IO) {
                                 var success = 0
                                 var failed = 0
                                 var lastError: String? = null
                                 val total = uris.size
-                                val remoteDir = (vm.ensureUploadDir() ?: fileBrowserState.currentPath).trimEnd('/')
+                                val remoteDir = when {
+                                    toInbox -> vm.ensureInboxDir()
+                                    else -> vm.ensureUploadDir()
+                                }?.trimEnd('/') ?: fileBrowserState.currentPath.trimEnd('/')
                                 val uploadedPaths = mutableListOf<String>()
                                 uris.forEachIndexed { index, uri ->
                                     val fileName =
@@ -1024,7 +1033,7 @@ fun TerminalScreen(
                                             context.contentResolver.openInputStream(uri)
                                                 ?: throw IllegalStateException("Cannot open file")
                                         stream.use { input ->
-                                            vm.beginUpload(fileName)
+                                            vm.beginUpload(fileName, remoteDir)
                                             vm.setUploadProgress(
                                                 UploadProgress(
                                                     fileName = fileName,
@@ -1110,6 +1119,7 @@ fun TerminalScreen(
                             }
                             is AccessoryAction.AttachFile -> {
                                 if (filesSupported) {
+                                    attachToInbox = true
                                     importFileLauncher.launch("*/*")
                                 } else {
                                     showLocalShellFilesUnsupported()

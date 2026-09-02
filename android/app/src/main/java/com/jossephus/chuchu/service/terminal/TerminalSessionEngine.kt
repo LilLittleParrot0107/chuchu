@@ -515,6 +515,9 @@ class TerminalSessionEngine(
     suspend fun sftpReadFile(path: String, maxBytes: Int): ByteArray =
         withContext(dispatcher) { nativeSsh.sftpReadFile(path, maxBytes) }
 
+    suspend fun sftpMkdir(path: String): Boolean =
+        withContext(dispatcher) { nativeSsh.sftpMkdir(path) }
+
     suspend fun sftpDelete(path: String, isDirectory: Boolean) =
         withContext(dispatcher) {
             if (isDirectory) nativeSsh.sftpDeleteDirectory(path) else nativeSsh.sftpDeleteFile(path)
