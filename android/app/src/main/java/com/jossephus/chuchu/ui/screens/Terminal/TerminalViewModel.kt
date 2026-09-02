@@ -622,14 +622,22 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
      */
     suspend fun ensureInboxDir(): String? {
         val tabId = activeTabId.value ?: return null
-        val home = resolveRealpath(tabId, "~")?.takeIf { it.isNotBlank() }
-            ?: fileHomeByTab[tabId]
+        // "." la thu muc mo dau cua phien SFTP, tuc home. TUYET DOI khong hoi
+        // realpath("~"): SFTP khong no dau ngã, sshd 9.x chuan hoa tinh bo va
+        // tra ve "/home/a/~" — mkdir vao do hong, keo sap ca duong upload (2/9).
+        val home = fileHomeByTab[tabId]
+            ?: resolveRealpath(tabId, ".")?.takeIf { it.isNotBlank() }
             ?: ensureUploadDir()
             ?: return null
         val inbox = home.trimEnd('/') + "/inbox"
-        // Co san thi mkdir bao that bai — ke, upload van chay. Chi that su hong
-        // khi khong tao duoc VA khong co san, luc do upload se bao loi ro rang.
-        runCatching { sessionRepository.sftpMkdir(tabId, inbox) }
+        val made = runCatching { sessionRepository.sftpMkdir(tabId, inbox) }.getOrDefault(false)
+        if (!made) {
+            // mkdir that bai thuong chi vi thu muc da co — liet ke de biet chac.
+            val usable = runCatching { sessionRepository.sftpListDirectory(tabId, inbox) }.isSuccess
+            // Van khong dung duoc thi do vao home: file cua user khong duoc phep
+            // mat chi vi mot thu muc khong tao noi.
+            if (!usable) return home
+        }
         return inbox
     }
 
