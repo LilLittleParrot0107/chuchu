@@ -13,6 +13,7 @@ import com.jossephus.chuchu.data.model.machine.derive
 import com.jossephus.chuchu.data.repository.SettingsRepository
 import com.jossephus.chuchu.ui.screens.Queue.QueueClient
 import com.jossephus.chuchu.ui.screens.Files.MachineUiState
+import com.jossephus.chuchu.ui.screens.Files.pickRemoteHome
 import com.jossephus.chuchu.ui.screens.Files.FilesSegment
 import com.jossephus.chuchu.data.repository.SshKeyRepository
 import com.jossephus.chuchu.model.HostProfile
@@ -692,24 +693,39 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
      */
     suspend fun ensureInboxDir(): String? {
         val tabId = activeTabId.value ?: return null
-        // "." la thu muc mo dau cua phien SFTP, tuc home. TUYET DOI khong hoi
-        // realpath("~"): SFTP khong no dau ngã, sshd 9.x chuan hoa tinh bo va
-        // tra ve "/home/a/~" — mkdir vao do hong, keo sap ca duong upload (2/9).
-        val home = fileHomeByTab[tabId]
-            ?: resolveRealpath(tabId, ".")?.takeIf { it.isNotBlank() }
-            ?: ensureUploadDir()
-            ?: return null
+        // Thu muc home cua phien SFTP. Ba nguon, va CHI nhan cai nao that su la
+        // home: "/" khong bao gio la home cua nguoi dung, ma no chui vao day rat
+        // de — sftpRealpath tra "/" khi khong co engine, con fileHomeByTab thi
+        // cache lai "/" neu tab Files mo luc phien chua ket noi xong. Nhan "/"
+        // la di tao "/inbox" -> mkdir bi tu choi -> upload mo file "/inbox/..."
+        // -> "SFTP open ... protocol error". Dung bug user gap 3/9.
+        // KHONG hoi realpath("~"): SFTP khong no dau ngã, sshd 9.x tra "/home/a/~".
+        val home = pickRemoteHome(
+            fileHomeByTab[tabId],
+            resolveRealpath(tabId, "."),
+            currentSessionPwd(tabId),
+        ) ?: return null
+
         val inbox = home.trimEnd('/') + "/inbox"
+        if (sftpDirExists(tabId, home, "inbox")) return inbox
         val made = runCatching { sessionRepository.sftpMkdir(tabId, inbox) }.getOrDefault(false)
-        if (!made) {
-            // mkdir that bai thuong chi vi thu muc da co — liet ke de biet chac.
-            val usable = runCatching { sessionRepository.sftpListDirectory(tabId, inbox) }.isSuccess
-            // Van khong dung duoc thi do vao home: file cua user khong duoc phep
-            // mat chi vi mot thu muc khong tao noi.
-            if (!usable) return home
-        }
-        return inbox
+        if (made || sftpDirExists(tabId, home, "inbox")) return inbox
+        // Khong tao duoc that: do vao home. File cua user khong duoc phep mat
+        // chi vi mot thu muc khong tao noi.
+        return home
     }
+
+    /**
+     * Thu muc [name] co nam trong [parent] khong.
+     *
+     * Phai liet ke THU MUC CHA chu khong liet ke chinh no: `sftpListDirectory`
+     * nuot loi va tra ve danh sach RONG, nen "liet ke duoc" khong chung minh
+     * duoc gi — mot thu muc khong ton tai cung tra ve rong y het.
+     */
+    private suspend fun sftpDirExists(tabId: String, parent: String, name: String): Boolean =
+        runCatching { sessionRepository.sftpListDirectory(tabId, parent) }
+            .getOrDefault(emptyList())
+            .any { it.substringBefore('\t') == name }
 
     suspend fun beginUpload(fileName: String, dir: String? = null) {
         val tabId = activeTabId.value ?: return

@@ -95,6 +95,7 @@ import com.jossephus.chuchu.ui.screens.Files.FileBrowserScreen
 import com.jossephus.chuchu.ui.screens.Files.FilesSegment
 import com.jossephus.chuchu.ui.screens.Files.UploadProgress
 import com.jossephus.chuchu.ui.screens.Files.formatFileSize
+import com.jossephus.chuchu.ui.screens.Files.pickRemoteHome
 import com.jossephus.chuchu.ui.screens.Files.shellQuotePath
 import com.jossephus.chuchu.ui.screens.Terminal.TerminalTabMode
 import com.jossephus.chuchu.ui.terminal.AccessoryAction
@@ -1010,10 +1011,12 @@ fun TerminalScreen(
                                 var failed = 0
                                 var lastError: String? = null
                                 val total = uris.size
-                                val remoteDir = when {
-                                    toInbox -> vm.ensureInboxDir()
-                                    else -> vm.ensureUploadDir()
-                                }?.trimEnd('/') ?: fileBrowserState.currentPath.trimEnd('/')
+                                // Khong bao gio de dich upload roi ve "/": mo file o goc
+                                // chac chan bi tu choi, va thong bao loi thi mu mit.
+                                val remoteDir = pickRemoteHome(
+                                    if (toInbox) vm.ensureInboxDir() else vm.ensureUploadDir(),
+                                    fileBrowserState.currentPath,
+                                )
                                 val uploadedPaths = mutableListOf<String>()
                                 uris.forEachIndexed { index, uri ->
                                     val fileName =
@@ -1039,6 +1042,12 @@ fun TerminalScreen(
                                                 else 0L
                                             } ?: 0L
                                     try {
+                                        if (remoteDir == null) {
+                                            throw IllegalStateException(
+                                                "Could not work out where to put the file on the host — " +
+                                                    "open the Files tab once, then try again"
+                                            )
+                                        }
                                         val stream =
                                             context.contentResolver.openInputStream(uri)
                                                 ?: throw IllegalStateException("Cannot open file")

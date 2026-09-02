@@ -82,3 +82,17 @@ data class MachineUiState(
     val readout: com.jossephus.chuchu.data.model.machine.MachineReadout? = null,
     val error: String? = null,
 )
+
+/**
+ * Chon thu muc home that su trong cac nguon co the co.
+ *
+ * Loai "/" va chuoi rong: goc KHONG BAO GIO la home cua nguoi dung, ma no chui
+ * vao rat de — `sftpRealpath` tra "/" khi khong co engine, va cache home cua tab
+ * cung giu "/" neu tab Files mo luc phien chua ket noi xong. Nhan "/" la di tao
+ * "/inbox", mkdir bi tu choi, roi upload chet voi "SFTP open protocol error"
+ * (bug user gap 3/9/2026).
+ */
+fun pickRemoteHome(vararg candidates: String?): String? =
+    candidates.asSequence()
+        .mapNotNull { it?.trim()?.trimEnd('/')?.takeIf { p -> p.isNotEmpty() } }
+        .firstOrNull()
