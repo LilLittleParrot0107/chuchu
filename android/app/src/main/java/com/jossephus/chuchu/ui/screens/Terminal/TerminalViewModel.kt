@@ -591,6 +591,27 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
         refreshJob.invokeOnCompletion { fileBrowserRefreshJobs.remove(tabId, refreshJob) }
     }
 
+    /**
+     * Thu muc nhan file upload.
+     *
+     * Bam nut dinh kem tu accessory bar thi tab Files co the chua mo lan nao —
+     * luc do currentPath van la "/" mac dinh, upload thang vao goc la hong.
+     * Giai quyet mot lan o day: chua phan giai thi lay pwd cua phien.
+     */
+    suspend fun ensureUploadDir(): String? {
+        val tabId = activeTabId.value ?: return null
+        val current = _fileBrowserStateByTab.value[tabId]
+        if (current?.resolvedHomePath != null) return current.currentPath
+        val pwd = currentSessionPwd(tabId)
+            ?: resolveRealpath(tabId, ".")
+            ?: resolveRealpath(tabId, "~")
+            ?: return null
+        withContext(Dispatchers.Main) {
+            updateFileBrowserState(tabId) { it.copy(currentPath = pwd, resolvedHomePath = pwd) }
+        }
+        return pwd
+    }
+
     suspend fun beginUpload(fileName: String) {
         val tabId = activeTabId.value ?: return
         val current = _fileBrowserStateByTab.value[tabId] ?: return

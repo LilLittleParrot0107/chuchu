@@ -112,6 +112,9 @@ sealed interface AccessoryAction {
 
     data object OpenFiles : AccessoryAction
 
+    /** Mo picker anh/file cua may roi upload thang vao thu muc cua phien. */
+    data object AttachFile : AccessoryAction
+
     data object OpenSettings : AccessoryAction
 }
 
@@ -177,6 +180,7 @@ object TerminalAccessoryDispatcher {
         )
 
         is AccessoryAction.SummonKeyboard,
+        is AccessoryAction.AttachFile,
         is AccessoryAction.OpenComposeBox,
         is AccessoryAction.OpenQueue,
         is AccessoryAction.OpenFiles,
@@ -193,6 +197,7 @@ object TerminalAccessoryLayoutStore {
         AccessoryKeyItem("queue", "⚡", AccessoryAction.OpenQueue, "hàng đợi queue"),
         AccessoryKeyItem("files", "kohi", AccessoryAction.OpenFiles, "web portal / file"),
         AccessoryKeyItem("settings", "⚙", AccessoryAction.OpenSettings, "cài đặt"),
+        AccessoryKeyItem("attach", "📎", AccessoryAction.AttachFile, "gửi ảnh/file lên máy"),
         AccessoryKeyItem("tab", "Tab", AccessoryAction.SendSpecialKey(TerminalSpecialKey.Tab)),
         AccessoryKeyItem("enter", TerminalSpecialKey.Enter.label, AccessoryAction.SendSpecialKey(TerminalSpecialKey.Enter)),
         AccessoryKeyItem("space", "Space", AccessoryAction.SendText(" ")),
@@ -262,6 +267,7 @@ object TerminalAccessoryLayoutStore {
         "enter",
         "space",
         "queue",
+        "attach",
     )
 
     fun defaultEntries(): List<ResolvedAccessoryEntry> = resolveSelectedLayout(defaultLayoutIds)

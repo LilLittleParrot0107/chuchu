@@ -984,95 +984,6 @@ fun TerminalScreen(
                     }
 
 
-                    fun dispatchAccessoryAction(action: AccessoryAction) {
-                        when (action) {
-                            is AccessoryAction.OpenQueue -> {
-                                onOpenQueue(null)
-                                return
-                            }
-                            is AccessoryAction.OpenFiles -> {
-                                if (filesSupported) {
-                                    vm.selectConnectionTab(ConnectionTab.Files)
-                                } else {
-                                    showLocalShellFilesUnsupported()
-                                }
-                                return
-                            }
-                            is AccessoryAction.OpenSettings -> {
-                                onOpenSettings()
-                                return
-                            }
-                            is AccessoryAction.OpenComposeBox -> {
-                                showComposeBox = true
-                                return
-                            }
-                            is AccessoryAction.SummonKeyboard -> {
-                                requestInputFocus()
-                                return
-                            }
-                            else -> {}
-                        }
-                        if (
-                            action is AccessoryAction.SendText && chuchuKeys.handleText(action.text)
-                        ) {
-                            return
-                        }
-                        if (chuchuKeys.isPrefixActive) {
-                            chuchuKeys.reset()
-                        }
-                        val currentModifierState = modifierState
-                        val result =
-                            TerminalAccessoryDispatcher.dispatch(action, currentModifierState)
-                        modifierState = result.modifierState
-
-                        if (result.suppressImeInput) {
-                            inputViewRef.value?.armInputSuppression(action.toString())
-                        }
-
-                        result.specialKey?.let { key ->
-                            vm.onSpecialKeyInput(key, currentModifierState.terminalMods())
-                        }
-
-                        result.text?.let { text -> vm.onTextInput(text) }
-
-                        if (result.shouldPaste) {
-                            pasteClipboard()
-                        }
-                    }
-
-                    fun putOnClipboard(text: String, note: String) {
-                        clipboard?.setPrimaryClip(ClipData.newPlainText("terminal selection", text))
-                        Toast.makeText(context, note, Toast.LENGTH_SHORT).show()
-                        selection = null
-                        selectionState = null
-                    }
-
-                    fun copySelection() {
-                        putOnClipboard(selectionState?.text ?: return, "Đã copy")
-                    }
-
-                    /**
-                     * Copy nhưng nối các dòng lại thành một.
-                     *
-                     * Vì sao cần: terminal chỉ rộng ~45 cột, mà thứ hay copy nhất là
-                     * một dòng lệnh dài. Ứng dụng vẽ ra màn hình (Claude Code chẳng
-                     * hạn) tự bẻ dòng bằng ký tự xuống dòng THẬT kèm thụt lề, nên
-                     * trong bộ nhớ terminal nó đã là hai dòng — ghostty không có cách
-                     * nào biết nó vốn là một. Dán ra là lệnh gãy đôi, chạy không được.
-                     *
-                     * Đây là hành động RIÊNG, không phải sửa ngầm nút copy: nối dòng
-                     * đúng cho lệnh nhưng sai cho đoạn code nhiều dòng, nên phải để
-                     * người dùng chọn chứ không tự đoán.
-                     *
-                     * Chỗ nối do [joinSelectionLines] quyết: dòng bị bẻ vì hết bề ngang
-                     * thì dính liền, xuống dòng thật mới thêm một dấu cách.
-                     */
-                    fun copySelectionJoined() {
-                        val state = selectionState ?: return
-                        val raw = state.text ?: return
-                        putOnClipboard(joinSelectionLines(raw, state.cols), "Đã copy (nối dòng)")
-                    }
-
                     val importFileLauncher =
                         rememberLauncherForActivityResult(
                             contract = ActivityResultContracts.GetMultipleContents()
@@ -1083,7 +994,7 @@ fun TerminalScreen(
                                 var failed = 0
                                 var lastError: String? = null
                                 val total = uris.size
-                                val remoteDir = fileBrowserState.currentPath.trimEnd('/')
+                                val remoteDir = (vm.ensureUploadDir() ?: fileBrowserState.currentPath).trimEnd('/')
                                 val uploadedPaths = mutableListOf<String>()
                                 uris.forEachIndexed { index, uri ->
                                     val fileName =
@@ -1178,6 +1089,103 @@ fun TerminalScreen(
                                 }
                             }
                         }
+
+                    fun dispatchAccessoryAction(action: AccessoryAction) {
+                        when (action) {
+                            is AccessoryAction.OpenQueue -> {
+                                onOpenQueue(null)
+                                return
+                            }
+                            is AccessoryAction.OpenFiles -> {
+                                if (filesSupported) {
+                                    vm.selectConnectionTab(ConnectionTab.Files)
+                                } else {
+                                    showLocalShellFilesUnsupported()
+                                }
+                                return
+                            }
+                            is AccessoryAction.OpenSettings -> {
+                                onOpenSettings()
+                                return
+                            }
+                            is AccessoryAction.AttachFile -> {
+                                if (filesSupported) {
+                                    importFileLauncher.launch("*/*")
+                                } else {
+                                    showLocalShellFilesUnsupported()
+                                }
+                                return
+                            }
+                            is AccessoryAction.OpenComposeBox -> {
+                                showComposeBox = true
+                                return
+                            }
+                            is AccessoryAction.SummonKeyboard -> {
+                                requestInputFocus()
+                                return
+                            }
+                            else -> {}
+                        }
+                        if (
+                            action is AccessoryAction.SendText && chuchuKeys.handleText(action.text)
+                        ) {
+                            return
+                        }
+                        if (chuchuKeys.isPrefixActive) {
+                            chuchuKeys.reset()
+                        }
+                        val currentModifierState = modifierState
+                        val result =
+                            TerminalAccessoryDispatcher.dispatch(action, currentModifierState)
+                        modifierState = result.modifierState
+
+                        if (result.suppressImeInput) {
+                            inputViewRef.value?.armInputSuppression(action.toString())
+                        }
+
+                        result.specialKey?.let { key ->
+                            vm.onSpecialKeyInput(key, currentModifierState.terminalMods())
+                        }
+
+                        result.text?.let { text -> vm.onTextInput(text) }
+
+                        if (result.shouldPaste) {
+                            pasteClipboard()
+                        }
+                    }
+
+                    fun putOnClipboard(text: String, note: String) {
+                        clipboard?.setPrimaryClip(ClipData.newPlainText("terminal selection", text))
+                        Toast.makeText(context, note, Toast.LENGTH_SHORT).show()
+                        selection = null
+                        selectionState = null
+                    }
+
+                    fun copySelection() {
+                        putOnClipboard(selectionState?.text ?: return, "Đã copy")
+                    }
+
+                    /**
+                     * Copy nhưng nối các dòng lại thành một.
+                     *
+                     * Vì sao cần: terminal chỉ rộng ~45 cột, mà thứ hay copy nhất là
+                     * một dòng lệnh dài. Ứng dụng vẽ ra màn hình (Claude Code chẳng
+                     * hạn) tự bẻ dòng bằng ký tự xuống dòng THẬT kèm thụt lề, nên
+                     * trong bộ nhớ terminal nó đã là hai dòng — ghostty không có cách
+                     * nào biết nó vốn là một. Dán ra là lệnh gãy đôi, chạy không được.
+                     *
+                     * Đây là hành động RIÊNG, không phải sửa ngầm nút copy: nối dòng
+                     * đúng cho lệnh nhưng sai cho đoạn code nhiều dòng, nên phải để
+                     * người dùng chọn chứ không tự đoán.
+                     *
+                     * Chỗ nối do [joinSelectionLines] quyết: dòng bị bẻ vì hết bề ngang
+                     * thì dính liền, xuống dòng thật mới thêm một dấu cách.
+                     */
+                    fun copySelectionJoined() {
+                        val state = selectionState ?: return
+                        val raw = state.text ?: return
+                        putOnClipboard(joinSelectionLines(raw, state.cols), "Đã copy (nối dòng)")
+                    }
 
                     var pendingDownloadBytes by remember { mutableStateOf<ByteArray?>(null) }
                     var pendingDownloadName by remember { mutableStateOf("download.bin") }
