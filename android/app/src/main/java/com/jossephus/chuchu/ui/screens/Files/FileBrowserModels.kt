@@ -54,3 +54,13 @@ fun formatFileSize(bytes: Long): String {
         else -> "${"%.1f".format(bytes / (1024.0 * 1024.0 * 1024.0))} gb"
     }
 }
+
+/**
+ * Boc dau nhay cho duong dan truoc khi dan vao terminal.
+ *
+ * Ten file tu dien thoai hay co dau cach ("Anh chup man hinh.png") — dan tho vao
+ * shell la gay lam hai doi so. Khong co ky tu kho thi de nguyen cho de doc.
+ */
+fun shellQuotePath(path: String): String =
+    if (path.none { it.isWhitespace() || it in "'\"\\$`&;|<>()*?[]#~!" }) path
+    else "'" + path.replace("'", "'\\''") + "'"

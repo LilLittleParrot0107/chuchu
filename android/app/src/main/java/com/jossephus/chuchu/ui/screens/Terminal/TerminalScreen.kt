@@ -94,6 +94,7 @@ import com.jossephus.chuchu.ui.screens.Files.ConnectionTab
 import com.jossephus.chuchu.ui.screens.Files.FileBrowserScreen
 import com.jossephus.chuchu.ui.screens.Files.UploadProgress
 import com.jossephus.chuchu.ui.screens.Files.formatFileSize
+import com.jossephus.chuchu.ui.screens.Files.shellQuotePath
 import com.jossephus.chuchu.ui.screens.Terminal.TerminalTabMode
 import com.jossephus.chuchu.ui.terminal.AccessoryAction
 import com.jossephus.chuchu.ui.terminal.BuiltinCommand
@@ -1082,6 +1083,8 @@ fun TerminalScreen(
                                 var failed = 0
                                 var lastError: String? = null
                                 val total = uris.size
+                                val remoteDir = fileBrowserState.currentPath.trimEnd('/')
+                                val uploadedPaths = mutableListOf<String>()
                                 uris.forEachIndexed { index, uri ->
                                     val fileName =
                                         context.contentResolver
@@ -1145,6 +1148,7 @@ fun TerminalScreen(
                                             }
                                             vm.finishUpload()
                                         }
+                                        uploadedPaths += "$remoteDir/$fileName"
                                         success++
                                     } catch (e: Exception) {
                                         failed++
@@ -1163,6 +1167,14 @@ fun TerminalScreen(
                                             else -> "Uploaded $success, $failed failed"
                                         }
                                     Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                                    // Dan duong dan vua upload vao pane dang mo: gui anh cho
+                                    // agent xong khoi phai go lai ten file bang phim dien thoai.
+                                    // KHONG tu Enter — nguoi dung con viet cau hoi quanh no.
+                                    if (uploadedPaths.isNotEmpty()) {
+                                        vm.onPasteText(
+                                            uploadedPaths.joinToString(" ") { shellQuotePath(it) } + " "
+                                        )
+                                    }
                                 }
                             }
                         }
