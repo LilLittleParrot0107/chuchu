@@ -8,6 +8,9 @@ import com.jossephus.chuchu.data.repository.SettingsRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import com.jossephus.chuchu.data.model.machine.MachineSnapshot
+import com.jossephus.chuchu.data.model.machine.derive
+import com.jossephus.chuchu.ui.screens.Files.MachineUiState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -42,6 +45,42 @@ class QueueViewModel(
     val ui: StateFlow<QueueUiState> = _ui.asStateFlow()
 
     private val _ambientSummary = MutableStateFlow(QueueAmbientSummary.Empty)
+
+    // ── Dải trạng thái máy trên ô nhập ────────────────────────────────────
+    // Đứng ở Queue là lúc quyết giao việc, nên bốn số cần là RAM/CPU ("máy còn
+    // tải nổi không") và quota 5H/tuần ("còn lượt không") — user chốt 3/9.
+    private val _machine = MutableStateFlow(MachineUiState())
+    val machine: StateFlow<MachineUiState> = _machine.asStateFlow()
+    private var machineJob: Job? = null
+
+    /** Bật khi màn Queue hiện, tắt khi rời — không poll sau lưng người dùng. */
+    fun setMachinePolling(active: Boolean) {
+        if (!active) {
+            machineJob?.cancel(); machineJob = null; return
+        }
+        if (machineJob?.isActive == true) return
+        machineJob = viewModelScope.launch(Dispatchers.IO) {
+            var prev: MachineSnapshot? = null
+            while (isActive) {
+                val c = client()
+                if (c == null) {
+                    _machine.value = MachineUiState(error = "No qsrv address")
+                } else {
+                    when (val r = c.machine()) {
+                        is QueueClient.MachineFetch.Ok -> {
+                            _machine.value = MachineUiState(readout = derive(prev, r.snapshot))
+                            prev = r.snapshot
+                        }
+                        is QueueClient.MachineFetch.Failed ->
+                            // Giữ số cũ để dải còn cái mà hiện; tuổi thật nằm
+                            // trong snapshot.ts nên UI tự làm mờ khi nguội.
+                            _machine.value = _machine.value.copy(error = r.message)
+                    }
+                }
+                delay(MACHINE_POLL_MS)
+            }
+        }
+    }
     val ambientSummary: StateFlow<QueueAmbientSummary> = _ambientSummary.asStateFlow()
 
     private var pollJob: Job? = null
@@ -403,6 +442,8 @@ class QueueViewModel(
     }
 
     companion object {
+        /** 5s — ở Queue người ta liếc chứ không theo dõi; tab MACHINE thì 2s. */
+        private const val MACHINE_POLL_MS = 5_000L
         private const val FOREGROUND_POLL_MS = 2_000L
         private const val MAX_FOREGROUND_BACKOFF_MS = 30_000L
         private const val AMBIENT_BUSY_POLL_MS = 3_500L

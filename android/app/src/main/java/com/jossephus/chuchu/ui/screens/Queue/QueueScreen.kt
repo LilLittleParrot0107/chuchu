@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -42,6 +43,7 @@ import com.jossephus.chuchu.ui.components.KohiFeedbackBand
 import com.jossephus.chuchu.ui.components.KohiNoticeBand
 import com.jossephus.chuchu.ui.components.KohiSectionBand
 import com.jossephus.chuchu.ui.components.ChuText
+import com.jossephus.chuchu.ui.screens.Files.MachineUiState
 import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTypography
 import kotlinx.coroutines.delay
@@ -65,10 +67,18 @@ fun QueueScreen(
     onSaveConfig: (String, String) -> Unit,
     onFetchResponse: (suspend (Int) -> String?)? = null,
     onBack: () -> Unit = {},
+    machine: MachineUiState = MachineUiState(),
+    onMachineVisible: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val colors = ChuColors.current
     val context = LocalContext.current
+
+    // Chỉ hỏi khi màn Queue còn hiện; rời màn là dừng poll.
+    DisposableEffect(Unit) {
+        onMachineVisible(true)
+        onDispose { onMachineVisible(false) }
+    }
 
     var configOpen by remember { mutableStateOf(false) }
     var setupPromptDismissed by remember { mutableStateOf(false) }
@@ -289,6 +299,10 @@ fun QueueScreen(
                     }
                 }
             }
+
+            // Dải máy ghim ngay trên ô nhập: lúc gõ việc mới là lúc cần biết
+            // máy còn tải nổi không và còn quota không (user chốt P2, 3/9).
+            MachineStrip(machine)
 
             QueueComposer(
                 modifier = Modifier.onSizeChanged { composerHeightPx = it.height },
