@@ -5,6 +5,12 @@ enum class ConnectionTab {
     Files,
 }
 
+/** Hai nua cua tab Files: duyet file, va trang thai may. */
+enum class FilesSegment {
+    File,
+    Machine,
+}
+
 enum class FileEntryType {
     Directory,
     File,
@@ -64,3 +70,15 @@ fun formatFileSize(bytes: Long): String {
 fun shellQuotePath(path: String): String =
     if (path.none { it.isWhitespace() || it in "'\"\\$`&;|<>()*?[]#~!" }) path
     else "'" + path.replace("'", "'\\''") + "'"
+
+/**
+ * Trang thai nua MACHINE.
+ *
+ * [readout] giu lai ca khi [error] khac null: mat mang thi van co so cu de nhin,
+ * con tuoi that thi lay tu `readout.snapshot.ts` — khong bao gio ve so nguoi
+ * nhu so song.
+ */
+data class MachineUiState(
+    val readout: com.jossephus.chuchu.data.model.machine.MachineReadout? = null,
+    val error: String? = null,
+)

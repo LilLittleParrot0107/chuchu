@@ -45,6 +45,9 @@ import com.jossephus.chuchu.ui.theme.ChuTypography
 @Composable
 fun FileBrowserScreen(
     state: FileBrowserUiState,
+    segment: FilesSegment,
+    machine: MachineUiState,
+    onSelectSegment: (FilesSegment) -> Unit,
     onGoUp: () -> Unit,
     onRefresh: () -> Unit,
     onSelectSort: (FileSort) -> Unit,
@@ -64,7 +67,9 @@ fun FileBrowserScreen(
     var optionsEntryPath by remember { mutableStateOf<String?>(null) }
 
     BackHandler {
-        if (state.currentPath == "/" || state.currentPath == state.resolvedHomePath) {
+        if (segment == FilesSegment.Machine) {
+            onSelectSegment(FilesSegment.File)
+        } else if (state.currentPath == "/" || state.currentPath == state.resolvedHomePath) {
             onBackToTerminal()
         } else {
             onGoUp()
@@ -93,16 +98,36 @@ fun FileBrowserScreen(
             ) {
                 TerminalIcon(color = colors.success, modifier = Modifier.size(20.dp))
             }
-            ChuTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                label = "",
-                placeholder = "filter...",
-                singleLine = true,
-                showLabel = false,
-                autoFocus = false,
-                modifier = Modifier.weight(1f),
-            )
+            FilesSegment.entries.forEach { seg ->
+                val on = seg == segment
+                ChuButton(
+                    onClick = { onSelectSegment(seg) },
+                    variant = ChuButtonVariant.Ghost,
+                    bracketed = on,
+                    borderColor = colors.accent,
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp),
+                ) {
+                    ChuText(
+                        seg.name.uppercase(),
+                        style = typography.label,
+                        color = if (on) colors.accent else colors.textMuted,
+                    )
+                }
+            }
+            if (segment == FilesSegment.File) {
+                ChuTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    label = "",
+                    placeholder = "filter...",
+                    singleLine = true,
+                    showLabel = false,
+                    autoFocus = false,
+                    modifier = Modifier.weight(1f),
+                )
+            } else {
+                Spacer(modifier = Modifier.weight(1f))
+            }
             ChuButton(
                 onClick = onRefresh,
                 variant = ChuButtonVariant.Ghost,
@@ -116,6 +141,10 @@ fun FileBrowserScreen(
         Spacer(modifier = Modifier.height(8.dp))
 
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            if (segment == FilesSegment.Machine) {
+                MachineView(machine)
+                return@Box
+            }
             when {
                 state.isLoading -> ChuText("Loading...", style = typography.body)
                 state.error != null ->

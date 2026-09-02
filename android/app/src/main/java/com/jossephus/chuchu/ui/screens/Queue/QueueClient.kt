@@ -1,5 +1,7 @@
 package com.jossephus.chuchu.ui.screens.Queue
 
+import com.jossephus.chuchu.data.model.machine.MachineSnapshot
+import com.jossephus.chuchu.data.model.machine.parseMachineSnapshot
 import com.jossephus.chuchu.data.network.normalizeQueueBaseUrl
 import org.json.JSONObject
 import java.io.IOException
@@ -51,6 +53,11 @@ class QueueClient(
         data class Failed(val message: String, val needsAuth: Boolean = false) : Act
     }
 
+    sealed interface MachineFetch {
+        data class Ok(val snapshot: MachineSnapshot) : MachineFetch
+        data class Failed(val message: String, val needsAuth: Boolean = false) : MachineFetch
+    }
+
     sealed interface FetchResponse {
         data class Success(val markdown: String) : FetchResponse
         data class Failed(val message: String) : FetchResponse
@@ -95,6 +102,32 @@ class QueueClient(
                 "Could not read Queue data (${e.javaClass.simpleName}: ${e.localizedMessage ?: "unknown error"})",
             )
         }
+    }
+
+    /**
+     * Trang thai may. Cung duong, cung auth voi hang doi — tab Queue chay duoc
+     * thi tab nay cung chay duoc.
+     */
+    fun machine(): MachineFetch = try {
+        val (code, body) = request("/machine", null)
+        when (code) {
+            HttpURLConnection.HTTP_OK -> MachineFetch.Ok(parseMachineSnapshot(body))
+            HttpURLConnection.HTTP_NOT_FOUND ->
+                MachineFetch.Failed("This qsrv has no /machine yet — update qsrv on the host")
+            HttpURLConnection.HTTP_UNAUTHORIZED ->
+                MachineFetch.Failed("The token is invalid or has changed", needsAuth = true)
+            HttpURLConnection.HTTP_FORBIDDEN ->
+                MachineFetch.Failed("Access denied (403) — open Tailscale and verify the account", needsAuth = true)
+            else -> MachineFetch.Failed("Machine server error ($code)")
+        }
+    } catch (e: SocketTimeoutException) {
+        MachineFetch.Failed("Machine read timed out — check Tailscale")
+    } catch (e: UnknownHostException) {
+        MachineFetch.Failed("Host not found — check Tailscale VPN/DNS")
+    } catch (e: IOException) {
+        MachineFetch.Failed(offlineMessage(e))
+    } catch (e: Exception) {
+        MachineFetch.Failed("Could not read machine state (${e.javaClass.simpleName})")
     }
 
     fun act(op: String, id: Int?, rev: String?): Act {

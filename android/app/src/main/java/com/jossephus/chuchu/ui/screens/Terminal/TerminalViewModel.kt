@@ -7,7 +7,13 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.jossephus.chuchu.data.db.AppDatabase
 import com.jossephus.chuchu.data.repository.HostRepository
+import com.jossephus.chuchu.data.model.machine.MachineReadout
+import com.jossephus.chuchu.data.model.machine.MachineSnapshot
+import com.jossephus.chuchu.data.model.machine.derive
 import com.jossephus.chuchu.data.repository.SettingsRepository
+import com.jossephus.chuchu.ui.screens.Queue.QueueClient
+import com.jossephus.chuchu.ui.screens.Files.MachineUiState
+import com.jossephus.chuchu.ui.screens.Files.FilesSegment
 import com.jossephus.chuchu.data.repository.SshKeyRepository
 import com.jossephus.chuchu.model.HostProfile
 import com.jossephus.chuchu.model.Transport
@@ -35,6 +41,7 @@ import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -57,6 +64,69 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
     private val hostRepository = HostRepository(database.hostProfileDao())
     private val sshKeyRepository = SshKeyRepository(database.sshKeyDao())
     private val settingsRepository = SettingsRepository.getInstance(application)
+
+    // ── Tab Files, nua MACHINE ────────────────────────────────────────────
+    private val _filesSegment = MutableStateFlow(FilesSegment.File)
+    val filesSegment: StateFlow<FilesSegment> = _filesSegment.asStateFlow()
+
+    private val _machineState = MutableStateFlow(MachineUiState())
+    val machineState: StateFlow<MachineUiState> = _machineState.asStateFlow()
+
+    private var machineJob: Job? = null
+
+    fun selectFilesSegment(segment: FilesSegment) {
+        if (_filesSegment.value == segment) return
+        _filesSegment.value = segment
+        setMachinePolling(segment == FilesSegment.Machine)
+    }
+
+    /**
+     * Chi hoi khi nua MACHINE dang hien (va app o foreground — man hinh goi
+     * ham nay khi vong doi doi). Roi tab la dung, khong pha pin.
+     */
+    fun setMachinePolling(active: Boolean) {
+        if (!active) {
+            machineJob?.cancel()
+            machineJob = null
+            return
+        }
+        if (machineJob?.isActive == true) return
+        machineJob = viewModelScope.launch(Dispatchers.IO) {
+            var prev: MachineSnapshot? = null
+            while (isActive) {
+                val client = queueClientOrNull()
+                if (client == null) {
+                    _machineState.value = MachineUiState(
+                        error = "No qsrv address yet — set it in Settings, same as the Queue tab",
+                    )
+                } else {
+                    when (val r = client.machine()) {
+                        is QueueClient.MachineFetch.Ok -> {
+                            // Nhip dau chi co anh chup, chua co hieu -> cpuPct null.
+                            _machineState.value = MachineUiState(
+                                readout = derive(prev, r.snapshot),
+                                error = null,
+                            )
+                            prev = r.snapshot
+                        }
+                        is QueueClient.MachineFetch.Failed -> {
+                            // Giu so cu lai de con cai ma nhin; tuoi that nam
+                            // trong snapshot.ts nen UI tu biet no da nguoi.
+                            _machineState.value = _machineState.value.copy(error = r.message)
+                        }
+                    }
+                }
+                delay(MACHINE_POLL_MS)
+            }
+        }
+    }
+
+    private fun queueClientOrNull(): QueueClient? {
+        val url = settingsRepository.queueUrl.value
+        if (url.isBlank()) return null
+        return QueueClient(url, settingsRepository.queueToken.value)
+    }
+
 
     private sealed class PendingMultiplexerAction(open val spec: TabSpec) {
         data class Open(override val spec: TabSpec) : PendingMultiplexerAction(spec)
@@ -915,6 +985,8 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
     }
 
     companion object {
+        /** 2s — dung nhip nguoi ta nhin, khong nhanh hon vi so cung chi doi tung ay. */
+        private const val MACHINE_POLL_MS = 2_000L
         fun factory(application: Application): ViewModelProvider.Factory =
             object : ViewModelProvider.Factory {
                 override fun <T : ViewModel> create(modelClass: Class<T>): T {

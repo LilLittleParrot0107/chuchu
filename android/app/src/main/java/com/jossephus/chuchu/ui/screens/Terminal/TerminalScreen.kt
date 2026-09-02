@@ -92,6 +92,7 @@ import com.jossephus.chuchu.ui.components.ChuText
 import com.jossephus.chuchu.ui.components.ChuTextField
 import com.jossephus.chuchu.ui.screens.Files.ConnectionTab
 import com.jossephus.chuchu.ui.screens.Files.FileBrowserScreen
+import com.jossephus.chuchu.ui.screens.Files.FilesSegment
 import com.jossephus.chuchu.ui.screens.Files.UploadProgress
 import com.jossephus.chuchu.ui.screens.Files.formatFileSize
 import com.jossephus.chuchu.ui.screens.Files.shellQuotePath
@@ -335,6 +336,15 @@ fun TerminalScreen(
     val selectedTab by vm.selectedTab.collectAsStateWithLifecycle()
     val filesSupported = activeTab?.spec?.transport != Transport.LocalShell
     val fileBrowserState by vm.fileBrowserState.collectAsStateWithLifecycle()
+    val filesSegment by vm.filesSegment.collectAsStateWithLifecycle()
+    val machineState by vm.machineState.collectAsStateWithLifecycle()
+
+    // Chi poll khi dang mo nua MACHINE; roi khoi man hinh la huy hertz luon.
+    DisposableEffect(selectedTab, filesSegment) {
+        val on = selectedTab == ConnectionTab.Files && filesSegment == FilesSegment.Machine
+        vm.setMachinePolling(on)
+        onDispose { vm.setMachinePolling(false) }
+    }
     val hostKeyPrompt by vm.hostKeyPrompt.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -1313,6 +1323,9 @@ fun TerminalScreen(
                         } else if (selectedTab == ConnectionTab.Files && filesSupported) {
                             FileBrowserScreen(
                                 state = fileBrowserState,
+                                segment = filesSegment,
+                                machine = machineState,
+                                onSelectSegment = { vm.selectFilesSegment(it) },
                                 onGoUp = vm::goUpDirectory,
                                 onRefresh = vm::refreshFileBrowser,
                                 onSelectSort = vm::selectFileSort,
