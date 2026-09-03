@@ -70,6 +70,7 @@ fun QueueScreen(
     machine: MachineUiState = MachineUiState(),
     onMachineVisible: (Boolean) -> Unit = {},
     onUsageVisible: (Boolean) -> Unit = {},
+    onRefreshUsage: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val colors = ChuColors.current
@@ -303,7 +304,7 @@ fun QueueScreen(
 
             // Dải máy ghim ngay trên ô nhập: lúc gõ việc mới là lúc cần biết
             // máy còn tải nổi không và còn quota không (user chốt P2, 3/9).
-            MachineStrip(machine, onUsageVisible = onUsageVisible)
+            MachineStrip(machine, onUsageVisible = onUsageVisible, onRefreshUsage = onRefreshUsage)
 
             QueueComposer(
                 modifier = Modifier.onSizeChanged { composerHeightPx = it.height },

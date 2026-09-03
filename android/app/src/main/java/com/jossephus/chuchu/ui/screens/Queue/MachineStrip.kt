@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.jossephus.chuchu.data.model.machine.MachineReadout
 import com.jossephus.chuchu.ui.components.ChuText
 import com.jossephus.chuchu.ui.screens.Files.MachineUiState
@@ -50,6 +51,7 @@ internal fun MachineStrip(
     state: MachineUiState,
     modifier: Modifier = Modifier,
     onUsageVisible: (Boolean) -> Unit = {},
+    onRefreshUsage: () -> Unit = {},
 ) {
     val colors = ChuColors.current
     val type = ChuTypography.current
@@ -76,7 +78,7 @@ internal fun MachineStrip(
 
     Column(modifier = modifier.fillMaxWidth()) {
         AnimatedVisibility(visible = expanded) {
-            MachineStripPages(readout, alpha) { page -> onUsageVisible(page == 1) }
+            MachineStripPages(readout, alpha, onRefreshUsage) { page -> onUsageVisible(page == 1) }
         }
         // Thu gọn thì thôi luôn: không ai nhìn USAGE nữa.
         if (!expanded) LaunchedEffect(Unit) { onUsageVisible(false) }
@@ -132,6 +134,7 @@ private fun Cell(label: String, value: String, valueColor: Color, alpha: Float) 
 private fun MachineStripPages(
     readout: MachineReadout,
     alpha: Float,
+    onRefreshUsage: () -> Unit,
     onPageChange: (Int) -> Unit,
 ) {
     val colors = ChuColors.current
@@ -173,32 +176,49 @@ private fun MachineStripPages(
                 color = colors.textMuted,
                 modifier = Modifier.padding(start = 4.dp),
             )
+            // Trang USAGE có nút làm mới THẤY ĐƯỢC, kèm tuổi của số quota —
+            // trước đây trigger chạy ngầm nên không ai biết nó có ăn hay không.
+            if (pager.currentPage == 1) {
+                val qts = readout.snapshot.claude?.dataTs ?: 0L
+                val qAge = if (qts > 0) System.currentTimeMillis() / 1000 - qts else -1
+                var tapped by remember { mutableStateOf(false) }
+                LaunchedEffect(tapped) { if (tapped) { kotlinx.coroutines.delay(6000); tapped = false } }
+                ChuText(
+                    if (tapped) "  refreshing…" else "  ${quotaAge(qAge)} ⟳",
+                    style = type.labelSmall,
+                    color = colors.accent,
+                    modifier = Modifier
+                        .clickable { tapped = true; onRefreshUsage() }
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                )
+            }
         }
     }
 }
 
 @Composable
 private fun rowStyle() = ChuTypography.current.labelSmall.copy(
-    fontFamily = FontFamily.Monospace, fontFeatureSettings = "tnum")
+    fontFamily = FontFamily.Monospace, fontFeatureSettings = "tnum",
+    fontSize = PANEL_TEXT_SP.sp, lineHeight = (PANEL_TEXT_SP * 1.45f).sp)
 
 @Composable
 private fun MachinePage(readout: MachineReadout, alpha: Float) {
     val colors = ChuColors.current
     val s = readout.snapshot
     BlockBar("CPU", readout.cpuPct?.div(100.0), pct(readout.cpuPct), colors.accentSecondary,
-        tail = s.tempCpu?.let { "$it°C" } ?: "", alpha = alpha)
+        tail = s.tempCpu?.let { "$it°C" } ?: "", alpha = alpha, fontSize = PANEL_BAR_SP, textSize = PANEL_TEXT_SP)
     BlockBar("RAM", s.memPct / 100.0, pct(s.memPct), colors.accent,
-        tail = "${g(s.memUsedKb)}/${g(s.memTotalKb)}G", alpha = alpha)
+        tail = "${g(s.memUsedKb)}/${g(s.memTotalKb)}G", alpha = alpha, fontSize = PANEL_BAR_SP, textSize = PANEL_TEXT_SP)
     s.gpu?.let {
-        BlockBar("GPU", it.util / 100.0, "${it.util}%", colors.success, tail = "${it.temp}°C", alpha = alpha)
+        BlockBar("GPU", it.util / 100.0, "${it.util}%", colors.success, tail = "${it.temp}°C", alpha = alpha, fontSize = PANEL_BAR_SP, textSize = PANEL_TEXT_SP)
         BlockBar("VRA", it.memPct / 100.0, pct(it.memPct), colors.success,
-            tail = "${gMb(it.memUsedMb)}/${gMb(it.memTotalMb)}G", alpha = alpha)
+            tail = "${gMb(it.memUsedMb)}/${gMb(it.memTotalMb)}G", alpha = alpha, fontSize = PANEL_BAR_SP, textSize = PANEL_TEXT_SP)
     }
     BlockBar("DSK", s.diskPct / 100.0, pct(s.diskPct), colors.warning,
-        tail = "${g(s.diskUsedKb)}/${g(s.diskTotalKb)}G", alpha = alpha)
+        tail = "${g(s.diskUsedKb)}/${g(s.diskTotalKb)}G", alpha = alpha, fontSize = PANEL_BAR_SP, textSize = PANEL_TEXT_SP)
     val load = s.load.firstOrNull() ?: 0.0
     BlockBar("LOAD", load / s.ncpu.coerceAtLeast(1), String.format(Locale.US, "%.2f", load),
-        colors.accentSecondary, tail = "${s.ncpu} core", alpha = alpha)
+        colors.accentSecondary, tail = "${s.ncpu} core", alpha = alpha, fontSize = PANEL_BAR_SP, textSize = PANEL_TEXT_SP)
     // Tiến trình không có "phần trăm của cái gì" nên đừng ép vào khuôn bar —
     // bản trước làm thế khiến tên bị cắt còn "clau".
     readout.topRam.take(2).forEach { p ->
@@ -226,11 +246,11 @@ private fun UsagePage(readout: MachineReadout, alpha: Float) {
     // cứu được khi hình vẽ đã nói ngược.
     s.claude?.session?.let {
         BlockBar("5H", it.usedPct / 100.0, "${it.usedPct}%", usedColor(it.usedPct, colors),
-            tail = it.resetsAt?.substringAfter(", ")?.let { t -> "→ $t" } ?: "used", alpha = alpha)
+            tail = it.resetsAt?.substringAfter(", ")?.let { t -> "→ $t" } ?: "used", alpha = alpha, fontSize = PANEL_BAR_SP, textSize = PANEL_TEXT_SP)
     }
     s.claude?.week?.let {
         BlockBar("WK", it.usedPct / 100.0, "${it.usedPct}%", usedColor(it.usedPct, colors),
-            tail = it.resetsAt?.substringBefore(",")?.let { d -> "→ $d" } ?: "used", alpha = alpha)
+            tail = it.resetsAt?.substringBefore(",")?.let { d -> "→ $d" } ?: "used", alpha = alpha, fontSize = PANEL_BAR_SP, textSize = PANEL_TEXT_SP)
     }
     // Mỗi tài khoản MỘT dòng, lấy cửa sổ căng nhất — thứ đáng biết là "con nào
     // sắp cạn", không phải sáu con số. Tên để nguyên, không cắt còn "c1".
@@ -240,12 +260,15 @@ private fun UsagePage(readout: MachineReadout, alpha: Float) {
         val binding = if (a.pctWeek != null && (a.pct5h == null || a.pctWeek <= a.pct5h)) "week" else "5h"
         val label = if (a.id == s.agy?.current) "▸${a.id.removePrefix("acc")}" else a.id.removePrefix("acc")
         BlockBar(label, used / 100.0, "${used.toInt()}%", usedColor(used.toInt(), colors),
-            tail = binding, alpha = alpha)
+            tail = binding, alpha = alpha, fontSize = PANEL_BAR_SP, textSize = PANEL_TEXT_SP)
     }
 }
 
 /** Cao xấp xỉ một hàng BlockBar (chữ 11sp + đệm 2dp). */
-private const val ROW_HEIGHT_DP = 18
+// Chữ 13sp / bar 11sp / hàng 22dp — to hơn bản đầu ~20% (user chốt 3/9).
+private const val ROW_HEIGHT_DP = 22
+private const val PANEL_TEXT_SP = 13
+private const val PANEL_BAR_SP = 11
 
 private fun machineRowCount(r: MachineReadout): Int =
     4 + (if (r.snapshot.gpu != null) 2 else 0) + r.topRam.take(2).size
@@ -258,6 +281,14 @@ private fun usageRowCount(r: MachineReadout): Int {
         if (it.pct5h != null || it.pctWeek != null) n++
     }
     return maxOf(n, 1)
+}
+
+/** Tuổi của số quota, chữ ngắn để nằm gọn cạnh nút ⟳. */
+private fun quotaAge(s: Long): String = when {
+    s < 0 -> "no data"
+    s < 90 -> "${s}s"
+    s < 5400 -> "${s / 60}m"
+    else -> "${s / 3600}h"
 }
 
 private fun pct(v: Double?): String = v?.let { String.format(Locale.US, "%.0f%%", it) } ?: "—"

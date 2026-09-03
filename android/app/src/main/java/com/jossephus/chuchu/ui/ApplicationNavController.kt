@@ -497,6 +497,7 @@ private fun QueueDestination(
         machine = sharedQueueVm.machine.collectAsStateWithLifecycle().value,
         onMachineVisible = sharedQueueVm::setMachinePolling,
         onUsageVisible = sharedQueueVm::setQuotaWanted,
+        onRefreshUsage = sharedQueueVm::requestQuotaRefresh,
         onBack = onBack,
     )
 }

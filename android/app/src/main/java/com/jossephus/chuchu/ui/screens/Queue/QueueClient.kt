@@ -108,11 +108,12 @@ class QueueClient(
      * Trang thai may. Cung duong, cung auth voi hang doi — tab Queue chay duoc
      * thi tab nay cung chay duoc.
      */
-    fun machine(withQuota: Boolean = false): MachineFetch = try {
+    fun machine(quota: String? = null): MachineFetch = try {
         // quota=1 chi gui khi nguoi dung dang XEM trang USAGE: server se lam moi
         // cache quota (ton mot tien trinh claude ~5s/380MB), con binh thuong thi
         // chi doc cache co san. User chot 3/9: dung ton tai nguyen khi khong ai nhin.
-        val (code, body) = request(if (withQuota) "/machine?quota=1" else "/machine", null)
+        // null = chi doc cache · "1" = lam moi neu qua han · "force" = lam moi ngay
+        val (code, body) = request(if (quota == null) "/machine" else "/machine?quota=$quota", null)
         when (code) {
             HttpURLConnection.HTTP_OK -> MachineFetch.Ok(parseMachineSnapshot(body))
             HttpURLConnection.HTTP_NOT_FOUND ->

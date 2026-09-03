@@ -78,6 +78,7 @@ fun BlockBar(
     valueWidth: Int = 46,
     tailWidth: Int = 92,
     fontSize: Int = 9,
+    textSize: Int = 11,
 ) {
     val colors = ChuColors.current
     val type = ChuTypography.current
@@ -85,6 +86,8 @@ fun BlockBar(
     val textStyle = type.labelSmall.copy(
         fontFamily = FontFamily.Monospace,
         fontFeatureSettings = "tnum",
+        fontSize = textSize.sp,
+        lineHeight = (textSize * 1.45f).sp,
     )
 
     Row(

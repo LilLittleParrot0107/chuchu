@@ -58,6 +58,15 @@ class QueueViewModel(
 
     fun setQuotaWanted(wanted: Boolean) { quotaWanted = wanted }
 
+    /**
+     * Nút ⟳ trên trang USAGE: bắn một phát `quota=force` ngay, không đợi nhịp
+     * poll và không đợi TTL 10 phút của script. Bỏ luôn phản hồi — số mới sẽ
+     * theo nhịp poll kế tiếp về, cái cần ở đây chỉ là ĐÁ cho server làm mới.
+     */
+    fun requestQuotaRefresh() {
+        viewModelScope.launch(Dispatchers.IO) { client()?.machine("force") }
+    }
+
     /** Bật khi màn Queue hiện, tắt khi rời — không poll sau lưng người dùng. */
     fun setMachinePolling(active: Boolean) {
         if (!active) {
@@ -71,7 +80,7 @@ class QueueViewModel(
                 if (c == null) {
                     _machine.value = MachineUiState(error = "No qsrv address")
                 } else {
-                    when (val r = c.machine(quotaWanted)) {
+                    when (val r = c.machine(if (quotaWanted) "1" else null)) {
                         is QueueClient.MachineFetch.Ok -> {
                             _machine.value = MachineUiState(readout = derive(prev, r.snapshot))
                             prev = r.snapshot
