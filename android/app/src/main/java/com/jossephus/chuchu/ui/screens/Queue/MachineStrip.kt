@@ -165,22 +165,18 @@ private fun MachineStripPages(
                 if (page == 0) MachinePage(readout, alpha) else UsagePage(readout, alpha)
             }
         }
-        Row(
-            Modifier.fillMaxWidth().padding(bottom = 5.dp),
-            horizontalArrangement = Arrangement.Center,
-        ) {
-            repeat(2) { i ->
-                Box(
-                    Modifier.padding(horizontal = 3.dp).size(5.dp)
-                        .background(if (pager.currentPage == i) colors.accent else colors.border),
-                )
+        // Chấm trang nằm ĐÚNG giữa, nút làm mới ép sát mép phải. Trước đây cả
+        // hai xếp chung một hàng canh giữa nên nút lơ lửng giữa chừng, và mỗi
+        // lần đổi trang nó xuất hiện/biến mất là chấm bị kéo lệch theo.
+        Box(Modifier.fillMaxWidth().padding(bottom = 5.dp)) {
+            Row(Modifier.align(Alignment.Center)) {
+                repeat(2) { i ->
+                    Box(
+                        Modifier.padding(horizontal = 3.dp).size(5.dp)
+                            .background(if (pager.currentPage == i) colors.accent else colors.border),
+                    )
+                }
             }
-            ChuText(
-                if (pager.currentPage == 0) "  MACHINE" else "  USAGE",
-                style = type.labelSmall,
-                color = colors.textMuted,
-                modifier = Modifier.padding(start = 4.dp),
-            )
             // Trang USAGE có nút làm mới THẤY ĐƯỢC, kèm tuổi của số quota —
             // trước đây trigger chạy ngầm nên không ai biết nó có ăn hay không.
             if (pager.currentPage == 1) {
@@ -189,12 +185,13 @@ private fun MachineStripPages(
                 var tapped by remember { mutableStateOf(false) }
                 LaunchedEffect(tapped) { if (tapped) { kotlinx.coroutines.delay(6000); tapped = false } }
                 ChuText(
-                    if (tapped) "  refreshing…" else "  ${quotaAge(qAge)} ⟳",
+                    if (tapped) "refreshing…" else "${quotaAge(qAge)} ⟳",
                     style = type.labelSmall,
                     color = colors.accent,
                     modifier = Modifier
+                        .align(Alignment.CenterEnd)
                         .clickable { tapped = true; onRefreshUsage() }
-                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                        .padding(horizontal = 10.dp, vertical = 2.dp),
                 )
             }
         }
