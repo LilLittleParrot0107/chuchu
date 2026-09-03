@@ -74,6 +74,8 @@ fun BlockBar(
     modifier: Modifier = Modifier,
     tail: String = "",
     alpha: Float = 1f,
+    /** Màu riêng cho NHÃN. Thanh vẫn màu [color]: nhãn nói của ai, thanh nói còn bao nhiêu. */
+    labelColor: Color? = null,
     labelWidth: Int = 38,
     valueWidth: Int = 46,
     tailWidth: Int = 92,
@@ -94,7 +96,7 @@ fun BlockBar(
         modifier = modifier.fillMaxWidth().padding(vertical = 1.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        ChuText(label, style = textStyle, color = colors.textSecondary.copy(alpha = alpha),
+        ChuText(label, style = textStyle, color = (labelColor ?: colors.textSecondary).copy(alpha = alpha),
             maxLines = 1, modifier = Modifier.width(labelWidth.dp))
         BoxWithConstraints(Modifier.weight(1f)) {
             ChuText(

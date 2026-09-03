@@ -210,19 +210,19 @@ private fun MachinePage(readout: MachineReadout, alpha: Float) {
     val colors = ChuColors.current
     val s = readout.snapshot
     BlockBar("CPU", readout.cpuPct?.div(100.0), pct(readout.cpuPct), colors.accentSecondary,
-        tail = s.tempCpu?.let { "$it°C" } ?: "", alpha = alpha, fontSize = PANEL_BAR_SP, textSize = PANEL_TEXT_SP)
+        tail = s.tempCpu?.let { "$it°C" } ?: "", alpha = alpha, labelWidth = PANEL_LABEL_W, fontSize = PANEL_BAR_SP, textSize = PANEL_TEXT_SP)
     BlockBar("RAM", s.memPct / 100.0, pct(s.memPct), colors.accent,
-        tail = "${g(s.memUsedKb)}/${g(s.memTotalKb)}G", alpha = alpha, fontSize = PANEL_BAR_SP, textSize = PANEL_TEXT_SP)
+        tail = "${g(s.memUsedKb)}/${g(s.memTotalKb)}G", alpha = alpha, labelWidth = PANEL_LABEL_W, fontSize = PANEL_BAR_SP, textSize = PANEL_TEXT_SP)
     s.gpu?.let {
-        BlockBar("GPU", it.util / 100.0, "${it.util}%", colors.success, tail = "${it.temp}°C", alpha = alpha, fontSize = PANEL_BAR_SP, textSize = PANEL_TEXT_SP)
+        BlockBar("GPU", it.util / 100.0, "${it.util}%", colors.success, tail = "${it.temp}°C", alpha = alpha, labelWidth = PANEL_LABEL_W, fontSize = PANEL_BAR_SP, textSize = PANEL_TEXT_SP)
         BlockBar("VRA", it.memPct / 100.0, pct(it.memPct), colors.success,
-            tail = "${gMb(it.memUsedMb)}/${gMb(it.memTotalMb)}G", alpha = alpha, fontSize = PANEL_BAR_SP, textSize = PANEL_TEXT_SP)
+            tail = "${gMb(it.memUsedMb)}/${gMb(it.memTotalMb)}G", alpha = alpha, labelWidth = PANEL_LABEL_W, fontSize = PANEL_BAR_SP, textSize = PANEL_TEXT_SP)
     }
     BlockBar("DSK", s.diskPct / 100.0, pct(s.diskPct), colors.warning,
-        tail = "${g(s.diskUsedKb)}/${g(s.diskTotalKb)}G", alpha = alpha, fontSize = PANEL_BAR_SP, textSize = PANEL_TEXT_SP)
+        tail = "${g(s.diskUsedKb)}/${g(s.diskTotalKb)}G", alpha = alpha, labelWidth = PANEL_LABEL_W, fontSize = PANEL_BAR_SP, textSize = PANEL_TEXT_SP)
     val load = s.load.firstOrNull() ?: 0.0
     BlockBar("LOAD", load / s.ncpu.coerceAtLeast(1), String.format(Locale.US, "%.2f", load),
-        colors.accentSecondary, tail = "${s.ncpu} core", alpha = alpha, fontSize = PANEL_BAR_SP, textSize = PANEL_TEXT_SP)
+        colors.accentSecondary, tail = "${s.ncpu} core", alpha = alpha, labelWidth = PANEL_LABEL_W, fontSize = PANEL_BAR_SP, textSize = PANEL_TEXT_SP)
     // Tiến trình không có "phần trăm của cái gì" nên đừng ép vào khuôn bar —
     // bản trước làm thế khiến tên bị cắt còn "clau".
     readout.topRam.take(2).forEach { p ->
@@ -248,23 +248,34 @@ private fun UsagePage(readout: MachineReadout, alpha: Float) {
     // đếm "còn lại" rồi ghi chú ở đuôi — hai thanh dài bằng nhau, cùng màu, mà
     // một cái là tin tốt một cái là báo động (user chỉ ra 3/9). Chú thích không
     // cứu được khi hình vẽ đã nói ngược.
+    // Nhãn mang luôn tên nhà cung cấp — "cl·wk", "agy·2" tự nói nó của ai, nên
+    // không tốn dòng tiêu đề nào (user chốt phương án B, 3/9). Màu NHÃN phân
+    // nhóm, màu THANH vẫn theo mức cạn: hai màu hai việc, không chồng nghĩa.
     s.claude?.session?.let {
-        BlockBar("5H", it.usedPct / 100.0, "${it.usedPct}%", usedColor(it.usedPct, colors),
-            tail = it.resetsAt?.substringAfter(", ")?.let { t -> "→ $t" } ?: "used", alpha = alpha, fontSize = PANEL_BAR_SP, textSize = PANEL_TEXT_SP)
+        BlockBar("cl·5h", it.usedPct / 100.0, "${it.usedPct}%", usedColor(it.usedPct, colors),
+            tail = it.resetsAt?.substringAfter(", ")?.let { t -> "→ $t" } ?: "used",
+            alpha = alpha, labelColor = colors.accent, labelWidth = PANEL_LABEL_W,
+            fontSize = PANEL_BAR_SP, textSize = PANEL_TEXT_SP)
     }
     s.claude?.week?.let {
-        BlockBar("WK", it.usedPct / 100.0, "${it.usedPct}%", usedColor(it.usedPct, colors),
-            tail = it.resetsAt?.substringBefore(",")?.let { d -> "→ $d" } ?: "used", alpha = alpha, fontSize = PANEL_BAR_SP, textSize = PANEL_TEXT_SP)
+        BlockBar("cl·wk", it.usedPct / 100.0, "${it.usedPct}%", usedColor(it.usedPct, colors),
+            tail = it.resetsAt?.substringBefore(",")?.let { d -> "→ $d" } ?: "used",
+            alpha = alpha, labelColor = colors.accent, labelWidth = PANEL_LABEL_W,
+            fontSize = PANEL_BAR_SP, textSize = PANEL_TEXT_SP)
     }
     // Mỗi tài khoản MỘT dòng, lấy cửa sổ căng nhất — thứ đáng biết là "con nào
-    // sắp cạn", không phải sáu con số. Tên để nguyên, không cắt còn "c1".
+    // sắp cạn", không phải sáu con số.
     s.agy?.accounts?.filter { it.configured }?.forEach { a ->
         val remaining = listOfNotNull(a.pct5h, a.pctWeek).minOrNull() ?: return@forEach
         val used = 100.0 - remaining
         val binding = if (a.pctWeek != null && (a.pct5h == null || a.pctWeek <= a.pct5h)) "week" else "5h"
-        val label = if (a.id == s.agy?.current) "▸${a.id.removePrefix("acc")}" else a.id.removePrefix("acc")
-        BlockBar(label, used / 100.0, "${used.toInt()}%", usedColor(used.toInt(), colors),
-            tail = binding, alpha = alpha, fontSize = PANEL_BAR_SP, textSize = PANEL_TEXT_SP)
+        // Đệm một dấu cách cho dòng KHÔNG phải tài khoản đang dùng, để chữ "agy"
+        // của mọi dòng thẳng cột — mũi tên không được đẩy nhãn lệch đi một ô.
+        val mark = if (a.id == s.agy?.current) "▸" else " "
+        BlockBar("${mark}agy·${a.id.removePrefix("acc")}",
+            used / 100.0, "${used.toInt()}%", usedColor(used.toInt(), colors),
+            tail = binding, alpha = alpha, labelColor = colors.success, labelWidth = PANEL_LABEL_W,
+            fontSize = PANEL_BAR_SP, textSize = PANEL_TEXT_SP)
     }
 }
 
@@ -273,6 +284,8 @@ private fun UsagePage(readout: MachineReadout, alpha: Float) {
 private const val ROW_HEIGHT_DP = 22
 private const val PANEL_TEXT_SP = 13
 private const val PANEL_BAR_SP = 11
+/** Đủ cho nhãn dài nhất "▸agy·2" (6 ô monospace ở 13sp). */
+private const val PANEL_LABEL_W = 50
 
 private fun machineRowCount(r: MachineReadout): Int =
     4 + (if (r.snapshot.gpu != null) 2 else 0) + r.topRam.take(2).size
