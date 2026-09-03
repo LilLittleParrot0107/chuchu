@@ -137,6 +137,10 @@ private fun MachineStripPages(
     val colors = ChuColors.current
     val type = ChuTypography.current
     val pager = rememberPagerState(pageCount = { 2 })
+    // Hai trang PHẢI cao bằng nhau, nếu không lướt qua lại là giật (user chốt
+    // 3/9). Lấy theo trang nhiều dòng hơn; trang ngắn hơn thì chừa chỗ trống.
+    val rows = maxOf(machineRowCount(readout), usageRowCount(readout))
+    val pageHeight = (rows * ROW_HEIGHT_DP).dp
 
     // Trang USAGE chỉ được LÀM MỚI khi người dùng trượt tới (user chốt 3/9):
     // đọc cache quota thì gần như miễn phí, nhưng làm mới nó tốn 5s + 380MB
@@ -146,7 +150,7 @@ private fun MachineStripPages(
     Column(Modifier.fillMaxWidth().background(colors.surfaceVariant)) {
         HorizontalPager(
             state = pager,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().height(pageHeight),
             verticalAlignment = Alignment.Top,
         ) { page ->
             Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp)) {
@@ -174,6 +178,10 @@ private fun MachineStripPages(
 }
 
 @Composable
+private fun rowStyle() = ChuTypography.current.labelSmall.copy(
+    fontFamily = FontFamily.Monospace, fontFeatureSettings = "tnum")
+
+@Composable
 private fun MachinePage(readout: MachineReadout, alpha: Float) {
     val colors = ChuColors.current
     val s = readout.snapshot
@@ -191,9 +199,15 @@ private fun MachinePage(readout: MachineReadout, alpha: Float) {
     val load = s.load.firstOrNull() ?: 0.0
     BlockBar("LOAD", load / s.ncpu.coerceAtLeast(1), String.format(Locale.US, "%.2f", load),
         colors.accentSecondary, tail = "${s.ncpu} core", alpha = alpha)
-    readout.topRam.take(2).forEach {
-        BlockBar(it.comm.take(4), null, "${g(it.rssKb)}G", colors.textMuted,
-            tail = "×${it.n}", alpha = alpha)
+    // Tiến trình không có "phần trăm của cái gì" nên đừng ép vào khuôn bar —
+    // bản trước làm thế khiến tên bị cắt còn "clau".
+    readout.topRam.take(2).forEach { p ->
+        Row(Modifier.fillMaxWidth().padding(vertical = 1.dp)) {
+            ChuText(p.comm, style = rowStyle(), color = colors.textSecondary.copy(alpha = alpha),
+                maxLines = 1, modifier = Modifier.weight(1f))
+            ChuText("${g(p.rssKb)}G ×${p.n}", style = rowStyle(),
+                color = colors.textMuted.copy(alpha = alpha), maxLines = 1)
+        }
     }
 }
 
@@ -236,6 +250,23 @@ private fun tone(v: Double, warn: Double, crit: Double, c: com.jossephus.chuchu.
         else -> c.textPrimary
     }
 
+/** Cao xấp xỉ một hàng BlockBar (chữ 11sp + đệm 2dp). */
+private const val ROW_HEIGHT_DP = 18
+
+private fun machineRowCount(r: MachineReadout): Int =
+    4 + (if (r.snapshot.gpu != null) 2 else 0) + r.topRam.take(2).size
+
+private fun usageRowCount(r: MachineReadout): Int {
+    val c = r.snapshot.claude
+    val q = r.snapshot.agy
+    var n = (if (c?.session != null) 1 else 0) + (if (c?.week != null) 1 else 0)
+    q?.accounts?.filter { it.configured }?.forEach {
+        if (it.pct5h != null) n++
+        if (it.pctWeek != null) n++
+    }
+    return maxOf(n, 1)
+}
+
 private fun pct(v: Double?): String = v?.let { String.format(Locale.US, "%.0f%%", it) } ?: "—"
 
 private fun gMb(mb: Long): String = String.format(Locale.US, "%.1f", mb / 1024.0)
@@ -253,5 +284,9 @@ private fun agyColor(remaining: Double, c: com.jossephus.chuchu.ui.theme.ChuColo
     remaining <= 30 -> c.warning
     else -> c.success
 }
-private fun g(kb: Long): String = String.format(Locale.US, "%.1f", kb / 1048576.0)
+/** ≥100 thì bỏ phần thập phân — "95.1/467.7G" vừa khít, "95.1/1024.3G" thì không. */
+private fun g(kb: Long): String {
+    val v = kb / 1048576.0
+    return if (v >= 100) String.format(Locale.US, "%.0f", v) else String.format(Locale.US, "%.1f", v)
+}
 private fun age(s: Long): String = if (s < 3600) "${s / 60}m trước" else "${s / 3600}h trước"

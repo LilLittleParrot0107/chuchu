@@ -19,6 +19,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.jossephus.chuchu.data.model.machine.MachineReadout
+import com.jossephus.chuchu.ui.components.BlockBar
 import com.jossephus.chuchu.ui.components.ChuCard
 import com.jossephus.chuchu.ui.components.ChuText
 import com.jossephus.chuchu.ui.components.KohiSectionBand
@@ -76,17 +77,19 @@ internal fun MachineView(state: MachineUiState, modifier: Modifier = Modifier) {
             }
             ChuCard(modifier = cardModifier()) {
                 Column(Modifier.fillMaxWidth().padding(10.dp)) {
-                    Gauge("CPU", readout.cpuPct, colors.accentSecondary,
-                        tail = s.tempCpu?.let { "$it°C" } ?: "", dim = stale)
-                    Gauge("RAM", s.memPct, colors.accent,
-                        tail = "${gb(s.memUsedKb)}/${gb(s.memTotalKb)}G", dim = stale)
+                    val a = if (stale) 0.45f else 1f
+                    BlockBar("CPU", readout.cpuPct?.div(100.0), pctOf(readout.cpuPct),
+                        colors.accentSecondary, tail = s.tempCpu?.let { "$it°C" } ?: "", alpha = a)
+                    BlockBar("RAM", s.memPct / 100.0, pctOf(s.memPct), colors.accent,
+                        tail = "${gb(s.memUsedKb)}/${gb(s.memTotalKb)}G", alpha = a)
                     s.gpu?.let { g ->
-                        Gauge("GPU", g.util.toDouble(), colors.success, tail = "${g.temp}°C", dim = stale)
-                        Gauge("VRA", g.memPct, colors.success,
-                            tail = "${mb(g.memUsedMb)}/${mb(g.memTotalMb)}G", dim = stale)
+                        BlockBar("GPU", g.util / 100.0, "${g.util}%", colors.success,
+                            tail = "${g.temp}°C", alpha = a)
+                        BlockBar("VRA", g.memPct / 100.0, pctOf(g.memPct), colors.success,
+                            tail = "${mb(g.memUsedMb)}/${mb(g.memTotalMb)}G", alpha = a)
                     }
-                    Gauge("DSK", s.diskPct, colors.warning,
-                        tail = "${gb(s.diskUsedKb)}/${gb(s.diskTotalKb)}G", dim = stale)
+                    BlockBar("DSK", s.diskPct / 100.0, pctOf(s.diskPct), colors.warning,
+                        tail = "${gb(s.diskUsedKb)}/${gb(s.diskTotalKb)}G", alpha = a)
                     Row(Modifier.fillMaxWidth().padding(top = 3.dp)) {
                         ChuText("NET", style = monoStyle(type), color = colors.textSecondary,
                             modifier = Modifier.width(30.dp))
@@ -124,8 +127,14 @@ internal fun MachineView(state: MachineUiState, modifier: Modifier = Modifier) {
                     Column(Modifier.fillMaxWidth().padding(10.dp)) {
                         // Quota Claude la % DA DUNG (nguoc voi agy) — de nguyen
                         // chieu do, doi chieu cho quen thi hai ben lech nghia.
-                        q.session?.let { Gauge("5H", it.usedPct.toDouble(), quotaColor(it.usedPct, colors), tail = "used") }
-                        q.week?.let { Gauge("WK", it.usedPct.toDouble(), quotaColor(it.usedPct, colors), tail = "used") }
+                        q.session?.let {
+                            BlockBar("5H", it.usedPct / 100.0, "${it.usedPct}%",
+                                quotaColor(it.usedPct, colors), tail = it.resetsAt ?: "used")
+                        }
+                        q.week?.let {
+                            BlockBar("WK", it.usedPct / 100.0, "${it.usedPct}%",
+                                quotaColor(it.usedPct, colors), tail = it.resetsAt ?: "used")
+                        }
                     }
                 }
             }
@@ -274,6 +283,9 @@ private fun quotaColor(usedPct: Int, colors: com.jossephus.chuchu.ui.theme.ChuCo
     usedPct >= 70 -> colors.warning
     else -> colors.accent
 }
+
+private fun pctOf(v: Double?): String =
+    v?.let { String.format(Locale.US, "%.0f%%", it) } ?: "—"
 
 private fun gb(kb: Long): String = String.format(Locale.US, "%.1f", kb / 1048576.0)
 private fun mb(mbv: Long): String = String.format(Locale.US, "%.1f", mbv / 1024.0)

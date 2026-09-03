@@ -1,14 +1,19 @@
 package com.jossephus.chuchu.ui.components
 
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -16,19 +21,44 @@ import androidx.compose.ui.unit.sp
 import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTypography
 
-/** Bar dài đúng bấy nhiêu ký tự — cố định để mọi dòng thẳng cột với nhau. */
-const val BLOCK_BAR_CELLS = 12
+/**
+ * Bar bằng ký tự khối, KÉO DÀI HẾT chỗ trống.
+ *
+ * Bản đầu để cố định 12 ô nên trên màn 6.7" nó teo lại giữa một khoảng trống to
+ * (user chỉ ra 3/9, kèm ảnh). Giờ đo bề rộng thật của một ký tự `█` bằng chính
+ * TextStyle sẽ vẽ, rồi lấp đầy chỗ còn lại — bar dài như thanh Dashboard đời
+ * đầu, mà vẫn thẳng cột vì hai cột số bên phải có bề rộng cố định.
+ */
+@Composable
+private fun barStyle(fontSize: Int): TextStyle = ChuTypography.current.labelSmall.copy(
+    fontFamily = FontFamily.Monospace,
+    fontSize = fontSize.sp,
+    letterSpacing = (-0.2).sp,
+)
+
+@Composable
+private fun cellsFor(width: androidx.compose.ui.unit.Dp, style: TextStyle): Int {
+    val measurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    return remember(width, style) {
+        val charPx = measurer.measure("█", style).size.width.toFloat().coerceAtLeast(1f)
+        val availPx = with(density) { width.toPx() }
+        (availPx / charPx).toInt().coerceIn(4, 96)
+    }
+}
+
+@Composable
+private fun blocks(fraction: Double?, cells: Int): String {
+    val filled = ((fraction ?: 0.0).coerceIn(0.0, 1.0) * cells).toInt()
+    return "█".repeat(filled) + "░".repeat((cells - filled).coerceAtLeast(0))
+}
 
 /**
- * Thanh tiến trình bằng ký tự khối, kiểu terminal.
+ * Một hàng: nhãn · thanh · số · đuôi.
  *
- * Vì sao ký tự chứ không phải Box: cả app đọc như một cái terminal, và quan
- * trọng hơn — bar dài CỐ ĐỊNH 12 ô nên mọi dòng thẳng cột tuyệt đối. Bản cũ vẽ
- * bằng Box với `weight(1f)` thì đuôi dài ngắn khác nhau kéo bar co giãn theo,
- * mỗi dòng một chiều dài (user chỉ ra 3/9).
- *
- * Nhãn/giá trị/đuôi đều có bề rộng cố định; đuôi dài quá thì CẮT chứ không bao
- * giờ được phép đẩy bar.
+ * Hai cột phải cố định bề rộng nên mọi thanh bắt đầu và kết thúc cùng toạ độ.
+ * Đuôi quá dài thì CẮT, không bao giờ được phép đẩy thanh — nhưng cột đuôi phải
+ * đủ rộng cho "95.1/467.7G", chỗ bản trước cắt cụt mất chữ G.
  */
 @Composable
 fun BlockBar(
@@ -39,24 +69,18 @@ fun BlockBar(
     modifier: Modifier = Modifier,
     tail: String = "",
     alpha: Float = 1f,
-    labelWidth: Int = 34,
-    valueWidth: Int = 44,
-    tailWidth: Int = 72,
+    labelWidth: Int = 38,
+    valueWidth: Int = 46,
+    tailWidth: Int = 92,
+    fontSize: Int = 9,
 ) {
     val colors = ChuColors.current
     val type = ChuTypography.current
-    // Bar nhỏ hơn chữ một chút cho mảnh (user chốt 3/9) — nó nằm ở cột riêng
-    // nên cỡ chữ khác không làm lệch các cột còn lại.
-    val barStyle = type.labelSmall.copy(
-        fontFamily = FontFamily.Monospace,
-        fontSize = 9.sp,
-        letterSpacing = (-0.3).sp,
-    )
+    val bs = barStyle(fontSize)
     val textStyle = type.labelSmall.copy(
         fontFamily = FontFamily.Monospace,
         fontFeatureSettings = "tnum",
     )
-    val filled = ((fraction ?: 0.0).coerceIn(0.0, 1.0) * BLOCK_BAR_CELLS).toInt()
 
     Row(
         modifier = modifier.fillMaxWidth().padding(vertical = 1.dp),
@@ -64,12 +88,15 @@ fun BlockBar(
     ) {
         ChuText(label, style = textStyle, color = colors.textSecondary.copy(alpha = alpha),
             maxLines = 1, modifier = Modifier.width(labelWidth.dp))
-        ChuText(
-            "█".repeat(filled) + "░".repeat(BLOCK_BAR_CELLS - filled),
-            style = barStyle,
-            color = (if (fraction == null) colors.border else color).copy(alpha = alpha),
-            maxLines = 1,
-        )
+        BoxWithConstraints(Modifier.weight(1f)) {
+            ChuText(
+                blocks(fraction, cellsFor(maxWidth, bs)),
+                style = bs,
+                color = (if (fraction == null) colors.border else color).copy(alpha = alpha),
+                maxLines = 1,
+                softWrap = false,
+            )
+        }
         ChuText(
             value,
             style = textStyle.copy(textAlign = TextAlign.End),
@@ -80,72 +107,60 @@ fun BlockBar(
         if (tail.isNotEmpty()) {
             ChuText(tail, style = textStyle.copy(textAlign = TextAlign.End),
                 color = colors.textMuted.copy(alpha = alpha), maxLines = 1,
-                overflow = TextOverflow.Clip,
+                overflow = TextOverflow.Clip, softWrap = false,
                 modifier = Modifier.padding(start = 4.dp).width(tailWidth.dp))
         }
     }
 }
 
 /**
- * Chỉ phần THANH bằng ký tự khối, không nhãn không số — cho chỗ đã có sẵn
- * hàng nhãn riêng (Dashboard: OptionProgressBar, LendingHealthBar).
- *
- * Cỡ chữ nhỏ hơn thân bài để thanh mảnh (user chốt 3/9: mảnh hơn preview đầu).
+ * Chỉ phần THANH — cho chỗ đã có hàng nhãn riêng (ba thanh Dashboard).
+ * Cũng kéo dài hết bề ngang như thanh Dashboard vốn có.
  */
 @Composable
 fun BlockBarLine(
     fraction: Double?,
     color: Color,
     modifier: Modifier = Modifier,
-    cells: Int = BLOCK_BAR_CELLS,
     alpha: Float = 1f,
     fontSize: Int = 9,
 ) {
     val colors = ChuColors.current
-    val type = ChuTypography.current
-    val filled = ((fraction ?: 0.0).coerceIn(0.0, 1.0) * cells).toInt()
-    ChuText(
-        "█".repeat(filled) + "░".repeat((cells - filled).coerceAtLeast(0)),
-        style = type.labelSmall.copy(
-            fontFamily = FontFamily.Monospace,
-            fontSize = fontSize.sp,
-            letterSpacing = (-0.3).sp,
-        ),
-        color = (if (fraction == null) colors.border else color).copy(alpha = alpha),
-        maxLines = 1,
-        modifier = modifier,
-    )
+    val bs = barStyle(fontSize)
+    BoxWithConstraints(modifier.fillMaxWidth()) {
+        ChuText(
+            blocks(fraction, cellsFor(maxWidth, bs)),
+            style = bs,
+            color = (if (fraction == null) colors.border else color).copy(alpha = alpha),
+            maxLines = 1,
+            softWrap = false,
+        )
+    }
 }
 
 /**
- * Thanh nhiều đoạn bằng ký tự khối — thay CompositionBar vẽ bằng Box.
- * Mỗi đoạn chiếm số ô theo tỉ lệ, đoạn nào có giá trị mà bị làm tròn về 0 thì
- * vẫn được 1 ô: mất hẳn một thành phần khỏi biểu đồ là nói dối.
+ * Thanh nhiều đoạn — thay CompositionBar vẽ bằng Box, cũng dài hết bề ngang.
+ * Đoạn nào có giá trị mà bị làm tròn về 0 ô thì vẫn được 1 ô: mất hẳn một
+ * thành phần khỏi biểu đồ là nói dối về danh mục.
  */
 @Composable
 fun BlockSegmentBar(
     segments: List<Pair<Color, Double>>,
     modifier: Modifier = Modifier,
-    cells: Int = BLOCK_BAR_CELLS,
     fontSize: Int = 9,
 ) {
-    val type = ChuTypography.current
+    val bs = barStyle(fontSize)
     val visible = segments.filter { it.second > 0.0 }
     val total = visible.sumOf { it.second }
     if (total <= 0.0) return
-    val counts = visible.map { (it.second / total * cells).toInt().coerceAtLeast(1) }
-    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
-        visible.forEachIndexed { i, (color, _) ->
-            ChuText(
-                "█".repeat(counts[i]),
-                style = type.labelSmall.copy(
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = fontSize.sp,
-                    letterSpacing = (-0.3).sp,
-                ),
-                color = color,
-                maxLines = 1,
-            )
+    BoxWithConstraints(modifier.fillMaxWidth()) {
+        val cells = cellsFor(maxWidth, bs)
+        val counts = visible.map { (it.second / total * cells).toInt().coerceAtLeast(1) }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            visible.forEachIndexed { i, (color, _) ->
+                ChuText("█".repeat(counts[i]), style = bs, color = color,
+                    maxLines = 1, softWrap = false)
+            }
         }
     }
 }
