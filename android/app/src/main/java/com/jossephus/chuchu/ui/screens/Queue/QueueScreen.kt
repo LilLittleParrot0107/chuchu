@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -31,6 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -306,8 +308,12 @@ fun QueueScreen(
 
             // Dải máy ghim ngay trên ô nhập: lúc gõ việc mới là lúc cần biết
             // máy còn tải nổi không và còn quota không (user chốt P2, 3/9).
+            // Thu panel theo BÀN PHÍM chứ không chỉ theo focus: ô nhập có thể
+            // đang giữ focus từ trước rồi bàn phím mới hiện lên, lúc đó focus
+            // không đổi nên tín hiệu cũ im lặng và panel ở lại chắn mất ô nhập.
+            val imeUp = WindowInsets.ime.getBottom(LocalDensity.current) > 0
             MachineStrip(machine, onUsageVisible = onUsageVisible, onRefreshUsage = onRefreshUsage,
-                collapse = composerFocused)
+                collapse = composerFocused || imeUp)
 
             QueueComposer(
                 modifier = Modifier.onSizeChanged { composerHeightPx = it.height },

@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -28,6 +29,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.jossephus.chuchu.data.model.machine.ClaudeWindow
 import com.jossephus.chuchu.data.model.machine.MachineReadout
 import com.jossephus.chuchu.ui.components.ChuText
 import com.jossephus.chuchu.ui.screens.Files.MachineUiState
@@ -59,9 +61,13 @@ internal fun MachineStrip(
     val readout = state.readout ?: return
     val s = readout.snapshot
     var expanded by remember { mutableStateOf(false) }
-    // Thu lại khi ô gõ nhận focus. KHÔNG tự mở lại lúc mất focus: người dùng
-    // mở panel là chủ ý, mở lại hộ họ sau lưng thì phiền.
-    LaunchedEffect(collapse) { if (collapse) expanded = false }
+    // Panel mở CHỈ KHI người dùng muốn VÀ bàn phím đang đóng. Bản trước chỉ thu
+    // lại đúng lúc [collapse] đổi giá trị, nên mở panel trong khi đang gõ thì nó
+    // cứ thế bung ra: cột dọc không cuộn được, panel + ô nhập cao hơn phần màn
+    // còn lại, và ô nhập bị đẩy tụt xuống dưới bàn phím (user báo 4/9).
+    // Giữ nguyên ý định của người dùng trong [expanded] để đóng bàn phím là
+    // panel trở lại như cũ, không phải mở tay lần nữa.
+    val open = expanded && !collapse
 
     val ageS = (System.currentTimeMillis() / 1000 - s.ts).coerceAtLeast(0)
     val stale = ageS > STALE_AFTER_S
@@ -82,11 +88,11 @@ internal fun MachineStrip(
     }
 
     Column(modifier = modifier.fillMaxWidth()) {
-        AnimatedVisibility(visible = expanded) {
+        AnimatedVisibility(visible = open) {
             MachineStripPages(readout, alpha, onRefreshUsage) { page -> onUsageVisible(page == 1) }
         }
         // Thu gọn thì thôi luôn: không ai nhìn USAGE nữa.
-        if (!expanded) LaunchedEffect(Unit) { onUsageVisible(false) }
+        if (!open) LaunchedEffect(Unit) { onUsageVisible(false) }
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -108,7 +114,7 @@ internal fun MachineStrip(
                 color = (if (stale) colors.warning else colors.textMuted).copy(alpha = alpha),
             )
             ChuText(
-                if (expanded) " ▴" else " ▾",
+                if (open) " ▴" else " ▾",
                 style = type.labelSmall,
                 color = colors.accent,
                 modifier = Modifier.padding(horizontal = 6.dp),
@@ -161,7 +167,13 @@ private fun MachineStripPages(
             modifier = Modifier.fillMaxWidth().height(pageHeight),
             verticalAlignment = Alignment.Top,
         ) { page ->
-            Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp)) {
+            // Trang ít dòng hơn DÀN ĐỀU ra cho kín khung, thay vì dồn lên trên
+            // rồi để một khoảng trống dưới đáy — khung đã cao bằng nhau mà phần
+            // có chữ lại dài ngắn khác nhau thì nhìn vẫn lệch (user báo 4/9).
+            Column(
+                Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 6.dp),
+                verticalArrangement = Arrangement.SpaceEvenly,
+            ) {
                 if (page == 0) MachinePage(readout, alpha) else UsagePage(readout, alpha)
             }
         }
@@ -253,14 +265,14 @@ private fun UsagePage(readout: MachineReadout, alpha: Float) {
     s.claude?.session?.let {
         val left = 100 - it.usedPct
         BlockBar("cl·5h", left / 100.0, "$left%", leftColor(left, colors),
-            tail = it.resetsAt?.substringAfter(", ")?.let { t -> "→ $t" } ?: "used",
+            tail = resetIn(it),
             alpha = alpha, labelColor = colors.accent, labelWidth = PANEL_LABEL_W,
             fontSize = PANEL_BAR_SP, textSize = PANEL_TEXT_SP)
     }
     s.claude?.week?.let {
         val left = 100 - it.usedPct
         BlockBar("cl·wk", left / 100.0, "$left%", leftColor(left, colors),
-            tail = it.resetsAt?.substringBefore(",")?.let { d -> "→ $d" } ?: "used",
+            tail = resetIn(it),
             alpha = alpha, labelColor = colors.accent, labelWidth = PANEL_LABEL_W,
             fontSize = PANEL_BAR_SP, textSize = PANEL_TEXT_SP)
     }
@@ -299,6 +311,25 @@ private fun usageRowCount(r: MachineReadout): Int {
         if (it.pct5h != null || it.pctWeek != null) n++
     }
     return maxOf(n, 1)
+}
+
+/**
+ * Còn bao lâu nữa thì cửa sổ quota reset — thứ người dùng thật sự hỏi khi nhìn
+ * bảng này ("bao giờ có credit lại"), chứ không phải mốc đồng hồ tuyệt đối:
+ * "→ Sep 6" bắt tự trừ trong đầu, "2d4h" thì không.
+ */
+private fun resetIn(w: ClaudeWindow): String {
+    val epoch = w.resetsEpoch ?: return w.resetsAt ?: ""
+    val left = epoch - System.currentTimeMillis() / 1000
+    if (left <= 0) return "↺ now"
+    val d = left / 86400
+    val h = (left % 86400) / 3600
+    val m = (left % 3600) / 60
+    return when {
+        d > 0 -> "↺${d}d${h}h"
+        h > 0 -> "↺${h}h${m}m"
+        else -> "↺${m}m"
+    }
 }
 
 /** Tuổi của số quota, chữ ngắn để nằm gọn cạnh nút ⟳. */
