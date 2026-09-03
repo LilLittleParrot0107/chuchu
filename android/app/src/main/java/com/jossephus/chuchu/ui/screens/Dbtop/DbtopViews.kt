@@ -150,7 +150,8 @@ internal fun PerformanceKpiCard(
             ) {
                 val netAprText = kpis.netRunRateApr?.let {
                     val sign = if (it >= 0) "+" else ""
-                    String.format(Locale.US, "%s%.1f%% APR", sign, it)
+                    // Nhãn ô đã ghi "APR" rồi, lặp lại trong giá trị là thừa (user 3/9).
+                    String.format(Locale.US, "%s%.1f%%", sign, it)
                 } ?: "--"
                 val netColor = when {
                     kpis.netRunRateApr == null -> colors.textMuted
@@ -164,7 +165,7 @@ internal fun PerformanceKpiCard(
                     modifier = Modifier.weight(1f),
                 )
                 val grossAprText = kpis.grossApr?.let {
-                    String.format(Locale.US, "%.1f%% APR", it)
+                    String.format(Locale.US, "%.1f%%", it)
                 } ?: "--"
                 MetricCell(
                     label = "GROSS APR",
@@ -195,11 +196,10 @@ internal fun PerformanceKpiCard(
                     color = netPerDayColor,
                     modifier = Modifier.weight(1f),
                 )
-                // Bo hau to "(∞)/(DEFICIT)": surplus hay thieu hut da nam o band
-                // va o o DAILY NET CASHFLOW ngay ben canh — o nay chi tra loi
-                // "chi tieu an bao nhieu phan yield".
+                // Đuôi "(∞)/(DEFICIT)" bỏ từ 30/8, đuôi "OF YIELD" bỏ 3/9: nhãn
+                // BURN RATIO đã nói nó là tỉ lệ trên yield, viết lại là thừa.
                 val burnRatioText = kpis.burnRatioPct?.let {
-                    String.format(Locale.US, "%.0f%% OF YIELD", it)
+                    String.format(Locale.US, "%.0f%%", it)
                 } ?: "--"
                 val burnColor = when {
                     kpis.burnRatioPct == null -> colors.textMuted

@@ -113,26 +113,42 @@ class NetRateChartTest {
     }
 
     @Test
-    fun testCashflowEngine_TrailingSpendUsesFullWindowAndRollsOff() {
+    fun testCashflowEngine_SpendSpreadUntilNextSpend() {
+        // Chi tieu giat cuc: dan MOI cu deu ra toi cu ke tiep, khong dung trung
+        // binh truot (cach cu lam duong gay khuc HAI lan cho MOT lan chi).
         val daily = (1..10).map { d ->
             DailyYield(date = String.format("2026-08-%02d", d), yieldUsd = 20.0, coverageDays = 1.0)
         }
-        val spend = mapOf("2026-08-03" to 70.0)
+        val spend = mapOf("2026-08-03" to 70.0, "2026-08-08" to 140.0)   // index 2 va 7
         val rate = CashflowEngine.calculateRatePoints(
             CashflowEngine.calculatePoints(daily, spend),
-            window = 7,
-            fallbackSpendPerDay = 99.0, // co du lieu that -> KHONG duoc dung fallback
+            fallbackSpendPerDay = 99.0,        // co du lieu that -> KHONG duoc dung fallback
         )
 
         assertEquals(10, rate.size)
+        // Truoc cu chi dau tien: chua biet gi -> 0, khong bia.
         assertEquals(0.0, rate[0].trailSpend, 0.001)
-        // Chia cho tron cua so 7 ngay, khong phai cho 3 ngay da thay.
-        assertEquals(10.0, rate[2].trailSpend, 0.001)
-        // Van con trong cua so o ngay thu 9 (index 8: 2..8).
-        assertEquals(10.0, rate[8].trailSpend, 0.001)
-        // Da truot ra khoi cua so o index 9 (3..9).
-        assertEquals(0.0, rate[9].trailSpend, 0.001)
-        assertEquals(20.0 - 10.0, rate[2].trailNet, 0.001)
+        assertEquals(0.0, rate[1].trailSpend, 0.001)
+        // Cu 70 dan deu cho 5 ngay (index 2..6) toi cu ke tiep.
+        for (i in 2..6) assertEquals(14.0, rate[i].trailSpend, 0.001)
+        // Cu 140 dan deu cho 3 ngay con lai (index 7..9).
+        for (i in 7..9) assertEquals(140.0 / 3.0, rate[i].trailSpend, 0.001)
+        // Duong net = yield - muc chi da dan.
+        assertEquals(20.0 - 14.0, rate[3].trailNet, 0.001)
+    }
+
+    @Test
+    fun testCashflowEngine_SpendRateIsFlatBetweenSpends() {
+        // Giua hai cu chi, muc chi phai PHANG — khong bac thang.
+        val daily = (1..8).map { d ->
+            DailyYield(date = String.format("2026-08-%02d", d), yieldUsd = 10.0, coverageDays = 1.0)
+        }
+        val rate = CashflowEngine.calculateRatePoints(
+            CashflowEngine.calculatePoints(daily, mapOf("2026-08-01" to 80.0)),
+        )
+        val values = rate.map { it.trailSpend }.distinct()
+        assertEquals("chi mot muc duy nhat tu dau den cuoi", 1, values.size)
+        assertEquals(10.0, values[0], 0.001)      // 80 chia deu cho 8 ngay
     }
 
     @Test

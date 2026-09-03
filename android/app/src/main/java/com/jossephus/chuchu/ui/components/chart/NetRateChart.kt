@@ -145,18 +145,17 @@ object CashflowEngine {
         val w = window.coerceAtLeast(1)
         val hasSpendData = points.any { it.spend > 0.0 }
 
+        val spendRate = amortizeSpend(points, if (hasSpendData) 0.0 else fallbackSpendPerDay)
+
         // Cong don chay theo cua so truot — O(n).
         var sumGross = 0.0
-        var sumSpend = 0.0
         var sumCov = 0.0
         return points.mapIndexed { i, p ->
             sumGross += p.gross
-            sumSpend += p.spend
             sumCov += p.coverage
             if (i >= w) {
                 val out = points[i - w]
                 sumGross -= out.gross
-                sumSpend -= out.spend
                 sumCov -= out.coverage
             }
             val daysInWindow = minOf(i + 1, w)
@@ -164,7 +163,7 @@ object CashflowEngine {
                 sumCov > MIN_COVERAGE -> sumGross / sumCov
                 else -> sumGross / daysInWindow
             }
-            val trailSpend = if (hasSpendData) sumSpend / w else fallbackSpendPerDay
+            val trailSpend = spendRate[i]
             // Do qua it thi khong suy dien toc do ca ngay tu mot mau be xiu.
             val grossRate = if (p.coverage > MIN_COVERAGE) p.gross / p.coverage else p.gross
 
@@ -179,6 +178,37 @@ object CashflowEngine {
                 trailNet = trailGross - trailSpend,
             )
         }
+    }
+
+
+    /**
+     * Dan MOI lan chi deu ra cho toi LAN CHI KE TIEP.
+     *
+     * Chi tieu cua user giat cuc: vai ngay mot cu to roi im. Trung binh truot 7
+     * ngay (cach cu) van con bac thang — cu chi to nhay vao roi truot ra khoi
+     * cua so la duong gay khuc hai lan cho MOT lan chi. Dan tu moc chi toi moc
+     * ke tiep thi duong chi phang tung doan, chi doi tai dung ngay co chi
+     * (user chot 3/9).
+     *
+     * Lan chi CUOI CUNG dan toi ngay hom nay: chua co cu tiep theo nen muc chi
+     * moi ngay giam dan theo thoi gian — dung nghia "tieu tung ay, cam duoc bay
+     * nhieu ngay roi".
+     *
+     * Truoc lan chi dau tien: 0. Chua do duoc gi thi dung bia ra muc chi.
+     */
+    private fun amortizeSpend(points: List<DailyCashflowPoint>, fallback: Double): DoubleArray {
+        val n = points.size
+        val out = DoubleArray(n) { fallback }
+        val events = points.indices.filter { points[it].spend > 0.0 }
+        if (events.isEmpty()) return out
+        java.util.Arrays.fill(out, 0.0)
+        events.forEachIndexed { k, i ->
+            val end = if (k + 1 < events.size) events[k + 1] else n
+            val span = (end - i).coerceAtLeast(1)
+            val rate = points[i].spend / span
+            for (j in i until end) out[j] = rate
+        }
+        return out
     }
 
     fun computeKpis(
