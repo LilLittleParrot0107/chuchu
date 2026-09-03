@@ -496,6 +496,7 @@ private fun QueueDestination(
         onFetchResponse = sharedQueueVm::loadTaskResponse,
         machine = sharedQueueVm.machine.collectAsStateWithLifecycle().value,
         onMachineVisible = sharedQueueVm::setMachinePolling,
+        onUsageVisible = sharedQueueVm::setQuotaWanted,
         onBack = onBack,
     )
 }

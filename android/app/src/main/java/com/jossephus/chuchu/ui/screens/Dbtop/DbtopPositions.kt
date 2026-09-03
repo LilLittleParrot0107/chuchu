@@ -37,6 +37,8 @@ import com.jossephus.chuchu.data.model.dbtop.OptionDetail
 import com.jossephus.chuchu.data.model.dbtop.RiskEvaluator
 import com.jossephus.chuchu.data.model.dbtop.TokenPosition
 import com.jossephus.chuchu.ui.components.ChuCard
+import com.jossephus.chuchu.ui.components.BlockBarLine
+import com.jossephus.chuchu.ui.components.BlockSegmentBar
 import com.jossephus.chuchu.ui.components.ChuText
 import com.jossephus.chuchu.ui.components.KohiCompactAction
 import com.jossephus.chuchu.ui.components.KohiSelectableRow
@@ -237,19 +239,8 @@ internal fun OptionProgressBar(
             )
         }
 
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(if (compact) 3.dp else 4.dp)
-                .background(colors.surfaceVariant, shape = RoundedCornerShape(2.dp)),
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(fraction = progressPct)
-                    .fillMaxHeight()
-                    .background(barColor, shape = RoundedCornerShape(2.dp)),
-            )
-        }
+        // Thanh ký tự khối, cùng ngôn ngữ với dải máy bên Queue (user chốt 3/9).
+        BlockBarLine(progressPct.toDouble(), barColor, fontSize = if (compact) 8 else 9)
 
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -325,19 +316,7 @@ internal fun LendingHealthBar(
             }
         }
 
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(if (compact) 3.dp else 4.dp)
-                .background(colors.surfaceVariant, shape = RoundedCornerShape(2.dp)),
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(fraction = fillPct)
-                    .fillMaxHeight()
-                    .background(tone, shape = RoundedCornerShape(2.dp)),
-            )
-        }
+        BlockBarLine(fillPct.toDouble(), tone, fontSize = if (compact) 8 else 9)
     }
 }
 
@@ -539,21 +518,7 @@ private fun SpecRow(
 private fun CompositionBar(segments: List<Pair<Color, Double>>) {
     val total = segments.sumOf { it.second }
     if (total <= 0.0) return
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(6.dp),
-        horizontalArrangement = Arrangement.spacedBy(1.dp),
-    ) {
-        segments.filter { it.second > 0 }.forEach { (color, usd) ->
-            Box(
-                modifier = Modifier
-                    .weight(usd.toFloat().coerceAtLeast(0.01f))
-                    .fillMaxHeight()
-                    .background(color, shape = RoundedCornerShape(1.dp)),
-            )
-        }
-    }
+    BlockSegmentBar(segments, modifier = Modifier.fillMaxWidth())
 }
 
 /**

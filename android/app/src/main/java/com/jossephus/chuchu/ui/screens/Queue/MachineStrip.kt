@@ -12,6 +12,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.runtime.LaunchedEffect
+import com.jossephus.chuchu.ui.components.BlockBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -41,7 +46,11 @@ private const val STALE_AFTER_S = 15L
  * lui vào phần mở rộng.
  */
 @Composable
-internal fun MachineStrip(state: MachineUiState, modifier: Modifier = Modifier) {
+internal fun MachineStrip(
+    state: MachineUiState,
+    modifier: Modifier = Modifier,
+    onUsageVisible: (Boolean) -> Unit = {},
+) {
     val colors = ChuColors.current
     val type = ChuTypography.current
     val readout = state.readout ?: return
@@ -67,8 +76,10 @@ internal fun MachineStrip(state: MachineUiState, modifier: Modifier = Modifier) 
 
     Column(modifier = modifier.fillMaxWidth()) {
         AnimatedVisibility(visible = expanded) {
-            MachineStripDetail(readout, alpha)
+            MachineStripPages(readout, alpha) { page -> onUsageVisible(page == 1) }
         }
+        // Thu gọn thì thôi luôn: không ai nhìn USAGE nữa.
+        if (!expanded) LaunchedEffect(Unit) { onUsageVisible(false) }
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -118,59 +129,103 @@ private fun Cell(label: String, value: String, valueColor: Color, alpha: Float) 
 }
 
 @Composable
-private fun MachineStripDetail(readout: MachineReadout, alpha: Float) {
+private fun MachineStripPages(
+    readout: MachineReadout,
+    alpha: Float,
+    onPageChange: (Int) -> Unit,
+) {
     val colors = ChuColors.current
     val type = ChuTypography.current
-    val s = readout.snapshot
-    Column(
-        Modifier.fillMaxWidth().background(colors.surfaceVariant).padding(horizontal = 10.dp, vertical = 6.dp),
-    ) {
-        Gauge("CPU", readout.cpuPct, colors.accentSecondary, s.tempCpu?.let { "$it°C" } ?: "", alpha)
-        Gauge("RAM", s.memPct, colors.accent,
-            "${g(s.memUsedKb)}/${g(s.memTotalKb)}G", alpha)
-        s.gpu?.let { Gauge("GPU", it.util.toDouble(), colors.success, "${it.temp}°C", alpha) }
-        Gauge("DSK", s.diskPct, colors.warning, "${g(s.diskUsedKb)}/${g(s.diskTotalKb)}G", alpha)
-        s.claude?.session?.let {
-            Gauge("5H", it.usedPct.toDouble(), colors.accent, it.resetsAt?.let { r -> "→ $r" } ?: "used", alpha)
-        }
-        s.claude?.week?.let {
-            Gauge("WK", it.usedPct.toDouble(), colors.accent, it.resetsAt?.let { r -> "→ $r" } ?: "used", alpha)
-        }
-        readout.topRam.take(2).forEach {
-            Row(Modifier.fillMaxWidth().padding(top = 2.dp)) {
-                ChuText(it.comm, style = type.labelSmall, color = colors.textSecondary.copy(alpha = alpha),
-                    maxLines = 1, modifier = Modifier.weight(1f))
-                ChuText("${g(it.rssKb)}G ×${it.n}", style = type.labelSmall,
-                    color = colors.textMuted.copy(alpha = alpha))
+    val pager = rememberPagerState(pageCount = { 2 })
+
+    // Trang USAGE chỉ được LÀM MỚI khi người dùng trượt tới (user chốt 3/9):
+    // đọc cache quota thì gần như miễn phí, nhưng làm mới nó tốn 5s + 380MB
+    // cho một tiến trình claude — không đáng chạy khi không ai nhìn.
+    LaunchedEffect(pager.currentPage) { onPageChange(pager.currentPage) }
+
+    Column(Modifier.fillMaxWidth().background(colors.surfaceVariant)) {
+        HorizontalPager(
+            state = pager,
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.Top,
+        ) { page ->
+            Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp)) {
+                if (page == 0) MachinePage(readout, alpha) else UsagePage(readout, alpha)
             }
         }
-        ChuText(
-            "load ${String.format(Locale.US, "%.2f", s.load.firstOrNull() ?: 0.0)} · ${s.host}",
-            style = type.labelSmall,
-            color = colors.textMuted.copy(alpha = alpha),
-            modifier = Modifier.padding(top = 2.dp),
-        )
+        Row(
+            Modifier.fillMaxWidth().padding(bottom = 5.dp),
+            horizontalArrangement = Arrangement.Center,
+        ) {
+            repeat(2) { i ->
+                Box(
+                    Modifier.padding(horizontal = 3.dp).size(5.dp)
+                        .background(if (pager.currentPage == i) colors.accent else colors.border),
+                )
+            }
+            ChuText(
+                if (pager.currentPage == 0) "  MACHINE" else "  USAGE",
+                style = type.labelSmall,
+                color = colors.textMuted,
+                modifier = Modifier.padding(start = 4.dp),
+            )
+        }
     }
 }
 
 @Composable
-private fun Gauge(label: String, pct: Double?, color: Color, tail: String, alpha: Float) {
+private fun MachinePage(readout: MachineReadout, alpha: Float) {
+    val colors = ChuColors.current
+    val s = readout.snapshot
+    BlockBar("CPU", readout.cpuPct?.div(100.0), pct(readout.cpuPct), colors.accentSecondary,
+        tail = s.tempCpu?.let { "$it°C" } ?: "", alpha = alpha)
+    BlockBar("RAM", s.memPct / 100.0, pct(s.memPct), colors.accent,
+        tail = "${g(s.memUsedKb)}/${g(s.memTotalKb)}G", alpha = alpha)
+    s.gpu?.let {
+        BlockBar("GPU", it.util / 100.0, "${it.util}%", colors.success, tail = "${it.temp}°C", alpha = alpha)
+        BlockBar("VRA", it.memPct / 100.0, pct(it.memPct), colors.success,
+            tail = "${gMb(it.memUsedMb)}/${gMb(it.memTotalMb)}G", alpha = alpha)
+    }
+    BlockBar("DSK", s.diskPct / 100.0, pct(s.diskPct), colors.warning,
+        tail = "${g(s.diskUsedKb)}/${g(s.diskTotalKb)}G", alpha = alpha)
+    val load = s.load.firstOrNull() ?: 0.0
+    BlockBar("LOAD", load / s.ncpu.coerceAtLeast(1), String.format(Locale.US, "%.2f", load),
+        colors.accentSecondary, tail = "${s.ncpu} core", alpha = alpha)
+    readout.topRam.take(2).forEach {
+        BlockBar(it.comm.take(4), null, "${g(it.rssKb)}G", colors.textMuted,
+            tail = "×${it.n}", alpha = alpha)
+    }
+}
+
+@Composable
+private fun UsagePage(readout: MachineReadout, alpha: Float) {
     val colors = ChuColors.current
     val type = ChuTypography.current
-    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-        ChuText(label, style = type.labelSmall, color = colors.textSecondary.copy(alpha = alpha),
-            modifier = Modifier.width(28.dp))
-        Box(Modifier.weight(1f).height(7.dp).background(colors.border.copy(alpha = 0.35f * alpha))) {
-            val f = ((pct ?: 0.0) / 100.0).coerceIn(0.0, 1.0).toFloat()
-            if (f > 0f) Box(Modifier.fillMaxWidth(f).height(7.dp).background(color.copy(alpha = alpha)))
+    val s = readout.snapshot
+    if (s.claude == null && s.agy == null) {
+        ChuText("Đang lấy quota…", style = type.labelSmall, color = colors.textMuted)
+        return
+    }
+    // Claude đếm phần ĐÃ DÙNG; agy đếm phần CÒN LẠI. Giữ nguyên chiều của mỗi
+    // bên và ghi rõ ở đuôi, đổi chiều cho đồng bộ là mời người đọc nhầm.
+    s.claude?.session?.let {
+        BlockBar("5H", it.usedPct / 100.0, "${it.usedPct}%", quotaColor(it.usedPct, colors),
+            tail = it.resetsAt ?: "used", alpha = alpha)
+    }
+    s.claude?.week?.let {
+        BlockBar("WK", it.usedPct / 100.0, "${it.usedPct}%", quotaColor(it.usedPct, colors),
+            tail = it.resetsAt ?: "used", alpha = alpha)
+    }
+    s.agy?.accounts?.filter { it.configured }?.forEach { a ->
+        val active = a.id == s.agy?.current
+        a.pct5h?.let {
+            BlockBar(if (active) "●${a.id.takeLast(1)}" else a.id.takeLast(2), it / 100.0,
+                "${it.toInt()}%", agyColor(it, colors), tail = "5h left", alpha = alpha)
         }
-        ChuText(
-            pct?.let { String.format(Locale.US, "%3.0f%%", it) } ?: "  —",
-            style = type.labelSmall.copy(fontFamily = FontFamily.Monospace, fontFeatureSettings = "tnum"),
-            color = colors.textPrimary.copy(alpha = alpha),
-            modifier = Modifier.padding(start = 6.dp).width(42.dp),
-        )
-        ChuText(tail, style = type.labelSmall, color = colors.textMuted.copy(alpha = alpha), maxLines = 1)
+        a.pctWeek?.let {
+            BlockBar("", it / 100.0, "${it.toInt()}%", agyColor(it, colors),
+                tail = "week left", alpha = alpha)
+        }
     }
 }
 
@@ -181,6 +236,22 @@ private fun tone(v: Double, warn: Double, crit: Double, c: com.jossephus.chuchu.
         else -> c.textPrimary
     }
 
-private fun pct(v: Double): String = String.format(Locale.US, "%.0f%%", v)
+private fun pct(v: Double?): String = v?.let { String.format(Locale.US, "%.0f%%", it) } ?: "—"
+
+private fun gMb(mb: Long): String = String.format(Locale.US, "%.1f", mb / 1024.0)
+
+/** Claude đếm phần ĐÃ DÙNG — càng cao càng gần hết. */
+private fun quotaColor(usedPct: Int, c: com.jossephus.chuchu.ui.theme.ChuColorPalette): Color = when {
+    usedPct >= 90 -> c.error
+    usedPct >= 70 -> c.warning
+    else -> c.accent
+}
+
+/** agy đếm phần CÒN LẠI — thang màu ngược hẳn với Claude, cố ý giữ vậy. */
+private fun agyColor(remaining: Double, c: com.jossephus.chuchu.ui.theme.ChuColorPalette): Color = when {
+    remaining <= 10 -> c.error
+    remaining <= 30 -> c.warning
+    else -> c.success
+}
 private fun g(kb: Long): String = String.format(Locale.US, "%.1f", kb / 1048576.0)
 private fun age(s: Long): String = if (s < 3600) "${s / 60}m trước" else "${s / 3600}h trước"

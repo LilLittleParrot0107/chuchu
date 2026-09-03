@@ -53,6 +53,11 @@ class QueueViewModel(
     val machine: StateFlow<MachineUiState> = _machine.asStateFlow()
     private var machineJob: Job? = null
 
+    /** True khi trang USAGE đang hiện — chỉ khi đó mới xin server làm mới quota. */
+    @Volatile private var quotaWanted = false
+
+    fun setQuotaWanted(wanted: Boolean) { quotaWanted = wanted }
+
     /** Bật khi màn Queue hiện, tắt khi rời — không poll sau lưng người dùng. */
     fun setMachinePolling(active: Boolean) {
         if (!active) {
@@ -66,7 +71,7 @@ class QueueViewModel(
                 if (c == null) {
                     _machine.value = MachineUiState(error = "No qsrv address")
                 } else {
-                    when (val r = c.machine()) {
+                    when (val r = c.machine(quotaWanted)) {
                         is QueueClient.MachineFetch.Ok -> {
                             _machine.value = MachineUiState(readout = derive(prev, r.snapshot))
                             prev = r.snapshot
