@@ -125,15 +125,18 @@ internal fun MachineView(state: MachineUiState, modifier: Modifier = Modifier) {
                     accent = if (q.ok) colors.accent else colors.warning)
                 ChuCard(modifier = cardModifier()) {
                     Column(Modifier.fillMaxWidth().padding(10.dp)) {
-                        // Quota Claude la % DA DUNG (nguoc voi agy) — de nguyen
-                        // chieu do, doi chieu cho quen thi hai ben lech nghia.
+                        // Claude tra % DA DUNG, agy tra % CON LAI. Doi Claude
+                        // sang con lai de moi thanh trong app cung mot chieu:
+                        // day = con nguyen, can = da tieu het.
                         q.session?.let {
-                            BlockBar("5H", it.usedPct / 100.0, "${it.usedPct}%",
-                                quotaColor(it.usedPct, colors), tail = it.resetsAt ?: "used")
+                            val left = 100 - it.usedPct
+                            BlockBar("5H", left / 100.0, "$left%",
+                                quotaColor(left, colors), tail = it.resetsAt ?: "left")
                         }
                         q.week?.let {
-                            BlockBar("WK", it.usedPct / 100.0, "${it.usedPct}%",
-                                quotaColor(it.usedPct, colors), tail = it.resetsAt ?: "used")
+                            val left = 100 - it.usedPct
+                            BlockBar("WK", left / 100.0, "$left%",
+                                quotaColor(left, colors), tail = it.resetsAt ?: "left")
                         }
                     }
                 }
@@ -278,9 +281,9 @@ private fun ProcRow(
     }
 }
 
-private fun quotaColor(usedPct: Int, colors: com.jossephus.chuchu.ui.theme.ChuColorPalette): Color = when {
-    usedPct >= 90 -> colors.error
-    usedPct >= 70 -> colors.warning
+private fun quotaColor(leftPct: Int, colors: com.jossephus.chuchu.ui.theme.ChuColorPalette): Color = when {
+    leftPct <= 10 -> colors.error
+    leftPct <= 30 -> colors.warning
     else -> colors.accent
 }
 

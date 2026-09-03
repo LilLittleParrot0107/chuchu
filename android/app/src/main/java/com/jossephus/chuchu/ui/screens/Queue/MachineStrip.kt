@@ -69,8 +69,9 @@ internal fun MachineStrip(
 
     val ram = s.memPct
     val cpu = readout.cpuPct
-    val h5 = s.claude?.session?.usedPct
-    val wk = s.claude?.week?.usedPct
+    // CÒN LẠI, không phải đã dùng — xem ghi chú ở UsagePage.
+    val h5 = s.claude?.session?.usedPct?.let { 100 - it }
+    val wk = s.claude?.week?.usedPct?.let { 100 - it }
 
     // Vạch bên trái đổi màu theo cái căng nhất — thấy được bằng đuôi mắt mà
     // không phải đọc số.
@@ -98,8 +99,8 @@ internal fun MachineStrip(
             Box(Modifier.width(2.dp).height(30.dp).background(edge))
             Cell("RAM", pct(ram), tone(ram, 70.0, 85.0, colors), alpha)
             Cell("CPU", cpu?.let { pct(it) } ?: "—", tone(cpu ?: 0.0, 70.0, 85.0, colors), alpha)
-            Cell("5H", h5?.let { "$it%" } ?: "—", tone((h5 ?: 0).toDouble(), 70.0, 90.0, colors), alpha)
-            Cell("WK", wk?.let { "$it%" } ?: "—", tone((wk ?: 0).toDouble(), 70.0, 90.0, colors), alpha)
+            Cell("5H", h5?.let { "$it%" } ?: "—", leftTone((h5 ?: 100).toDouble(), colors), alpha)
+            Cell("WK", wk?.let { "$it%" } ?: "—", leftTone((wk ?: 100).toDouble(), colors), alpha)
             Box(Modifier.weight(1f))
             ChuText(
                 if (stale) age(ageS) else "${ageS}s",
@@ -244,21 +245,24 @@ private fun UsagePage(readout: MachineReadout, alpha: Float) {
         ChuText("Loading quota…", style = rowStyle(), color = colors.textMuted)
         return
     }
-    // MỌI thanh đều đo phần ĐÃ DÙNG. Bản trước để Claude đếm "đã dùng" còn agy
-    // đếm "còn lại" rồi ghi chú ở đuôi — hai thanh dài bằng nhau, cùng màu, mà
-    // một cái là tin tốt một cái là báo động (user chỉ ra 3/9). Chú thích không
-    // cứu được khi hình vẽ đã nói ngược.
+    // MỌI thanh đều đo phần CÒN LẠI: thanh đầy = còn nguyên credit, thanh cạn =
+    // đã tiêu hết (user chốt 3/9). Đọc như bình xăng, không phải như đồng hồ tải.
+    // Điều bắt buộc là mọi dòng đo CÙNG một thứ — bản trước Claude đếm "đã dùng"
+    // còn agy đếm "còn lại", hai thanh dài bằng nhau mà một cái là tin tốt một
+    // cái là báo động. Chú thích không cứu được khi hình vẽ đã nói ngược.
     // Nhãn mang luôn tên nhà cung cấp — "cl·wk", "agy·2" tự nói nó của ai, nên
     // không tốn dòng tiêu đề nào (user chốt phương án B, 3/9). Màu NHÃN phân
     // nhóm, màu THANH vẫn theo mức cạn: hai màu hai việc, không chồng nghĩa.
     s.claude?.session?.let {
-        BlockBar("cl·5h", it.usedPct / 100.0, "${it.usedPct}%", usedColor(it.usedPct, colors),
+        val left = 100 - it.usedPct
+        BlockBar("cl·5h", left / 100.0, "$left%", leftColor(left, colors),
             tail = it.resetsAt?.substringAfter(", ")?.let { t -> "→ $t" } ?: "used",
             alpha = alpha, labelColor = colors.accent, labelWidth = PANEL_LABEL_W,
             fontSize = PANEL_BAR_SP, textSize = PANEL_TEXT_SP)
     }
     s.claude?.week?.let {
-        BlockBar("cl·wk", it.usedPct / 100.0, "${it.usedPct}%", usedColor(it.usedPct, colors),
+        val left = 100 - it.usedPct
+        BlockBar("cl·wk", left / 100.0, "$left%", leftColor(left, colors),
             tail = it.resetsAt?.substringBefore(",")?.let { d -> "→ $d" } ?: "used",
             alpha = alpha, labelColor = colors.accent, labelWidth = PANEL_LABEL_W,
             fontSize = PANEL_BAR_SP, textSize = PANEL_TEXT_SP)
@@ -266,14 +270,14 @@ private fun UsagePage(readout: MachineReadout, alpha: Float) {
     // Mỗi tài khoản MỘT dòng, lấy cửa sổ căng nhất — thứ đáng biết là "con nào
     // sắp cạn", không phải sáu con số.
     s.agy?.accounts?.filter { it.configured }?.forEach { a ->
-        val remaining = listOfNotNull(a.pct5h, a.pctWeek).minOrNull() ?: return@forEach
-        val used = 100.0 - remaining
+        // agy trả sẵn phần CÒN LẠI — đúng chiều, không phải đổi.
+        val left = listOfNotNull(a.pct5h, a.pctWeek).minOrNull() ?: return@forEach
         val binding = if (a.pctWeek != null && (a.pct5h == null || a.pctWeek <= a.pct5h)) "week" else "5h"
         // Đệm một dấu cách cho dòng KHÔNG phải tài khoản đang dùng, để chữ "agy"
         // của mọi dòng thẳng cột — mũi tên không được đẩy nhãn lệch đi một ô.
         val mark = if (a.id == s.agy?.current) "▸" else " "
         BlockBar("${mark}agy·${a.id.removePrefix("acc")}",
-            used / 100.0, "${used.toInt()}%", usedColor(used.toInt(), colors),
+            left / 100.0, "${left.toInt()}%", leftColor(left.toInt(), colors),
             tail = binding, alpha = alpha, labelColor = colors.success, labelWidth = PANEL_LABEL_W,
             fontSize = PANEL_BAR_SP, textSize = PANEL_TEXT_SP)
     }
@@ -320,11 +324,18 @@ private fun tone(v: Double, warn: Double, crit: Double, c: com.jossephus.chuchu.
         else -> c.textPrimary
     }
 
-/** Thang màu chung cho MỌI dòng USAGE, vì mọi dòng giờ đều đo phần đã dùng. */
-private fun usedColor(usedPct: Int, c: com.jossephus.chuchu.ui.theme.ChuColorPalette): Color = when {
-    usedPct >= 90 -> c.error
-    usedPct >= 70 -> c.warning
+/** Thang màu chung cho MỌI dòng USAGE: càng CÒN ÍT càng gắt. */
+private fun leftColor(leftPct: Int, c: com.jossephus.chuchu.ui.theme.ChuColorPalette): Color = when {
+    leftPct <= 10 -> c.error
+    leftPct <= 30 -> c.warning
     else -> c.accent
+}
+
+/** Như [leftColor] nhưng cho bốn số trên dải thu gọn (chữ, không phải thanh). */
+private fun leftTone(leftPct: Double, c: com.jossephus.chuchu.ui.theme.ChuColorPalette): Color = when {
+    leftPct <= 10 -> c.error
+    leftPct <= 30 -> c.warning
+    else -> c.textPrimary
 }
 
 /** ≥100 thì bỏ phần thập phân — "95.1/467.7G" vừa khít, "95.1/1024.3G" thì không. */
