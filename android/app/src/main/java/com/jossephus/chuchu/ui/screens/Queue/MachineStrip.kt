@@ -217,38 +217,32 @@ private fun UsagePage(readout: MachineReadout, alpha: Float) {
     val type = ChuTypography.current
     val s = readout.snapshot
     if (s.claude == null && s.agy == null) {
-        ChuText("Đang lấy quota…", style = type.labelSmall, color = colors.textMuted)
+        ChuText("Loading quota…", style = rowStyle(), color = colors.textMuted)
         return
     }
-    // Claude đếm phần ĐÃ DÙNG; agy đếm phần CÒN LẠI. Giữ nguyên chiều của mỗi
-    // bên và ghi rõ ở đuôi, đổi chiều cho đồng bộ là mời người đọc nhầm.
+    // MỌI thanh đều đo phần ĐÃ DÙNG. Bản trước để Claude đếm "đã dùng" còn agy
+    // đếm "còn lại" rồi ghi chú ở đuôi — hai thanh dài bằng nhau, cùng màu, mà
+    // một cái là tin tốt một cái là báo động (user chỉ ra 3/9). Chú thích không
+    // cứu được khi hình vẽ đã nói ngược.
     s.claude?.session?.let {
-        BlockBar("5H", it.usedPct / 100.0, "${it.usedPct}%", quotaColor(it.usedPct, colors),
-            tail = it.resetsAt ?: "used", alpha = alpha)
+        BlockBar("5H", it.usedPct / 100.0, "${it.usedPct}%", usedColor(it.usedPct, colors),
+            tail = it.resetsAt?.substringAfter(", ")?.let { t -> "→ $t" } ?: "used", alpha = alpha)
     }
     s.claude?.week?.let {
-        BlockBar("WK", it.usedPct / 100.0, "${it.usedPct}%", quotaColor(it.usedPct, colors),
-            tail = it.resetsAt ?: "used", alpha = alpha)
+        BlockBar("WK", it.usedPct / 100.0, "${it.usedPct}%", usedColor(it.usedPct, colors),
+            tail = it.resetsAt?.substringBefore(",")?.let { d -> "→ $d" } ?: "used", alpha = alpha)
     }
+    // Mỗi tài khoản MỘT dòng, lấy cửa sổ căng nhất — thứ đáng biết là "con nào
+    // sắp cạn", không phải sáu con số. Tên để nguyên, không cắt còn "c1".
     s.agy?.accounts?.filter { it.configured }?.forEach { a ->
-        val active = a.id == s.agy?.current
-        a.pct5h?.let {
-            BlockBar(if (active) "●${a.id.takeLast(1)}" else a.id.takeLast(2), it / 100.0,
-                "${it.toInt()}%", agyColor(it, colors), tail = "5h left", alpha = alpha)
-        }
-        a.pctWeek?.let {
-            BlockBar("", it / 100.0, "${it.toInt()}%", agyColor(it, colors),
-                tail = "week left", alpha = alpha)
-        }
+        val remaining = listOfNotNull(a.pct5h, a.pctWeek).minOrNull() ?: return@forEach
+        val used = 100.0 - remaining
+        val binding = if (a.pctWeek != null && (a.pct5h == null || a.pctWeek <= a.pct5h)) "week" else "5h"
+        val label = if (a.id == s.agy?.current) "▸${a.id.removePrefix("acc")}" else a.id.removePrefix("acc")
+        BlockBar(label, used / 100.0, "${used.toInt()}%", usedColor(used.toInt(), colors),
+            tail = binding, alpha = alpha)
     }
 }
-
-private fun tone(v: Double, warn: Double, crit: Double, c: com.jossephus.chuchu.ui.theme.ChuColorPalette): Color =
-    when {
-        v >= crit -> c.error
-        v >= warn -> c.warning
-        else -> c.textPrimary
-    }
 
 /** Cao xấp xỉ một hàng BlockBar (chữ 11sp + đệm 2dp). */
 private const val ROW_HEIGHT_DP = 18
@@ -261,8 +255,7 @@ private fun usageRowCount(r: MachineReadout): Int {
     val q = r.snapshot.agy
     var n = (if (c?.session != null) 1 else 0) + (if (c?.week != null) 1 else 0)
     q?.accounts?.filter { it.configured }?.forEach {
-        if (it.pct5h != null) n++
-        if (it.pctWeek != null) n++
+        if (it.pct5h != null || it.pctWeek != null) n++
     }
     return maxOf(n, 1)
 }
@@ -271,22 +264,24 @@ private fun pct(v: Double?): String = v?.let { String.format(Locale.US, "%.0f%%"
 
 private fun gMb(mb: Long): String = String.format(Locale.US, "%.1f", mb / 1024.0)
 
-/** Claude đếm phần ĐÃ DÙNG — càng cao càng gần hết. */
-private fun quotaColor(usedPct: Int, c: com.jossephus.chuchu.ui.theme.ChuColorPalette): Color = when {
+/** Màu cho bốn số trên dải thu gọn. */
+private fun tone(v: Double, warn: Double, crit: Double, c: com.jossephus.chuchu.ui.theme.ChuColorPalette): Color =
+    when {
+        v >= crit -> c.error
+        v >= warn -> c.warning
+        else -> c.textPrimary
+    }
+
+/** Thang màu chung cho MỌI dòng USAGE, vì mọi dòng giờ đều đo phần đã dùng. */
+private fun usedColor(usedPct: Int, c: com.jossephus.chuchu.ui.theme.ChuColorPalette): Color = when {
     usedPct >= 90 -> c.error
     usedPct >= 70 -> c.warning
     else -> c.accent
 }
 
-/** agy đếm phần CÒN LẠI — thang màu ngược hẳn với Claude, cố ý giữ vậy. */
-private fun agyColor(remaining: Double, c: com.jossephus.chuchu.ui.theme.ChuColorPalette): Color = when {
-    remaining <= 10 -> c.error
-    remaining <= 30 -> c.warning
-    else -> c.success
-}
 /** ≥100 thì bỏ phần thập phân — "95.1/467.7G" vừa khít, "95.1/1024.3G" thì không. */
 private fun g(kb: Long): String {
     val v = kb / 1048576.0
     return if (v >= 100) String.format(Locale.US, "%.0f", v) else String.format(Locale.US, "%.1f", v)
 }
-private fun age(s: Long): String = if (s < 3600) "${s / 60}m trước" else "${s / 3600}h trước"
+private fun age(s: Long): String = if (s < 3600) "${s / 60}m ago" else "${s / 3600}h ago"

@@ -41,9 +41,14 @@ private fun cellsFor(width: androidx.compose.ui.unit.Dp, style: TextStyle): Int 
     val measurer = rememberTextMeasurer()
     val density = LocalDensity.current
     return remember(width, style) {
-        val charPx = measurer.measure("█", style).size.width.toFloat().coerceAtLeast(1f)
+        // Đo MỘT DẢI rồi chia, không đo một ký tự: `letterSpacing` âm chỉ có tác
+        // dụng GIỮA các ký tự, nên đo lẻ ra bề rộng dư → chia được ít ô → thanh
+        // ngắn hơn thanh Dashboard cũ (user chỉ ra 3/9, lần thứ hai).
+        val probe = 32
+        val runPx = measurer.measure("█".repeat(probe), style).size.width.toFloat()
+        val charPx = (runPx / probe).coerceAtLeast(0.5f)
         val availPx = with(density) { width.toPx() }
-        (availPx / charPx).toInt().coerceIn(4, 96)
+        (availPx / charPx).toInt().coerceIn(4, 160)
     }
 }
 
