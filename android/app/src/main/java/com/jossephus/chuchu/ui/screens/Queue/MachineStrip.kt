@@ -52,12 +52,16 @@ internal fun MachineStrip(
     modifier: Modifier = Modifier,
     onUsageVisible: (Boolean) -> Unit = {},
     onRefreshUsage: () -> Unit = {},
+    collapse: Boolean = false,
 ) {
     val colors = ChuColors.current
     val type = ChuTypography.current
     val readout = state.readout ?: return
     val s = readout.snapshot
     var expanded by remember { mutableStateOf(false) }
+    // Thu lại khi ô gõ nhận focus. KHÔNG tự mở lại lúc mất focus: người dùng
+    // mở panel là chủ ý, mở lại hộ họ sau lưng thì phiền.
+    LaunchedEffect(collapse) { if (collapse) expanded = false }
 
     val ageS = (System.currentTimeMillis() / 1000 - s.ts).coerceAtLeast(0)
     val stale = ageS > STALE_AFTER_S

@@ -94,6 +94,8 @@ fun QueueScreen(
     // o dang focus — "back khoi detail la ban phim doi len" (user 28/8). Xoa
     // focus ngay khi mo detail: dong sheet xong khong con o nao doi keyboard.
     val focusManager = LocalFocusManager.current
+    // Ô gõ đang được focus -> dải máy tự thu lại.
+    var composerFocused by remember { mutableStateOf(false) }
     LaunchedEffect(inspectedTaskId) {
         if (inspectedTaskId != null) focusManager.clearFocus()
     }
@@ -304,7 +306,8 @@ fun QueueScreen(
 
             // Dải máy ghim ngay trên ô nhập: lúc gõ việc mới là lúc cần biết
             // máy còn tải nổi không và còn quota không (user chốt P2, 3/9).
-            MachineStrip(machine, onUsageVisible = onUsageVisible, onRefreshUsage = onRefreshUsage)
+            MachineStrip(machine, onUsageVisible = onUsageVisible, onRefreshUsage = onRefreshUsage,
+                collapse = composerFocused)
 
             QueueComposer(
                 modifier = Modifier.onSizeChanged { composerHeightPx = it.height },
@@ -312,6 +315,7 @@ fun QueueScreen(
                 onValueChange = { prompt = it },
                 agent = selectedAgent,
                 sending = isAdding,
+                onFocusChanged = { composerFocused = it },
                 onSend = {
                     val text = prompt.trim()
                     if (text.isNotEmpty() && selectedAgent != null) {

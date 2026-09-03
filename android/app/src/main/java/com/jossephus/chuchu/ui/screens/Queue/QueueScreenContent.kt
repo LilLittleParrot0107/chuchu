@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
@@ -331,6 +332,7 @@ internal fun QueueComposer(
     sending: Boolean,
     onSend: () -> Unit,
     modifier: Modifier = Modifier,
+    onFocusChanged: (Boolean) -> Unit = {},
 ) {
     val colors = ChuColors.current
     val type = ChuTypography.current
@@ -385,7 +387,10 @@ internal fun QueueComposer(
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                 keyboardActions = KeyboardActions(onSend = { if (canSend) onSend() }),
                 modifier = Modifier.weight(1f)
-                    .padding(vertical = 10.dp),
+                    .padding(vertical = 10.dp)
+                    // Chạm vào ô gõ = bàn phím sắp chiếm nửa màn -> panel máy
+                    // phải hạ xuống, không thì nó chắn mất chỗ gõ (user 3/9).
+                    .onFocusChanged { onFocusChanged(it.isFocused) },
                 decorationBox = { inner ->
                     Box {
                         if (value.isEmpty()) {
