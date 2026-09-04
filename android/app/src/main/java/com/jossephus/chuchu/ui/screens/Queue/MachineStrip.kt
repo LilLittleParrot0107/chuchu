@@ -29,7 +29,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.jossephus.chuchu.data.model.machine.ClaudeWindow
 import com.jossephus.chuchu.data.model.machine.MachineReadout
 import com.jossephus.chuchu.ui.components.ChuText
 import com.jossephus.chuchu.ui.screens.Files.MachineUiState
@@ -106,7 +105,7 @@ internal fun MachineStrip(
             Cell("RAM", pct(ram), tone(ram, 70.0, 85.0, colors), alpha)
             Cell("CPU", cpu?.let { pct(it) } ?: "—", tone(cpu ?: 0.0, 70.0, 85.0, colors), alpha)
             Cell("5H", h5?.let { "$it%" } ?: "—", leftTone((h5 ?: 100).toDouble(), colors), alpha)
-            Cell("WK", wk?.let { "$it%" } ?: "—", leftTone((wk ?: 100).toDouble(), colors), alpha)
+            Cell("WEEK", wk?.let { "$it%" } ?: "—", leftTone((wk ?: 100).toDouble(), colors), alpha)
             Box(Modifier.weight(1f))
             ChuText(
                 if (stale) age(ageS) else "${ageS}s",
@@ -265,14 +264,14 @@ private fun UsagePage(readout: MachineReadout, alpha: Float) {
     s.claude?.session?.let {
         val left = 100 - it.usedPct
         BlockBar("cl·5h", left / 100.0, "$left%", leftColor(left, colors),
-            tail = resetIn(it),
+            tail = resetIn(it.resetsEpoch, it.resetsAt ?: ""),
             alpha = alpha, labelColor = colors.accent, labelWidth = PANEL_LABEL_W,
             fontSize = PANEL_BAR_SP, textSize = PANEL_TEXT_SP)
     }
     s.claude?.week?.let {
         val left = 100 - it.usedPct
-        BlockBar("cl·wk", left / 100.0, "$left%", leftColor(left, colors),
-            tail = resetIn(it),
+        BlockBar("cl·week", left / 100.0, "$left%", leftColor(left, colors),
+            tail = resetIn(it.resetsEpoch, it.resetsAt ?: ""),
             alpha = alpha, labelColor = colors.accent, labelWidth = PANEL_LABEL_W,
             fontSize = PANEL_BAR_SP, textSize = PANEL_TEXT_SP)
     }
@@ -281,13 +280,16 @@ private fun UsagePage(readout: MachineReadout, alpha: Float) {
     s.agy?.accounts?.filter { it.configured }?.forEach { a ->
         // agy trả sẵn phần CÒN LẠI — đúng chiều, không phải đổi.
         val left = listOfNotNull(a.pct5h, a.pctWeek).minOrNull() ?: return@forEach
-        val binding = if (a.pctWeek != null && (a.pct5h == null || a.pctWeek <= a.pct5h)) "week" else "5h"
+        // Cửa sổ căng nhất là cửa sổ đang đếm ngược — cùng cách đọc với dòng
+        // Claude (user chốt 4/9); không có mốc thì ghi tên cửa sổ như trước.
+        val weekBinds = a.pctWeek != null && (a.pct5h == null || a.pctWeek <= a.pct5h)
+        val tail = if (weekBinds) resetIn(a.resetWeek, "week") else resetIn(a.reset5h, "5h")
         // Đệm một dấu cách cho dòng KHÔNG phải tài khoản đang dùng, để chữ "agy"
         // của mọi dòng thẳng cột — mũi tên không được đẩy nhãn lệch đi một ô.
         val mark = if (a.id == s.agy?.current) "▸" else " "
         BlockBar("${mark}agy·${a.id.removePrefix("acc")}",
             left / 100.0, "${left.toInt()}%", leftColor(left.toInt(), colors),
-            tail = binding, alpha = alpha, labelColor = colors.success, labelWidth = PANEL_LABEL_W,
+            tail = tail, alpha = alpha, labelColor = colors.success, labelWidth = PANEL_LABEL_W,
             fontSize = PANEL_BAR_SP, textSize = PANEL_TEXT_SP)
     }
 }
@@ -297,8 +299,8 @@ private fun UsagePage(readout: MachineReadout, alpha: Float) {
 private const val ROW_HEIGHT_DP = 22
 private const val PANEL_TEXT_SP = 13
 private const val PANEL_BAR_SP = 11
-/** Đủ cho nhãn dài nhất "▸agy·2" (6 ô monospace ở 13sp). */
-private const val PANEL_LABEL_W = 50
+/** Đủ cho nhãn dài nhất "cl·week" (7 ô monospace ở 13sp). */
+private const val PANEL_LABEL_W = 56
 
 private fun machineRowCount(r: MachineReadout): Int =
     4 + (if (r.snapshot.gpu != null) 2 else 0) + r.topRam.take(2).size
@@ -318,8 +320,8 @@ private fun usageRowCount(r: MachineReadout): Int {
  * bảng này ("bao giờ có credit lại"), chứ không phải mốc đồng hồ tuyệt đối:
  * "→ Sep 6" bắt tự trừ trong đầu, "2d4h" thì không.
  */
-private fun resetIn(w: ClaudeWindow): String {
-    val epoch = w.resetsEpoch ?: return w.resetsAt ?: ""
+private fun resetIn(epoch: Long?, fallback: String): String {
+    if (epoch == null) return fallback
     val left = epoch - System.currentTimeMillis() / 1000
     if (left <= 0) return "↺ now"
     val d = left / 86400

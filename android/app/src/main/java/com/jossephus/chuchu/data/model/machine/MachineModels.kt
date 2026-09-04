@@ -57,6 +57,9 @@ data class AgyAccount(
     val error: String?,
     val pct5h: Double?,
     val pctWeek: Double?,
+    /** Epoch giây lúc cửa sổ reset — từ `resetTime` ISO-8601 của agy; null nếu thiếu/hỏng. */
+    val reset5h: Long? = null,
+    val resetWeek: Long? = null,
 )
 
 /** Quota Antigravity — [pct5h]/[pctWeek] la phan tram CON LAI, khong phai da dung. */
@@ -197,6 +200,17 @@ fun parseMachineSnapshot(json: String): MachineSnapshot {
 private fun JSONObject.optIntOrNull(key: String): Int? =
     if (isNull(key)) null else optInt(key).takeIf { has(key) }
 
+/**
+ * "2026-09-11T07:31:47Z" -> epoch giây. Chuỗi lạ/rỗng -> null, không ném.
+ * Dùng SimpleDateFormat vì minSdk 24 chưa có java.time (cần API 26).
+ */
+private fun isoEpoch(s: String?): Long? {
+    if (s.isNullOrBlank() || s == "null") return null
+    val fmt = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US)
+    fmt.timeZone = java.util.TimeZone.getTimeZone("UTC")
+    return try { fmt.parse(s)?.time?.div(1000) } catch (_: Exception) { null }
+}
+
 private fun parseAgy(o: JSONObject): AgyQuota {
     val accounts = o.optJSONArray("accounts")?.let { arr ->
         (0 until arr.length()).mapNotNull { i ->
@@ -208,6 +222,8 @@ private fun parseAgy(o: JSONObject): AgyQuota {
                 error = a.optString("error").takeIf { it.isNotBlank() && it != "null" },
                 pct5h = if (a.isNull("p5")) null else a.optDouble("p5"),
                 pctWeek = if (a.isNull("pwk")) null else a.optDouble("pwk"),
+                reset5h = isoEpoch(a.optString("p5_reset")),
+                resetWeek = isoEpoch(a.optString("pwk_reset")),
             )
         }
     } ?: emptyList()

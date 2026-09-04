@@ -26,7 +26,8 @@ class MachineModelsTest {
                {"comm": "claude", "cpu_s": 50.0, "rss_kb": 1572864, "n": 7}],
      "quota": {
        "agy": {"cur": "acc2", "cache_ts": 1788371900,
-               "accounts": [{"id": "acc1", "email": "a@b.c", "configured": true, "p5": 100.0, "pwk": 15.3},
+               "accounts": [{"id": "acc1", "email": "a@b.c", "configured": true, "p5": 100.0, "pwk": 15.3,
+                             "p5_reset": "2026-09-04T12:31:47Z", "pwk_reset": "khong-phai-ngay"},
                             {"id": "acc4", "configured": false}]},
        "claude": {"ok": true, "ts": 1788371000,
                   "session": {"used_pct": 4, "resets_at": "Sep 3, 4:20am", "resets_epoch": 1788384000},
@@ -51,6 +52,9 @@ class MachineModelsTest {
         assertEquals("acc2", s.agy!!.current)
         assertEquals(15.3, s.agy!!.accounts[0].pctWeek!!, 0.01)
         assertNull("tai khoan chua cau hinh thi khong co so", s.agy!!.accounts[1].pctWeek)
+        assertEquals(1788525107L, s.agy!!.accounts[0].reset5h)          // ISO UTC -> epoch
+        assertNull("chuoi khong phai ngay thi null, khong nem", s.agy!!.accounts[0].resetWeek)
+        assertNull(s.agy!!.accounts[1].reset5h)
 
         assertEquals(4, s.claude!!.session!!.usedPct)
         assertEquals(20, s.claude!!.week!!.usedPct)
