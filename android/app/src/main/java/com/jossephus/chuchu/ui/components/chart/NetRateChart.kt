@@ -312,15 +312,15 @@ fun NetRateChart(
         animProgress.animateTo(1f, animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing))
     }
 
-    // Thang do: nua tren theo yield, nua duoi theo chi tieu NHUNG bi chan o
-    // 1.5 lan nua tren — mot ngay tieu 400$ khong duoc phep ep dep het cot
-    // yield 78$. Ngay vuot chan van ve het co va danh dau mui nhon o day.
+    // Thang do: nua tren theo yield, nua duoi theo chi tieu DA DAN (trailSpend):
+    // cuc chi tho khong con tham gia thang do hay cot — no chi la moc tren HUD.
+    // Van chan 1.5 lan nua tren phong truong hop dan roi van lon hon yield.
     val scale = remember(points) {
         val posMax = maxOf(
             points.maxOf { maxOf(it.gross, it.trailGross) },
             0.01,
         )
-        val spendMax = points.maxOf { maxOf(it.spend, it.trailSpend) }
+        val spendMax = points.maxOf { it.trailSpend }
         val lineMin = points.minOf { it.trailNet }
         // Cot co the bi cat, duong thi khong bao gio.
         val negNeed = maxOf(minOf(spendMax, posMax * 1.5), if (lineMin < 0) -lineMin else 0.0)
@@ -506,8 +506,12 @@ fun NetRateChart(
                     }
                 }
 
-                if (p.spend > 0.0) {
-                    val bottomRaw = yOf(-p.spend * anim)
+                // Cot chi tieu = muc DA DAN (user chot 5/9): tieu mot cuc roi song bang
+                // no toi lan tieu sau, nen moi ngay trong khoang do gánh mot phan bang
+                // nhau. Lich su cuc tho nam o tab Spending; o day ve cuc thi mot cot
+                // choc thung khung con cac ngay khac trong nhu khong tieu gi.
+                if (p.trailSpend > 0.0) {
+                    val bottomRaw = yOf(-p.trailSpend * anim)
                     val bottom = minOf(bottomRaw, plotBottom)
                     drawRoundRect(
                         color = spendColor.copy(alpha = alpha * 0.85f),
@@ -603,7 +607,10 @@ fun NetRateChart(
                 val lines = buildList {
                     add(textMeasurer.measure(p.date.takeLast(5) + covNote, titleStyle))
                     add(textMeasurer.measure("YIELD +${DeFiFormatter.formatUsd(p.gross)}", grossStyle))
-                    if (p.spend > 0.0) add(textMeasurer.measure("SPEND -${DeFiFormatter.formatUsd(p.spend)}", spendStyle))
+                    if (p.trailSpend > 0.0) {
+                        val lump = if (p.spend > 0.0) " · LUMP ${DeFiFormatter.formatUsd(p.spend)}" else ""
+                        add(textMeasurer.measure("SPEND -${DeFiFormatter.formatUsd(p.trailSpend)}/D$lump", spendStyle))
+                    }
                     add(textMeasurer.measure(
                         "NET ${if (p.trailNet >= 0) "+" else "-"}${DeFiFormatter.formatUsd(abs(p.trailNet))}/D$aprNote",
                         netStyle,
