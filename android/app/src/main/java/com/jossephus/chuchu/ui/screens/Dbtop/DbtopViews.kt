@@ -316,7 +316,10 @@ internal fun ChartsView(
                             points = ratePoints,
                             grossColor = colors.accent,
                             netColor = if (perDay >= 0) colors.success else colors.error,
-                            spendColor = colors.warning,
+                            // KHÔNG dùng warning: cam cạnh vàng (yield) nhìn lẫn (user 5/9).
+                            // Cũng không dùng error: lúc chi vượt yield, đường NET đỏ sẽ
+                            // chìm vào cột đỏ — đúng lúc cần đọc nhất.
+                            spendColor = colors.accentSecondary,
                             gridColor = colors.border.copy(alpha = 0.4f),
                             textColor = colors.textSecondary,
                             tooltipBg = colors.surfaceVariant,
