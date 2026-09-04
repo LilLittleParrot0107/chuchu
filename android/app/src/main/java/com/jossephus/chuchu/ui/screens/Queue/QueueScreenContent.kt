@@ -40,6 +40,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.jossephus.chuchu.ui.components.ChuButton
 import com.jossephus.chuchu.ui.components.ChuButtonVariant
@@ -70,6 +71,8 @@ internal fun QueueAgentRoster(
     tasks: List<QueueTask>,
     selectedPane: String,
     onSelect: (String) -> Unit,
+    /** Trần chiều cao danh sách — caller tính từ chỗ CÒN TRỐNG, xem QueueScreen. */
+    maxHeight: Dp = 280.dp,
 ) {
     val colors = ChuColors.current
     val type = ChuTypography.current
@@ -131,7 +134,7 @@ internal fun QueueAgentRoster(
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 280.dp),
+                    .heightIn(max = maxHeight),
                 verticalArrangement = Arrangement.spacedBy(3.dp),
             ) {
                 items(agents, key = QueueAgent::pane) { agent ->

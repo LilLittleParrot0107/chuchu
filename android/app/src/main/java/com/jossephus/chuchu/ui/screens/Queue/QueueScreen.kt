@@ -5,6 +5,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
@@ -149,12 +150,21 @@ fun QueueScreen(
     var commandBandHeightPx by remember { mutableIntStateOf(0) }
     var composerHeightPx by remember { mutableIntStateOf(0) }
 
-    Box(
+    // BoxWithConstraints để biết còn bao nhiêu chỗ SAU KHI bàn phím đã lấy
+    // phần của nó (imePadding nằm trên modifier này nên maxHeight đã trừ IME).
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
             .background(colors.background)
             .imePadding(),
     ) {
+        // Roster AGENTS chỉ được ăn tối đa ~1/3 chỗ còn trống. Trần cứng 280dp
+        // trước đây không biết bàn phím vừa lấy mất ~300dp: trên màn 780dp
+        // (1080×2340 mật độ 3x) băng + roster + ô nhập cộng lại vượt phần còn
+        // lại, cột không cuộn nên ô nhập bị đẩy tụt xuống dưới bàn phím — tái
+        // hiện trên emulator ép density 480, [SEND] chỉ còn lộ 9px (4/9).
+        val rosterMax = (maxHeight * 0.35f).coerceAtMost(280.dp)
+
         // Scrim status bar = surface: khop voi command band ngay duoi, het
         // seam "thanh noti khac mau phan duoi". Mau lay tu palette active.
         Spacer(
@@ -239,6 +249,7 @@ fun QueueScreen(
                 onSelect = { nextPane ->
                     selectedPane = nextPane
                 },
+                maxHeight = rosterMax,
             )
 
             // Header vung content phai tu tra loi "duoi day thuoc ve agent nao":
@@ -308,12 +319,13 @@ fun QueueScreen(
 
             // Dải máy ghim ngay trên ô nhập: lúc gõ việc mới là lúc cần biết
             // máy còn tải nổi không và còn quota không (user chốt P2, 3/9).
-            // Thu panel theo BÀN PHÍM chứ không chỉ theo focus: ô nhập có thể
-            // đang giữ focus từ trước rồi bàn phím mới hiện lên, lúc đó focus
-            // không đổi nên tín hiệu cũ im lặng và panel ở lại chắn mất ô nhập.
+            // Thu panel theo BÀN PHÍM, KHÔNG theo focus. Android không bỏ focus
+            // khi đóng bàn phím: ô nhập giữ focus mãi sau lần chạm đầu, nên gắn
+            // vào focus là panel bị khoá vĩnh viễn (bản .28, user báo 4/9).
+            // Thứ thật sự tranh chỗ với panel là bàn phím, và chỉ nó.
             val imeUp = WindowInsets.ime.getBottom(LocalDensity.current) > 0
             MachineStrip(machine, onUsageVisible = onUsageVisible, onRefreshUsage = onRefreshUsage,
-                collapse = composerFocused || imeUp)
+                collapse = imeUp)
 
             QueueComposer(
                 modifier = Modifier.onSizeChanged { composerHeightPx = it.height },
