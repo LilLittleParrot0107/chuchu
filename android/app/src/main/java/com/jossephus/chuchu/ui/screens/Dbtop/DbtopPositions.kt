@@ -39,6 +39,7 @@ import com.jossephus.chuchu.data.model.dbtop.TokenPosition
 import com.jossephus.chuchu.ui.components.ChuCard
 import com.jossephus.chuchu.ui.components.BlockBarLine
 import com.jossephus.chuchu.ui.components.BlockSegmentBar
+import kotlin.math.roundToInt
 import com.jossephus.chuchu.ui.components.ChuText
 import com.jossephus.chuchu.ui.components.KohiCompactAction
 import com.jossephus.chuchu.ui.components.KohiSelectableRow
@@ -430,9 +431,27 @@ internal fun PositionDetailPane(
         }
 
         if (tokens.isNotEmpty()) {
+            // Nợ KHÔNG nằm chung thanh với tài sản: trước đây BOR là một đoạn đỏ trong
+            // cùng thanh COLL/SUP nên đọc như "một phần của supply". Giờ tài sản một
+            // thanh, nợ một thanh RIÊNG ngay dưới, cùng THANG (đầy thanh = tổng tài sản)
+            // — độ dài nói thẳng nợ bằng bao nhiêu phần supply (user chốt 4/9).
+            val assets = tokens.filter { it.first != "BOR" }
+            val debts = tokens.filter { it.first == "BOR" }
+            val assetUsd = assets.sumOf { Math.abs(it.third.usd) }
+            val debtUsd = debts.sumOf { Math.abs(it.third.usd) }
             DetailSection("TOKENS")
-            CompositionBar(tokens.map { (_, color, t) -> color to Math.abs(t.usd) })
-            tokens.forEach { (kind, color, t) -> TokenRow(kind, color, t) }
+            CompositionBar(assets.map { (_, color, t) -> color to Math.abs(t.usd) })
+            assets.forEach { (kind, color, t) -> TokenRow(kind, color, t) }
+            if (debts.isNotEmpty()) {
+                val pct = if (assetUsd > 0) (debtUsd / assetUsd * 100).roundToInt() else null
+                DetailSection(if (pct != null) "BORROW · $pct% OF SUPPLY" else "BORROW")
+                BlockBarLine(
+                    fraction = if (assetUsd > 0) debtUsd / assetUsd else null,
+                    color = colors.error,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                debts.forEach { (kind, color, t) -> TokenRow(kind, color, t) }
+            }
         }
         if (row.detail?.option == null && tokens.isEmpty() && row.detail?.breakdown == null) {
             ChuText(
