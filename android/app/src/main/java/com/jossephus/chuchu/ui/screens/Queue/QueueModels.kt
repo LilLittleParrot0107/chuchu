@@ -82,7 +82,28 @@ data class QueueAgent(
     val label: String,
     /** Short attention marker from qsrv; qq calls this the agent word. */
     val word: String,
-)
+) {
+    /**
+     * Thứ tự trên roster — số nhỏ lên trên (user chốt 4/9): thứ cần TAY người
+     * (đang hỏi duyệt) trên cùng, rồi thứ đang chạy, rồi thứ chưa rõ, còn rảnh
+     * xuống đáy. Đọc theo NHÃN đã dịch của qsrv (A_VIEW) chứ không theo tone:
+     * tone chỉ là màu, hai trạng thái khác nhau có thể cùng màu.
+     */
+    val priority: Int get() = when (label.trim().lowercase()) {
+        "needs approval", "blocked" -> 0
+        "working", "busy", "sending", "running" -> 1
+        "unknown" -> 2
+        "idle", "done" -> 3
+        else -> 4                                  // down/gone/nhãn lạ: cuối
+    }
+}
+
+/**
+ * Sắp theo [QueueAgent.priority], giữ nguyên thứ tự server (= thứ tự herdr)
+ * trong cùng một hạng — sortedBy là stable — để hai agent cùng đang chạy không
+ * đổi chỗ nhau mỗi lần poll.
+ */
+fun List<QueueAgent>.byPriority(): List<QueueAgent> = sortedBy { it.priority }
 
 data class QueueBanner(
     val tone: QueueTone,
@@ -198,7 +219,11 @@ data class QueueState(
             agents = o.optJSONArray("agents")
                 .mapObjects(::parseAgent)
                 .filter { it.pane.isNotBlank() }
-                .distinctBy(QueueAgent::pane),
+                .distinctBy(QueueAgent::pane)
+                // Sắp ở đây chứ không ở roster: agents.first() là pane mặc
+                // định khi chưa chọn gì, nên mở Queue là đứng ngay ở agent
+                // đang cần duyệt.
+                .byPriority(),
             // Every action needs an id, and placeholder ids would collide in
             // LazyColumn keys. Invalid rows are safer to omit.
             tasks = o.optJSONArray("tasks")

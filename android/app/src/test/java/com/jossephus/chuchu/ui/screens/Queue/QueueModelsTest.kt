@@ -191,6 +191,24 @@ class QueueModelsTest {
     }
 
     @Test
+    fun `roster xep theo uu tien - can duyet tren cung, ranh duoi day, cung hang giu thu tu server`() {
+        val s = QueueState.parse("""{"rev":1,"agents":[
+            {"pane":"p1","name":"a","tone":"dim","label":"idle"},
+            {"pane":"p2","name":"b","tone":"accent","label":"working"},
+            {"pane":"p3","name":"c","tone":"warn","label":"needs approval"},
+            {"pane":"p4","name":"d","tone":"warn","label":"unknown"},
+            {"pane":"p5","name":"e","tone":"accent","label":"busy"},
+            {"pane":"p6","name":"f","tone":"error","label":"gone"},
+            {"pane":"p7","name":"g","tone":"dim","label":"idle"}
+        ],"tasks":[]}""")
+        assertEquals(listOf("p3", "p2", "p5", "p4", "p1", "p7", "p6"), s.agents.map { it.pane })
+        // Nhan tieng Viet cua qsrv cu cung xep dung sau khi dich.
+        val v = QueueState.parse("""{"rev":1,"agents":[
+            {"pane":"x","label":"ranh"},{"pane":"y","label":"cho duyet"}],"tasks":[]}""")
+        assertEquals(listOf("y", "x"), v.agents.map { it.pane })
+    }
+
+    @Test
     fun `agent without a unique pane is omitted`() {
         val state = QueueState.parse(
             """{"agents":[

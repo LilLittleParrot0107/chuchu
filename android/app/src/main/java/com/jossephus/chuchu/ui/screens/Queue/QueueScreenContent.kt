@@ -149,6 +149,9 @@ internal fun QueueAgentRoster(
                         tone = colors.accent,      // rail + border theo ACCENT, khong theo tone
                         onClick = { onSelect(agent.pane) },
                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                        // Roster sắp theo ưu tiên nên agent đổi trạng thái là đổi
+                        // chỗ; trượt tới vị trí mới thay vì nhảy, để mắt theo kịp.
+                        modifier = Modifier.animateItem(),
                     ) {
                         // Slot con tro '>' co dinh: selection nhan mat ngay ca khi
                         // qua mau sac khong doc duoc.
