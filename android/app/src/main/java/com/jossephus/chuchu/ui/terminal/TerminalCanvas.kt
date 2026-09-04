@@ -191,7 +191,7 @@ fun TerminalCanvas(
     }
     // Paint-choice caches depend on every typeface in the fallback chain.
     val singlePaintChoiceCache = remember(primaryTypeface, symbolsTypeface, fallbackTypeface) {
-        HashMap<Int, Int>(256)
+        PaintChoiceCache()
     }
     // Multi-codepoint grapheme cluster paint choice cache.
     val clusterPaintChoiceCache = remember(primaryTypeface, symbolsTypeface, fallbackTypeface) {
@@ -322,7 +322,9 @@ fun TerminalCanvas(
         selectionViewportBaseline = if (hasSelection) currentSnapshot.value.viewportScrollY else null
     }
 
-    LaunchedEffect(snapshot) {
+    // Chỉ đặt effect khi CÓ selection: bản trước launch + cancel coroutine trên
+    // main mỗi snapshot (≤60/s) rồi return ngay vì selection == null.
+    if (hasSelection) LaunchedEffect(snapshot) {
         remapSelectionForViewportScroll(
             snapshot = snapshot,
             selection = currentSelectionState.value,
@@ -537,12 +539,6 @@ fun TerminalCanvas(
                                 val changePos = toSnapshotSpace(change.position, s)
                                 val changePrevPos = toSnapshotSpace(change.previousPosition, s)
                                 val downPos = toSnapshotSpace(down.position, s)
-                                val selectedCell = s.cellAt(
-                                    changePos.x,
-                                    changePos.y,
-                                    currentCellWidth.value,
-                                    currentCellHeight.value,
-                                )
                                 if (dragMode == DragMode.ArrowTrackpad) {
                                     lastPointerPos = change.position
                                     // KHONG cap nhat theo ngon tay: vong tron ghim
@@ -899,7 +895,12 @@ fun TerminalCanvas(
                     i = j
                 }
 
-                // Text runs
+                // Text runs. Paint chỉ được set lại khi (paint, màu, style) đổi so
+                // với run trước: mỗi setter là một JNI, ~300 run × 5 = 1500 lệnh
+                // mỗi frame nếu set vô điều kiện (audit 4/9 P10).
+                var lastRunPaint: Paint? = null
+                var lastRunFg = 0
+                var lastRunStyle = -1
                 i = rowStart
                 while (i < rowEnd) {
                     val cp = snapshot.codepoints[i]
@@ -1004,11 +1005,14 @@ fun TerminalCanvas(
                         fallbackPaint = fallbackTextPaint,
                         emojiPaint = emojiTextPaint,
                     )
-                    paint.color = fg
-                    paint.isFakeBoldText = (styleBits and TerminalSnapshot.CELL_FLAG_BOLD) != 0
-                    paint.isUnderlineText = (styleBits and TerminalSnapshot.CELL_FLAG_UNDERLINE) != 0
-                    paint.textSkewX = if ((styleBits and TerminalSnapshot.CELL_FLAG_ITALIC) != 0) -0.25f else 0f
-                    paint.alpha = if ((styleBits and TerminalSnapshot.CELL_FLAG_FAINT) != 0) FAINT_TEXT_ALPHA else 255
+                    if (paint !== lastRunPaint || fg != lastRunFg || styleBits != lastRunStyle) {
+                        paint.color = fg
+                        paint.isFakeBoldText = (styleBits and TerminalSnapshot.CELL_FLAG_BOLD) != 0
+                        paint.isUnderlineText = (styleBits and TerminalSnapshot.CELL_FLAG_UNDERLINE) != 0
+                        paint.textSkewX = if ((styleBits and TerminalSnapshot.CELL_FLAG_ITALIC) != 0) -0.25f else 0f
+                        paint.alpha = if ((styleBits and TerminalSnapshot.CELL_FLAG_FAINT) != 0) FAINT_TEXT_ALPHA else 255
+                        lastRunPaint = paint; lastRunFg = fg; lastRunStyle = styleBits
+                    }
                     // drawText nhan CharSequence truc tiep — sb.toString() la
                     // mot String moi cho moi text-run, moi frame.
                     nCanvas.drawText(sb, 0, sb.length, startCol * cellWidth, baseline, paint)
@@ -1269,7 +1273,7 @@ private fun pickPaintChoice(
 private fun pickPaintChoice(
     codepoint: Int,
     glyphCache: HashMap<Int, String>,
-    cache: HashMap<Int, Int>,
+    cache: PaintChoiceCache,
     primaryPaint: Paint,
     symbolsPaint: Paint,
     fallbackPaint: Paint,
@@ -1278,15 +1282,31 @@ private fun pickPaintChoice(
     // Fast path for the overwhelmingly common command-output ASCII glyphs.
     if (codepoint in 0x21..0x7E) return PAINT_PRIMARY
 
-    return cache.getOrPut(codepoint) {
-        val glyph = glyphCache.getOrPut(codepoint) { String(Character.toChars(codepoint)) }
-        if (primaryPaint.hasGlyph(glyph)) return@getOrPut PAINT_PRIMARY
-        if (isNerdFontPrivateUse(codepoint) && symbolsPaint.hasGlyph(glyph)) {
-            return@getOrPut PAINT_SYMBOLS
-        }
-        if (emojiPaint.hasGlyph(glyph)) return@getOrPut PAINT_EMOJI
-        if (fallbackPaint.hasGlyph(glyph)) return@getOrPut PAINT_FALLBACK
-        PAINT_EMOJI
+    val cached = cache.get(codepoint)
+    if (cached >= 0) return cached
+    val glyph = glyphCache.getOrPut(codepoint) { String(Character.toChars(codepoint)) }
+    val choice = when {
+        primaryPaint.hasGlyph(glyph) -> PAINT_PRIMARY
+        isNerdFontPrivateUse(codepoint) && symbolsPaint.hasGlyph(glyph) -> PAINT_SYMBOLS
+        emojiPaint.hasGlyph(glyph) -> PAINT_EMOJI
+        fallbackPaint.hasGlyph(glyph) -> PAINT_FALLBACK
+        else -> PAINT_EMOJI
+    }
+    cache.put(codepoint, choice)
+    return choice
+}
+
+/**
+ * Cache lựa Paint theo codepoint KHÔNG boxing. HashMap<Int,Int>.getOrPut tạo một
+ * Integer mới cho mọi cp > 127 — màn TUI toàn box-drawing U+25xx thì hàng nghìn
+ * Integer mỗi frame (audit 4/9 P10). BMP tra bảng byte, astral mới đụng map.
+ */
+internal class PaintChoiceCache {
+    private val bmp = ByteArray(0x10000)               // 0 = chưa biết, else choice+1
+    private val astral = HashMap<Int, Int>(32)
+    fun get(cp: Int): Int = if (cp in 0 until 0x10000) bmp[cp].toInt() - 1 else (astral[cp] ?: -1)
+    fun put(cp: Int, choice: Int) {
+        if (cp in 0 until 0x10000) bmp[cp] = (choice + 1).toByte() else astral[cp] = choice
     }
 }
 

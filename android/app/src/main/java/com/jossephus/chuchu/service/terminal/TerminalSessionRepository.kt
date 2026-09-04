@@ -124,6 +124,9 @@ class TerminalSessionRepository private constructor(application: Application) {
             .stateIn(scope, SharingStarted.Eagerly, emptySet())
 
     private var attachedClients = 0
+    // App có đang ở foreground không (nav báo qua ON_START/ON_STOP). TerminalScreen
+    // vẫn attached khi màn tắt nên attachedClients một mình không đủ để tắt vẽ.
+    private var foreground = true
     private var foregroundServiceRunning = false
     private var foregroundNotificationLabel: String? = null
 
@@ -148,10 +151,29 @@ class TerminalSessionRepository private constructor(application: Application) {
 
     fun attachClient() {
         attachedClients += 1
+        syncRenderGates()
     }
 
     fun detachClient() {
         attachedClients = (attachedClients - 1).coerceAtLeast(0)
+        syncRenderGates()
+    }
+
+    fun setForeground(value: Boolean) {
+        if (foreground == value) return
+        foreground = value
+        syncRenderGates()
+    }
+
+    /**
+     * Chỉ tab ĐANG HIỆN được dựng snapshot; tab nền và lúc màn tắt thì engine chỉ
+     * bơm dữ liệu vào ghostty rồi thôi (audit 4/9 P1). Gọi mỗi khi một trong ba
+     * đầu vào đổi: tab active, số client attached, foreground.
+     */
+    private fun syncRenderGates() {
+        val activeId = _activeTabId.value
+        val on = attachedClients > 0 && foreground
+        _tabs.value.forEach { it.engine.setRenderEnabled(on && it.id == activeId) }
     }
 
     private fun currentNotificationLabel(): String {
@@ -234,6 +256,7 @@ class TerminalSessionRepository private constructor(application: Application) {
         val tab = TabSession(id, spec, engine)
         _tabs.value = _tabs.value + tab
         _activeTabId.value = id
+        syncRenderGates()
         engine.connect(
             host = spec.host,
             port = spec.port,
@@ -256,6 +279,7 @@ class TerminalSessionRepository private constructor(application: Application) {
     fun selectTab(id: String) {
         if (_tabs.value.any { it.id == id }) {
             _activeTabId.value = id
+            syncRenderGates()
         }
     }
 
@@ -266,6 +290,7 @@ class TerminalSessionRepository private constructor(application: Application) {
         if (_activeTabId.value == id) {
             val nextSameHost = remaining.firstOrNull { it.spec.hostId == tab.spec.hostId }
             _activeTabId.value = nextSameHost?.id ?: remaining.firstOrNull()?.id
+            syncRenderGates()
         }
         tab.engine.dispose()
     }
@@ -318,6 +343,7 @@ class TerminalSessionRepository private constructor(application: Application) {
         val tabs = _tabs.value
         _tabs.value = emptyList()
         _activeTabId.value = null
+        syncRenderGates()
         tabs.forEach { it.engine.dispose() }
     }
 

@@ -77,7 +77,13 @@ fun ApplicationNavController() {
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { source, event ->
+            // Cổng vẽ của terminal: màn tắt / app xuống nền thì engine ngừng dựng
+            // snapshot cho tab đang mở (audit 4/9 P1).
+            if (event == Lifecycle.Event.ON_START) {
+                com.jossephus.chuchu.service.terminal.TerminalSessionRepository.getInstance(application).setForeground(true)
+            }
             if (event == Lifecycle.Event.ON_STOP) {
+                com.jossephus.chuchu.service.terminal.TerminalSessionRepository.getInstance(application).setForeground(false)
                 val isConfigChange =
                     (source as? android.app.Activity)?.isChangingConfigurations == true
                 if (!isConfigChange) {

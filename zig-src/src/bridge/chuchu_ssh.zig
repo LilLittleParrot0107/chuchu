@@ -1145,6 +1145,10 @@ export fn Java_com_jossephus_chuchu_service_ssh_NativeSshBridge_nativeResize(env
     _ = thiz;
     const session = sessionFromHandle(handle) orelse return c.JNI_FALSE;
     const channel = session.channel orelse return c.JNI_FALSE;
+    // Ngan sach nhu writeChannel (120ms x 40 ~ 5s), KHONG doi 10s moi EAGAIN: ham
+    // nay chay tren chinh luong bom terminal, xoay man hinh luc mang lag la
+    // terminal dung 10s (audit 4/9 P11).
+    var stalled_loops: u32 = 0;
     while (true) {
         const rc = c.libssh2_channel_request_pty_size_ex(channel, cols, rows, width_px, height_px);
         if (rc == 0) return c.JNI_TRUE;
@@ -1152,10 +1156,12 @@ export fn Java_com_jossephus_chuchu_service_ssh_NativeSshBridge_nativeResize(env
             setLibssh2Error(session, "PTY resize failed", rc);
             return c.JNI_FALSE;
         }
-        if (!waitSocket(session, setup_wait_timeout_ms)) {
+        stalled_loops +%= 1;
+        if (stalled_loops > 40) {
             setError(session, "PTY resize timed out", .{});
             return c.JNI_FALSE;
         }
+        _ = waitSocket(session, io_wait_timeout_ms);
     }
 }
 

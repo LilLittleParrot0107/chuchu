@@ -29,6 +29,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -123,6 +125,16 @@ class TerminalSessionEngine(
     private var lastSnapshotAtMs = 0L
     private var snapshotScheduled = false
     private val snapshotIntervalMs = 16L
+    // Cổng vẽ: tab nền / màn tắt thì KHÔNG parse snapshot (6 JNI + 4 mảng mỗi chunk,
+    // tới 60 lần/s mỗi tab — khoản pin lớn nhất còn lại, audit 4/9 P1). Dữ liệu
+    // vẫn được đọc và bơm vào ghostty; chỉ phần dựng ảnh cho Kotlin là bỏ qua,
+    // đánh dấu dirty để lúc bật lại dựng đúng một lần.
+    @Volatile private var renderEnabled = true
+    @Volatile private var snapshotDirty = false
+    // Đánh thức read-loop ngay khi có phím gõ: vòng đọc ngủ theo idleReadDelayMs
+    // (trần 64ms khi im lâu) nên echo của phím đầu tiên chờ hết delay + RTT —
+    // cảm giác "gõ phát đầu hơi khựng" (audit 4/9 P6).
+    private val readWake = Channel<Unit>(Channel.CONFLATED)
     private var title: String? = null
     private var pwd: String? = null
     private var images: List<ImagePlacement> = emptyList()
@@ -744,7 +756,8 @@ class TerminalSessionEngine(
             if (chunk.isEmpty()) {
                 // Adaptive poll: stay snappy while data is flowing, back off when
                 // idle so a quiet session doesn't spin at 500 wakeups/sec.
-                delay(idleReadDelayMs(System.currentTimeMillis() - lastActivityMs))
+                // Ngủ có thể bị đánh thức sớm bởi writeRemote (phím gõ).
+                idleSleep(idleReadDelayMs(System.currentTimeMillis() - lastActivityMs))
                 continue
             }
             lastActivityMs = System.currentTimeMillis()
@@ -841,7 +854,7 @@ class TerminalSessionEngine(
 
             // Adaptive cadence: Mosh's retransmit/heartbeat timers are coarse, so
             // backing the pump off while idle is safe and avoids a 500 Hz spin.
-            delay(idleReadDelayMs(System.currentTimeMillis() - lastActivityMs))
+            idleSleep(idleReadDelayMs(System.currentTimeMillis() - lastActivityMs))
         }
         Log.d("TerminalSession", "MOSH: read loop exited after $loopCount iterations")
         return failureCode
@@ -1165,6 +1178,12 @@ class TerminalSessionEngine(
             Transport.LocalShell -> localShellService.write(data)
             else -> nativeSsh.write(data)
         }
+        readWake.trySend(Unit)
+    }
+
+    /** Ngủ [ms] nhưng dậy ngay nếu có phím gõ (readWake). */
+    private suspend fun idleSleep(ms: Long) {
+        withTimeoutOrNull(ms) { readWake.receive() }
     }
 
     private fun publishClipboard(text: String) {
@@ -1241,6 +1260,7 @@ class TerminalSessionEngine(
         private const val ACTIVE_WINDOW_MS = 50L
         private const val NEAR_IDLE_WINDOW_MS = 500L
         private const val IDLE_WINDOW_MS = 3_000L
+        private const val BACKGROUND_READ_DELAY_MS = 250L
         private const val MIN_READ_DELAY_MS = 2L
         private const val NEAR_IDLE_DELAY_MS = 8L
         private const val IDLE_DELAY_MS = 24L
@@ -1253,16 +1273,35 @@ class TerminalSessionEngine(
     // MIN while data is flowing (snappy echo), ramping to MAX once quiet so an idle
     // terminal stops spinning. The first byte after idle restores MIN within one
     // MAX interval.
-    private fun idleReadDelayMs(idleForMs: Long): Long =
-        when {
+    private fun idleReadDelayMs(idleForMs: Long): Long {
+        val d = when {
             idleForMs < ACTIVE_WINDOW_MS -> MIN_READ_DELAY_MS
             idleForMs < NEAR_IDLE_WINDOW_MS -> NEAR_IDLE_DELAY_MS
             idleForMs < IDLE_WINDOW_MS -> IDLE_DELAY_MS
             else -> MAX_READ_DELAY_MS
         }
+        // Không ai nhìn thì không cần dậy 500 lần/s để bơm nhanh; 250ms là đủ để
+        // dữ liệu vẫn chảy vào ghostty (tmux/htop ở tab nền không mất gì).
+        return if (renderEnabled) d else maxOf(d, BACKGROUND_READ_DELAY_MS)
+    }
+
+    /** Repo gọi: chỉ tab đang hiện trên màn (và app ở foreground) mới được vẽ. */
+    fun setRenderEnabled(enabled: Boolean) {
+        if (renderEnabled == enabled) return
+        renderEnabled = enabled
+        if (enabled && snapshotDirty) {
+            scope.launch(dispatcher) {
+                snapshotDirty = false
+                if (handle == 0L) return@launch
+                emitSnapshot()
+                lastSnapshotAtMs = System.currentTimeMillis()
+            }
+        }
+    }
 
     private fun requestSnapshot(force: Boolean = false) {
         if (handle == 0L) return
+        if (!renderEnabled) { snapshotDirty = true; return }
         val now = System.currentTimeMillis()
         val elapsed = now - lastSnapshotAtMs
         if (force || elapsed >= snapshotIntervalMs) {

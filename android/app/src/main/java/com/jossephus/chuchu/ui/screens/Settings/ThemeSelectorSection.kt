@@ -62,8 +62,11 @@ internal fun ThemeSelectorSection(
     val typography = ChuTypography.current
     val context = LocalContext.current
     val availableThemes = remember { GhosttyThemeRegistry.availableThemeNames }
-    val themeByName = remember(context, availableThemes) {
-        availableThemes.associateWith { themeName -> GhosttyThemeRegistry.getTheme(context, themeName) }
+    // Map LƯỜI: chỉ parse theme khi hàng đó được compose. Bản trước associateWith
+    // parse cả 463 file asset trên main thread mỗi lần mở Settings (audit 4/9 P9);
+    // warm-up ở Application chỉ liệt kê TÊN, chưa parse.
+    val themeByName: Map<String, GhosttyTheme?> = remember(context, availableThemes) {
+        LazyThemeMap(context, availableThemes)
     }
 
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -445,4 +448,23 @@ private fun PaletteSwatchStrip(theme: GhosttyTheme) {
             Box(modifier = Modifier.width(8.dp).height(12.dp).background(color))
         }
     }
+}
+
+/**
+ * Map tên -> theme, parse lúc GỌI get (registry cache kết quả). Chỉ hỗ trợ keys/get —
+ * ThemeSelector không duyệt values/entries; ai cần thì thêm, đừng eager hoá lại.
+ */
+private class LazyThemeMap(
+    private val context: android.content.Context,
+    names: List<String>,
+) : Map<String, GhosttyTheme?> {
+    override val keys: Set<String> = LinkedHashSet(names)
+    override val size: Int get() = keys.size
+    override fun isEmpty(): Boolean = keys.isEmpty()
+    override fun containsKey(key: String): Boolean = key in keys
+    override fun get(key: String): GhosttyTheme? =
+        if (key in keys) GhosttyThemeRegistry.getTheme(context, key) else null
+    override fun containsValue(value: GhosttyTheme?): Boolean = throw UnsupportedOperationException("lazy map")
+    override val values: Collection<GhosttyTheme?> get() = throw UnsupportedOperationException("lazy map")
+    override val entries: Set<Map.Entry<String, GhosttyTheme?>> get() = throw UnsupportedOperationException("lazy map")
 }

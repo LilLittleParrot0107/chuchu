@@ -79,6 +79,7 @@ import androidx.core.content.FileProvider
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.jossephus.chuchu.data.repository.SettingsRepository
 import com.jossephus.chuchu.model.AuthMethod
 import com.jossephus.chuchu.model.Transport
@@ -347,6 +348,11 @@ fun TerminalScreen(
         val on = selectedTab == ConnectionTab.Files && filesSegment == FilesSegment.Machine
         vm.setMachineWanted(MACHINE_WANT_FILES, on)
         onDispose { vm.setMachineWanted(MACHINE_WANT_FILES, false) }
+    }
+    // App xuống nền là poll /machine dừng, dù màn này vẫn composed (P4).
+    LifecycleResumeEffect(Unit) {
+        vm.setAppActive(true)
+        onPauseOrDispose { vm.setAppActive(false) }
     }
     val hostKeyPrompt by vm.hostKeyPrompt.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -1284,11 +1290,10 @@ fun TerminalScreen(
                     }
                     Column(
                         modifier =
+                            // Không blur nữa: cả tab sheet lẫn palette phủ một Box nền
+                            // ĐỤC full-size, nên ảnh blur không bao giờ nhìn thấy mà GPU
+                            // vẫn chạy RenderEffect toàn màn mỗi frame (audit 4/9 P2).
                             Modifier.fillMaxSize()
-                                .blur(
-                                    if (showTabSheet || showGlobalTabManager) 10.dp
-                                    else 0.dp
-                                )
                                 // Smooth slide (v9's snap-to-target padding
                                 // read as jank; the snap+GPU-translation
                                 // rework broke keyboard dismissal on some

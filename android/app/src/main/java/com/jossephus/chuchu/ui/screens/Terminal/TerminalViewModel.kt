@@ -13,6 +13,7 @@ import com.jossephus.chuchu.data.model.machine.derive
 import com.jossephus.chuchu.data.repository.SettingsRepository
 import com.jossephus.chuchu.ui.screens.Queue.QueueClient
 import com.jossephus.chuchu.ui.screens.Files.MachineUiState
+import com.jossephus.chuchu.ui.screens.Queue.MachinePoller
 import com.jossephus.chuchu.ui.screens.Files.pickRemoteHome
 import com.jossephus.chuchu.ui.screens.Files.FilesSegment
 import com.jossephus.chuchu.data.repository.SshKeyRepository
@@ -70,13 +71,15 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
     private val _filesSegment = MutableStateFlow(FilesSegment.File)
     val filesSegment: StateFlow<FilesSegment> = _filesSegment.asStateFlow()
 
-    private val _machineState = MutableStateFlow(MachineUiState())
-    val machineState: StateFlow<MachineUiState> = _machineState.asStateFlow()
-
-    private var machineJob: Job? = null
-    // Hai chỗ cùng muốn số máy — nửa MACHINE của tab Files và dải preview trên
-    // compose box. Ghi theo TÊN để bên này tắt không giết poll của bên kia.
-    private val machineWanted = mutableSetOf<String>()
+    // Poller /machine dùng chung với Queue (MachinePoller): nguồn "files" (nửa
+    // MACHINE tab Files) và "compose" (dải trên compose box) đăng ký theo tên,
+    // nguồn cuối rút mới dừng; app xuống nền là dừng bất kể nguồn (P4).
+    private val machinePoller = MachinePoller(
+        viewModelScope,
+        { queueClientOrNull() },
+        noClientMessage = "No qsrv address yet — set it in Settings, same as the Queue tab",
+    )
+    val machineState: StateFlow<MachineUiState> get() = machinePoller.state
 
     fun selectFilesSegment(segment: FilesSegment) {
         if (_filesSegment.value == segment) return
@@ -87,47 +90,10 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
     /** Giữ tên cũ cho caller cũ: chính là nguồn "files". */
     fun setMachinePolling(active: Boolean) = setMachineWanted(MACHINE_WANT_FILES, active)
 
-    /**
-     * Poll chạy khi CÒN ít nhất một nguồn muốn; nguồn cuối rút là dừng, không
-     * phá pin. [who] là tên nguồn, xem MACHINE_WANT_*.
-     */
-    fun setMachineWanted(who: String, wanted: Boolean) {
-        if (wanted) machineWanted += who else machineWanted -= who
-        if (machineWanted.isEmpty()) {
-            machineJob?.cancel()
-            machineJob = null
-            return
-        }
-        if (machineJob?.isActive == true) return
-        machineJob = viewModelScope.launch(Dispatchers.IO) {
-            var prev: MachineSnapshot? = null
-            while (isActive) {
-                val client = queueClientOrNull()
-                if (client == null) {
-                    _machineState.value = MachineUiState(
-                        error = "No qsrv address yet — set it in Settings, same as the Queue tab",
-                    )
-                } else {
-                    when (val r = client.machine()) {
-                        is QueueClient.MachineFetch.Ok -> {
-                            // Nhip dau chi co anh chup, chua co hieu -> cpuPct null.
-                            _machineState.value = MachineUiState(
-                                readout = derive(prev, r.snapshot),
-                                error = null,
-                            )
-                            prev = r.snapshot
-                        }
-                        is QueueClient.MachineFetch.Failed -> {
-                            // Giu so cu lai de con cai ma nhin; tuoi that nam
-                            // trong snapshot.ts nen UI tu biet no da nguoi.
-                            _machineState.value = _machineState.value.copy(error = r.message)
-                        }
-                    }
-                }
-                delay(MACHINE_POLL_MS)
-            }
-        }
-    }
+    fun setMachineWanted(who: String, wanted: Boolean) = machinePoller.setWanted(who, wanted)
+
+    /** Màn Terminal gọi theo vòng đời: nền thì poll /machine dừng. */
+    fun setAppActive(active: Boolean) = machinePoller.setAppActive(active)
 
     private fun queueClientOrNull(): QueueClient? {
         val url = settingsRepository.queueUrl.value

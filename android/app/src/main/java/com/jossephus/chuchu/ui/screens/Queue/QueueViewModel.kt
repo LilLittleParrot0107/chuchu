@@ -49,8 +49,9 @@ class QueueViewModel(
     // ── Dải trạng thái máy trên ô nhập ────────────────────────────────────
     // Đứng ở Queue là lúc quyết giao việc, nên bốn số cần là RAM/CPU ("máy còn
     // tải nổi không") và quota 5H/tuần ("còn lượt không") — user chốt 3/9.
-    private val _machine = MutableStateFlow(MachineUiState())
-    val machine: StateFlow<MachineUiState> = _machine.asStateFlow()
+    // Poller /machine dùng chung với Terminal; chỉ chạy khi app foreground (P4).
+    private val machinePoller = MachinePoller(viewModelScope, { client() }, { if (quotaWanted) "1" else null })
+    val machine: StateFlow<MachineUiState> get() = machinePoller.state
     private var machineJob: Job? = null
 
     /** True khi trang USAGE đang hiện — chỉ khi đó mới xin server làm mới quota. */
@@ -68,33 +69,8 @@ class QueueViewModel(
     }
 
     /** Bật khi màn Queue hiện, tắt khi rời — không poll sau lưng người dùng. */
-    fun setMachinePolling(active: Boolean) {
-        if (!active) {
-            machineJob?.cancel(); machineJob = null; return
-        }
-        if (machineJob?.isActive == true) return
-        machineJob = viewModelScope.launch(Dispatchers.IO) {
-            var prev: MachineSnapshot? = null
-            while (isActive) {
-                val c = client()
-                if (c == null) {
-                    _machine.value = MachineUiState(error = "No qsrv address")
-                } else {
-                    when (val r = c.machine(if (quotaWanted) "1" else null)) {
-                        is QueueClient.MachineFetch.Ok -> {
-                            _machine.value = MachineUiState(readout = derive(prev, r.snapshot))
-                            prev = r.snapshot
-                        }
-                        is QueueClient.MachineFetch.Failed ->
-                            // Giữ số cũ để dải còn cái mà hiện; tuổi thật nằm
-                            // trong snapshot.ts nên UI tự làm mờ khi nguội.
-                            _machine.value = _machine.value.copy(error = r.message)
-                    }
-                }
-                delay(MACHINE_POLL_MS)
-            }
-        }
-    }
+    fun setMachinePolling(active: Boolean) = machinePoller.setWanted("queue", active)
+
     val ambientSummary: StateFlow<QueueAmbientSummary> = _ambientSummary.asStateFlow()
 
     private var pollJob: Job? = null
@@ -152,6 +128,10 @@ class QueueViewModel(
     fun setAppActive(active: Boolean) {
         isAppActive = active
         syncPollingMode()
+        // Cả poll /machine lẫn ý muốn làm mới quota đều dừng khi app xuống nền:
+        // trang USAGE còn mở trong túi quần không được kéo theo claude 380MB/30s.
+        machinePoller.setAppActive(active)
+        if (!active) quotaWanted = false
     }
 
     /** Select foreground cadence only while the Queue destination is composed. */
