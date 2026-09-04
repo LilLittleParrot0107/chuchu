@@ -93,6 +93,7 @@ import com.jossephus.chuchu.ui.components.ChuTextField
 import com.jossephus.chuchu.ui.screens.Files.ConnectionTab
 import com.jossephus.chuchu.ui.screens.Files.FileBrowserScreen
 import com.jossephus.chuchu.ui.screens.Files.FilesSegment
+import com.jossephus.chuchu.ui.screens.Queue.MachineStrip
 import com.jossephus.chuchu.ui.screens.Files.UploadProgress
 import com.jossephus.chuchu.ui.screens.Files.formatFileSize
 import com.jossephus.chuchu.ui.screens.Files.pickRemoteHome
@@ -343,8 +344,8 @@ fun TerminalScreen(
     // Chi poll khi dang mo nua MACHINE; roi khoi man hinh la huy hertz luon.
     DisposableEffect(selectedTab, filesSegment) {
         val on = selectedTab == ConnectionTab.Files && filesSegment == FilesSegment.Machine
-        vm.setMachinePolling(on)
-        onDispose { vm.setMachinePolling(false) }
+        vm.setMachineWanted(MACHINE_WANT_FILES, on)
+        onDispose { vm.setMachineWanted(MACHINE_WANT_FILES, false) }
     }
     val hostKeyPrompt by vm.hostKeyPrompt.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -400,6 +401,12 @@ fun TerminalScreen(
     // terminal in one paste. Sidesteps terminal-IME composition entirely.
     var showComposeBox by remember { mutableStateOf(false) }
     var composeBoxText by remember { mutableStateOf("") }
+    // Dải máy trên compose box chỉ cần số khi compose box đang mở; đóng là
+    // rút, nguồn "files" nếu còn thì poll vẫn sống.
+    DisposableEffect(showComposeBox) {
+        vm.setMachineWanted(MACHINE_WANT_COMPOSE, showComposeBox)
+        onDispose { vm.setMachineWanted(MACHINE_WANT_COMPOSE, false) }
+    }
 
 
     // Predictive PTY resize: the layout keeps the smooth imePadding slide,
@@ -1866,9 +1873,14 @@ fun TerminalScreen(
                                         } else {
                                             colors.border
                                         }
+                                    Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
+                                    // Xem nhanh máy ngay trên chỗ gõ, như bên
+                                    // Queue nhưng KHÔNG bung được (user chốt 4/9):
+                                    // terminal không có chỗ cho panel 8 dòng.
+                                    MachineStrip(machineState, preview = true)
                                     Column(
                                         modifier =
-                                            Modifier.align(Alignment.BottomCenter)
+                                            Modifier
                                                 .fillMaxWidth()
                                                 .background(colors.background.copy(alpha = 0.96f))
                                                 .padding(8.dp),
@@ -1969,6 +1981,7 @@ fun TerminalScreen(
                                                 ChuText("send ↵", style = typography.label)
                                             }
                                         }
+                                    }
                                     }
                                 }
 

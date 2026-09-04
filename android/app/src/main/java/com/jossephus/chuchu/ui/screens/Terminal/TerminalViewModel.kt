@@ -74,19 +74,26 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
     val machineState: StateFlow<MachineUiState> = _machineState.asStateFlow()
 
     private var machineJob: Job? = null
+    // Hai chỗ cùng muốn số máy — nửa MACHINE của tab Files và dải preview trên
+    // compose box. Ghi theo TÊN để bên này tắt không giết poll của bên kia.
+    private val machineWanted = mutableSetOf<String>()
 
     fun selectFilesSegment(segment: FilesSegment) {
         if (_filesSegment.value == segment) return
         _filesSegment.value = segment
-        setMachinePolling(segment == FilesSegment.Machine)
+        setMachineWanted(MACHINE_WANT_FILES, segment == FilesSegment.Machine)
     }
 
+    /** Giữ tên cũ cho caller cũ: chính là nguồn "files". */
+    fun setMachinePolling(active: Boolean) = setMachineWanted(MACHINE_WANT_FILES, active)
+
     /**
-     * Chi hoi khi nua MACHINE dang hien (va app o foreground — man hinh goi
-     * ham nay khi vong doi doi). Roi tab la dung, khong pha pin.
+     * Poll chạy khi CÒN ít nhất một nguồn muốn; nguồn cuối rút là dừng, không
+     * phá pin. [who] là tên nguồn, xem MACHINE_WANT_*.
      */
-    fun setMachinePolling(active: Boolean) {
-        if (!active) {
+    fun setMachineWanted(who: String, wanted: Boolean) {
+        if (wanted) machineWanted += who else machineWanted -= who
+        if (machineWanted.isEmpty()) {
             machineJob?.cancel()
             machineJob = null
             return
@@ -1031,3 +1038,7 @@ data class MultiplexerUiState(
     val sessionsSourceHostId: Long? = null,
     val reconnectRecovery: Boolean = false,
 )
+
+/** Nguồn muốn poll /machine — xem [TerminalViewModel.setMachineWanted]. */
+internal const val MACHINE_WANT_FILES = "files"
+internal const val MACHINE_WANT_COMPOSE = "compose"

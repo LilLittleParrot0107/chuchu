@@ -54,10 +54,20 @@ internal fun MachineStrip(
     onUsageVisible: (Boolean) -> Unit = {},
     onRefreshUsage: () -> Unit = {},
     collapse: Boolean = false,
+    /**
+     * Chỉ xem nhanh: không caret, không bấm, không bao giờ bung panel (dải
+     * trên compose box của terminal, user chốt 4/9). Chưa có số thì vẫn vẽ
+     * hàng gạch "—" để compose box không nhảy xuống 30dp lúc số về.
+     */
+    preview: Boolean = false,
 ) {
     val colors = ChuColors.current
     val type = ChuTypography.current
-    val readout = state.readout ?: return
+    val readout = state.readout
+    if (readout == null) {
+        if (preview) PreviewPlaceholder(modifier)
+        return
+    }
     val s = readout.snapshot
     var expanded by remember { mutableStateOf(false) }
     // Panel mở CHỈ KHI người dùng muốn VÀ bàn phím đang đóng. Bản trước chỉ thu
@@ -66,7 +76,7 @@ internal fun MachineStrip(
     // còn lại, và ô nhập bị đẩy tụt xuống dưới bàn phím (user báo 4/9).
     // Giữ nguyên ý định của người dùng trong [expanded] để đóng bàn phím là
     // panel trở lại như cũ, không phải mở tay lần nữa.
-    val open = expanded && !collapse
+    val open = expanded && !collapse && !preview
 
     val ageS = (System.currentTimeMillis() / 1000 - s.ts).coerceAtLeast(0)
     val stale = ageS > STALE_AFTER_S
@@ -82,7 +92,7 @@ internal fun MachineStrip(
     // không phải đọc số.
     val edge = when {
         ram >= 85 || (cpu ?: 0.0) >= 85 -> colors.error
-        ram >= 70 || (cpu ?: 0.0) >= 70 || (h5 ?: 0) >= 70 -> colors.warning
+        ram >= 70 || (cpu ?: 0.0) >= 70 || (h5 ?: 100) <= 30 -> colors.warning
         else -> Color.Transparent
     }
 
@@ -96,7 +106,7 @@ internal fun MachineStrip(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(colors.surfaceVariant)
-                .clickable { expanded = !expanded }
+                .then(if (preview) Modifier else Modifier.clickable { expanded = !expanded })
                 .defaultMinSize(minHeight = 30.dp)
                 .padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -112,13 +122,29 @@ internal fun MachineStrip(
                 style = type.labelSmall,
                 color = (if (stale) colors.warning else colors.textMuted).copy(alpha = alpha),
             )
-            ChuText(
-                if (open) " ▴" else " ▾",
-                style = type.labelSmall,
-                color = colors.accent,
-                modifier = Modifier.padding(horizontal = 6.dp),
-            )
+            if (!preview) {
+                ChuText(
+                    if (open) " ▴" else " ▾",
+                    style = type.labelSmall,
+                    color = colors.accent,
+                    modifier = Modifier.padding(horizontal = 6.dp),
+                )
+            }
         }
+    }
+}
+
+/** Hàng gạch cùng cỡ với dải thật, để chỗ sẵn trong lúc chờ nhịp poll đầu. */
+@Composable
+private fun PreviewPlaceholder(modifier: Modifier) {
+    val colors = ChuColors.current
+    Row(
+        modifier = modifier.fillMaxWidth().background(colors.surfaceVariant)
+            .defaultMinSize(minHeight = 30.dp).padding(horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.width(2.dp).height(30.dp))
+        for (k in listOf("RAM", "CPU", "5H", "WEEK")) Cell(k, "—", colors.textMuted, 0.6f)
     }
 }
 
