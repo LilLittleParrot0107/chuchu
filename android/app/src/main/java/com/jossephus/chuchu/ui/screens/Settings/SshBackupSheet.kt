@@ -39,6 +39,8 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.text.SimpleDateFormat
@@ -619,6 +621,8 @@ private fun ExportPassphraseContent(
                 placeholder = "at least $BACKUP_MIN_PASSPHRASE_LENGTH characters",
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
+                // Password: IME không học/gợi ý passphrase (audit 4/9 #14).
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 autoFocus = true,
             )
             ChuTextField(
@@ -628,6 +632,7 @@ private fun ExportPassphraseContent(
                 placeholder = "re-enter passphrase",
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 autoFocus = false,
             )
             if (passphrase.length in 1 until BACKUP_MIN_PASSPHRASE_LENGTH) {
@@ -703,6 +708,8 @@ private fun ImportPassphraseContent(
                 placeholder = "passphrase used during export",
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
+                // Password: IME không học/gợi ý passphrase (audit 4/9 #14).
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 autoFocus = true,
             )
             ChuText(

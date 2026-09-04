@@ -268,6 +268,11 @@ class QueueViewModel(
                 persistAuthRecovery(c)
                 when (val r = result) {
                     is QueueClient.Act.Ok -> {
+                        // Server xoá responses/<id>.md khi retry; giữ cache là dialog hiện
+                        // câu trả lời CŨ sau khi task chạy lại xong (audit 4/9 #12).
+                        if (taskId != null && action.op.lowercase() in setOf("retry", "del", "delete", "rm")) {
+                            responseCache.remove(taskId)
+                        }
                         _ui.update { it.copy(error = null) }
                         postFeedback("", "Queue updated", QueueFeedbackTone.Success)
                         refreshOnce()

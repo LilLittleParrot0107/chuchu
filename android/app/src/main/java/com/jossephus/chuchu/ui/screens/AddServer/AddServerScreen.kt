@@ -182,6 +182,7 @@ fun AddServerScreen(
                     label = "Password",
                     singleLine = true,
                     visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                     autoFocus = false,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -226,6 +227,7 @@ fun AddServerScreen(
                         label = "Passphrase",
                         singleLine = true,
                         visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                         autoFocus = false,
                         modifier = Modifier.fillMaxWidth(),
                     )

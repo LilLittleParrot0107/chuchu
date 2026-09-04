@@ -51,6 +51,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -1268,7 +1269,11 @@ fun TerminalScreen(
                             }
                         }
 
-                    LaunchedEffect(Unit) {
+                    // Key theo tab đang mở: trước là Unit, mà nhánh này không bị tạo
+                    // lại khi đổi tab (flatMapLatest sang tab đã có snapshot) nên tab
+                    // mới không nhận sendFocusEvent(true) — vim/herdr trong đó coi như
+                    // unfocused (audit 4/9 #8).
+                    LaunchedEffect(activeTabId) {
                         // Take focus so keys route here, but do NOT summon the
                         // soft keyboard: this effect re-fires on every tab
                         // switch, and auto-popping the IME on each switch was
@@ -1673,6 +1678,14 @@ fun TerminalScreen(
                                     }
                                 }
 
+                                // factory chạy MỘT lần, view sống suốt phiên, nên closure bên
+                                // trong bắt `chuchuKeys`/`tabsForHost` của lần compose đầu:
+                                // sau khi bấm phím tắt Actions, đường IME vẫn gọi instance cũ
+                                // (hint bar không hiện, reset() không tắt được prefix); điều
+                                // hướng tab-sheet bằng phím dùng danh sách tab lúc tạo view
+                                // (audit 4/9 #8). Đọc qua rememberUpdatedState thì luôn mới.
+                                val chuchuKeysNow = rememberUpdatedState(chuchuKeys)
+                                val tabsForHostNow = rememberUpdatedState(tabsForHost)
                                 AndroidView(
                                     modifier =
                                         Modifier.align(Alignment.BottomStart).size(1.dp).alpha(0f),
@@ -1680,7 +1693,7 @@ fun TerminalScreen(
                                         TerminalInputView(viewContext)
                                             .apply {
                                                 onTerminalText = { text ->
-                                                    if (!chuchuKeys.handleText(text)) {
+                                                    if (!chuchuKeysNow.value.handleText(text)) {
                                                         vm.dispatchTextWithModifierState(
                                                             text,
                                                             modifierState,
@@ -1690,7 +1703,7 @@ fun TerminalScreen(
                                                 onTerminalKey = { key, codepoint, mods, action, charCode ->
                                                     var shouldForwardToTerminal = true
                                                     val overlayOpen = showTabSheet || showGlobalTabManager
-                                                    val overlayTabs = if (showGlobalTabManager) tabs else tabsForHost
+                                                    val overlayTabs = if (showGlobalTabManager) tabs else tabsForHostNow.value
                                                     if (
                                                         overlayOpen &&
                                                             overlayTabs.isEmpty() &&
@@ -1704,7 +1717,7 @@ fun TerminalScreen(
                                                         var consumedByTabSwitcher = true
                                                         val isPress =
                                                             action == GhosttyKeyAction.Press
-                                                        if (isPress && chuchuKeys.isPrefixActive) {
+                                                        if (isPress && chuchuKeysNow.value.isPrefixActive) {
                                                             when (
                                                                 codepoint.toChar().lowercaseChar()
                                                             ) {
@@ -1725,7 +1738,7 @@ fun TerminalScreen(
                                                                 }
                                                                 else -> {}
                                                             }
-                                                            chuchuKeys.reset()
+                                                            chuchuKeysNow.value.reset()
                                                             shouldForwardToTerminal = false
                                                             consumedByTabSwitcher = true
                                                         }

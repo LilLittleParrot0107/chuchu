@@ -237,13 +237,14 @@ internal fun ChartsView(
     val cashflowPoints = remember(daily, spendByDay) {
         CashflowEngine.calculatePoints(daily, spendByDay)
     }
-    val kpiSummary = remember(cap, currentPerDay, apr, spending, cashflowPoints) {
-        CashflowEngine.computeKpis(cap, currentPerDay, apr, spending, cashflowPoints)
-    }
     // Chi dung tong thang lam chi tieu/ngay khi KHONG co du lieu theo ngay nao.
     val fallbackSpendPerDay = spending?.monthUsd?.takeIf { it > 0.0 }?.div(30.416) ?: 0.0
     val ratePoints = remember(cashflowPoints, fallbackSpendPerDay) {
         CashflowEngine.calculateRatePoints(cashflowPoints, fallbackSpendPerDay = fallbackSpendPerDay)
+    }
+    // Card KPI lay dung muc chi cua diem cuoi chart -> card va duong ve cung mot so.
+    val kpiSummary = remember(cap, currentPerDay, apr, ratePoints, cashflowPoints) {
+        CashflowEngine.computeKpis(cap, currentPerDay, apr, ratePoints.lastOrNull()?.trailSpend, cashflowPoints)
     }
     // %APR ung voi moi 1 USD/ngay — chinh he so bien truc USD thanh truc APR.
     val aprFactor = remember(cap) { if (cap > 0.0) 365.0 / cap * 100.0 else null }

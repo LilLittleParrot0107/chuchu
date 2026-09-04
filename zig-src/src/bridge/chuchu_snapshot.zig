@@ -98,6 +98,10 @@ const PreparedImageData = struct {
 const CachedImageDecode = struct {
     src_ptr: usize,
     src_len: usize,
+    /// transmit_time cua kitty: free roi alloc cung co thuong tra CUNG dia chi, nen
+    /// (ptr,len) mot minh coi retransmit cung id la "chua doi" -> hien anh cu
+    /// (yazi/presenterm, audit 4/9 #11). Moc thoi gian transmit thi luon moi.
+    src_time: u64,
     img_w: u32,
     img_h: u32,
     data: []u8,
@@ -1099,6 +1103,13 @@ fn allocRgba(pixel_count: usize) ?[]u8 {
     return allocator.alloc(u8, pixel_count * 4) catch null;
 }
 
+/// std.time.Instant -> mot so de so sanh (ns tu epoch monotonic). Chi dung lam van tay.
+fn instantKey(t: std.time.Instant) u64 {
+    const sec: u64 = @intCast(@max(t.timestamp.sec, 0));
+    const nsec: u64 = @intCast(@max(t.timestamp.nsec, 0));
+    return sec *% 1_000_000_000 +% nsec;
+}
+
 /// Tra RGBA da san sang ve; uu tien cache cua terminal. Ket qua free_mode
 /// .none nghia la caller KHONG duoc free (cache hoac kitty storage so huu).
 fn prepareImageData(terminal: *ChuchuTerminal, image_id: u32, image: ghostty.kitty.graphics.Image) ?PreparedImageData {
@@ -1108,8 +1119,9 @@ fn prepareImageData(terminal: *ChuchuTerminal, image_id: u32, image: ghostty.kit
 
     const fp_ptr: usize = if (image.data.len == 0) 0 else @intFromPtr(image.data.ptr);
     const fp_len: usize = image.data.len;
+    const fp_time: u64 = instantKey(image.transmit_time);
     if (terminal.image_decode_cache.getPtr(image_id)) |entry| {
-        if (entry.src_ptr == fp_ptr and entry.src_len == fp_len) {
+        if (entry.src_ptr == fp_ptr and entry.src_len == fp_len and entry.src_time == fp_time) {
             entry.gen = terminal.image_decode_gen;
             return .{
                 .data_ptr = entry.data.ptr,
@@ -1129,6 +1141,7 @@ fn prepareImageData(terminal: *ChuchuTerminal, image_id: u32, image: ghostty.kit
     terminal.image_decode_cache.put(allocator, image_id, .{
         .src_ptr = fp_ptr,
         .src_len = fp_len,
+        .src_time = fp_time,
         .img_w = decoded.img_w,
         .img_h = decoded.img_h,
         .data = @constCast(decoded.data_ptr[0..decoded.data_len]),

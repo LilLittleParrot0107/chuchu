@@ -158,6 +158,12 @@ data class DbtopUiState(
     val error: String? = null,
     val everLoaded: Boolean = false,
     val freshness: DataFreshness = DataFreshness.Fresh(0L),
+    /**
+     * "Bây giờ" của lần poll gần nhất. Màn hình đọc cái này thay vì tự remember(ui.state):
+     * server chết thì không có state mới, đồng hồ đứng, freshness mãi Fresh, banner SCAN
+     * OFFLINE không bao giờ hiện (audit 4/9 #5). Poll nào (kể cả 304/lỗi) cũng ghi lại.
+     */
+    val nowSec: Long = System.currentTimeMillis() / 1_000L,
     val selectedView: DbtopView = DbtopView.POSITIONS,
     val selectedPositionKey: String? = null,
     val spending: SpendingState? = null,
@@ -309,6 +315,7 @@ class DbtopViewModel(
                         isRefreshing = false,
                         everLoaded = true,
                         freshness = result.freshness,
+                        nowSec = System.currentTimeMillis() / 1_000L,
                         error = null,
                     )
                 }
@@ -322,6 +329,7 @@ class DbtopViewModel(
                     it.copy(
                         isRefreshing = false,
                         freshness = currentFreshness,
+                        nowSec = System.currentTimeMillis() / 1_000L,
                         error = null,
                     )
                 }
@@ -331,6 +339,10 @@ class DbtopViewModel(
                 _ui.update {
                     it.copy(
                         isRefreshing = false,
+                        // nowSec đổi mỗi lần nên StateFlow emit dù error trùng chuỗi cũ —
+                        // đúng lúc server chết là lúc tuổi dữ liệu phải nhích.
+                        nowSec = System.currentTimeMillis() / 1_000L,
+                        freshness = it.state.freshness(),
                         error = result.message,
                     )
                 }

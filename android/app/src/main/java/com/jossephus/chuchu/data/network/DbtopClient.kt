@@ -92,9 +92,12 @@ class DbtopClient(
                     }
 
                     HttpURLConnection.HTTP_OK -> {
-                        // Cập nhật ETag & Last-Modified cho các lần gọi sau
-                        conn.getHeaderField("ETag")?.let { cachedEtag = it }
-                        conn.getHeaderField("Last-Modified")?.let { cachedLastModified = it }
+                        // ETag/Last-Modified chỉ được ghi SAU khi body qua validate (xem
+                        // dưới). Ghi trước là cứ lần sau gửi If-None-Match -> 304 ->
+                        // "Unchanged" -> VM xoá error: state.json hỏng chỉ báo lỗi đúng
+                        // một chu kỳ rồi im, UI giữ số cũ như thường (audit 4/9 #6).
+                        val etag = conn.getHeaderField("ETag")
+                        val lastModified = conn.getHeaderField("Last-Modified")
 
                         val body = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
                         if (body.isBlank()) {
@@ -109,6 +112,8 @@ class DbtopClient(
                             )
                         }
                         val freshness = parsedState.freshness()
+                        etag?.let { cachedEtag = it }
+                        lastModified?.let { cachedLastModified = it }
 
                         FetchResult.Fresh(
                             state = parsedState,

@@ -49,7 +49,8 @@ fun DbtopScreen(
     val colors = ChuColors.current
     val haptics = LocalHapticFeedback.current
     val ui by viewModel.ui.collectAsStateWithLifecycle()
-    val nowSec = remember(ui.state) { System.currentTimeMillis() / 1_000L }
+    // Lấy từ VM: nó nhích theo MỌI poll, kể cả khi server chết (xem DbtopUiState.nowSec).
+    val nowSec = ui.nowSec
     val currentPerDay = ui.currentPerDay(nowSec)
     val selectedRow = ui.state.rows.firstOrNull { it.positionKey() == ui.selectedPositionKey }
     val watchlistItems = remember(ui.state, ui.spending) { ui.state.buildWatchlist(ui.spending?.px24 ?: emptyMap()) }

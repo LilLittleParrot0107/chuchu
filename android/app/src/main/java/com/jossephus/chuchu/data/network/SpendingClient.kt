@@ -40,10 +40,12 @@ class SpendingClient(
                 when (conn.responseCode) {
                     HttpURLConnection.HTTP_NOT_MODIFIED -> FetchResult.Unchanged
                     HttpURLConnection.HTTP_OK -> {
+                        val body = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+                        val parsed = DbtopJson.decodeFromString(SpendingState.serializer(), body)
+                        // Ghi validator SAU khi decode xong — cùng lý do với DbtopClient.
                         conn.getHeaderField("ETag")?.let { cachedEtag = it }
                         conn.getHeaderField("Last-Modified")?.let { cachedLastModified = it }
-                        val body = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
-                        FetchResult.Fresh(DbtopJson.decodeFromString(SpendingState.serializer(), body))
+                        FetchResult.Fresh(parsed)
                     }
                     else -> FetchResult.Failed
                 }

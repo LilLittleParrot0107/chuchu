@@ -382,11 +382,27 @@ fn connectSocket(host: [:0]const u8, port: u16) !c_int {
     while (cur) |info| : (cur = info.ai_next) {
         const fd = c.socket(info.ai_family, info.ai_socktype, info.ai_protocol);
         if (fd < 0) continue;
+        // Non-blocking TRUOC connect (audit 4/9 #4). Truoc day socket chi duoc
+        // O_NONBLOCK o nativeOpenShell: connect() va recv() cua handshake/auth ket
+        // trong kernel, vong waitSocket(10s) khong bao gio ban -> doi Wi-Fi sang 4G
+        // giua luc ket noi la luong session treo hang phut, Kotlin khong huy duoc.
+        setSocketNonBlocking(fd);
         if (c.connect(fd, info.ai_addr, info.ai_addrlen) == 0) return fd;
+        if (c.__errno().* == c.EINPROGRESS) {
+            var pfd: [1]c.struct_pollfd = .{.{ .fd = fd, .events = c.POLLOUT, .revents = 0 }};
+            if (c.poll(&pfd, 1, connect_timeout_ms) > 0) {
+                var so_err: c_int = 0;
+                var so_len: c.socklen_t = @sizeOf(c_int);
+                if (c.getsockopt(fd, c.SOL_SOCKET, c.SO_ERROR, &so_err, &so_len) == 0 and so_err == 0) return fd;
+            }
+        }
         closeSocket(fd);
     }
     return error.ConnectFailed;
 }
+
+/// TCP connect: 10s la du cho moi mang di dong; lau hon la mang da mat.
+const connect_timeout_ms: c_int = 10_000;
 
 fn jniDupString(env: *c.JNIEnv, s: c.jstring) ?[]u8 {
     if (s == null) return null;
@@ -590,6 +606,9 @@ export fn Java_com_jossephus_chuchu_service_ssh_NativeSshBridge_nativeConnect(en
     };
     session.session = ssh_session;
     c.libssh2_session_set_blocking(ssh_session, 0);
+    // Cac buoc auth ben duoi tam set_blocking(1): tren socket non-blocking, libssh2 tu
+    // doi theo timeout nay thay vi ket vo han (LIBSSH2_ERROR_TIMEOUT thay vi treo).
+    c.libssh2_session_set_timeout(ssh_session, 10_000);
     logInfo("Starting SSH handshake...", .{});
     while (true) {
         const handshake_rc = c.libssh2_session_handshake(ssh_session, fd);

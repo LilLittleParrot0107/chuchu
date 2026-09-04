@@ -33,6 +33,9 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.foundation.verticalScroll
 import com.jossephus.chuchu.ui.screens.Terminal.TerminalTabMode
 import androidx.compose.runtime.Composable
@@ -153,25 +156,33 @@ internal fun TerminalSettings(
                         ) {
                             ChuText("-", style = typography.label)
                         }
-                        ChuTextField(
-                            value = "${currentTerminalFontSize.toInt()}",
-                            onValueChange = { value ->
-                                val digits = value.filter { it.isDigit() }
-                                if (digits.isNotEmpty()) {
-                                val parsed = digits.toIntOrNull() ?: SettingsRepository.MIN_TERMINAL_FONT_SIZE.toInt()
+                        // Nháp cục bộ, chỉ kẹp + ghi khi rời ô / bấm Done. Bản trước kẹp
+                        // từng phím: gõ "1" thành 6, gõ tiếp "4" thành 64 — không gõ nổi
+                        // 10–59, cũng không xoá trắng được (audit 4/9 #9).
+                        var fontDraft by remember(currentTerminalFontSize) {
+                            mutableStateOf("${currentTerminalFontSize.toInt()}")
+                        }
+                        val commitFont = {
+                            val parsed = fontDraft.toIntOrNull()
+                            if (parsed != null) {
                                 onTerminalFontSizeChanged(
                                     parsed.coerceIn(
                                         SettingsRepository.MIN_TERMINAL_FONT_SIZE.toInt(),
                                         SettingsRepository.MAX_TERMINAL_FONT_SIZE.toInt(),
                                     ).toFloat(),
                                 )
-                                }
-                            },
+                            }
+                            fontDraft = "${currentTerminalFontSize.toInt()}"
+                        }
+                        ChuTextField(
+                            value = fontDraft,
+                            onValueChange = { value -> fontDraft = value.filter { it.isDigit() }.take(3) },
                             label = "",
                             showLabel = false,
                             singleLine = true,
-                            modifier = Modifier.width(64.dp),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.width(64.dp).onFocusChanged { if (!it.isFocused) commitFont() },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+                            keyboardActions = KeyboardActions(onDone = { commitFont() }),
                             autoFocus = false,
                             textAlign = TextAlign.Center,
                         )

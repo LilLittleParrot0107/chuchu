@@ -22,6 +22,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.State
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -78,7 +80,11 @@ internal fun MachineStrip(
     // panel trở lại như cũ, không phải mở tay lần nữa.
     val open = expanded && !collapse && !preview
 
-    val ageS = (System.currentTimeMillis() / 1000 - s.ts).coerceAtLeast(0)
+    // Tuổi tính theo đồng hồ chạy 5s, không theo lúc compose: đường lỗi copy(error=…)
+    // trùng giá trị thì StateFlow không emit, dải hiện "3s" alpha đầy mãi dù qsrv đã
+    // chết (audit 4/9 #13).
+    val now by rememberTicking()
+    val ageS = (now / 1000 - s.ts).coerceAtLeast(0)
     val stale = ageS > STALE_AFTER_S
     val alpha = if (stale) 0.5f else 1f
 
@@ -400,3 +406,16 @@ private fun g(kb: Long): String {
     return if (v >= 100) String.format(Locale.US, "%.0f", v) else String.format(Locale.US, "%.1f", v)
 }
 private fun age(s: Long): String = if (s < 3600) "${s / 60}m ago" else "${s / 3600}h ago"
+
+/** Mốc ms hiện tại, tự làm mới mỗi [periodMs] khi composable còn trên màn. */
+@Composable
+internal fun rememberTicking(periodMs: Long = 5_000L): State<Long> {
+    val now = remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(periodMs) {
+        while (true) {
+            kotlinx.coroutines.delay(periodMs)
+            now.longValue = System.currentTimeMillis()
+        }
+    }
+    return now
+}

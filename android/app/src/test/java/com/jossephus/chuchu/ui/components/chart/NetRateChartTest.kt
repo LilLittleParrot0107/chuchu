@@ -174,7 +174,7 @@ class NetRateChartTest {
             cap = 0.0,
             currentPerDay = 50.0,
             grossApr = null,
-            spending = null,
+            avgDailySpend = null,
             points = points
         )
 
@@ -193,7 +193,7 @@ class NetRateChartTest {
             cap = 79338.74,
             currentPerDay = 77.90,
             grossApr = 35.84,
-            spending = spending,
+            avgDailySpend = spending.monthUsd / 30.416,
             points = points
         )
 
@@ -221,7 +221,7 @@ class NetRateChartTest {
             cap = 10000.0,
             currentPerDay = null,
             grossApr = null,
-            spending = null,
+            avgDailySpend = null,
             points = points,
         )
         assertEquals(40.0 / 1.5, kpis.netRunRatePerDay, 0.001)
@@ -237,7 +237,7 @@ class NetRateChartTest {
             cap = 50000.0,
             currentPerDay = null,
             grossApr = null,
-            spending = null,
+            avgDailySpend = null,
             points = points
         )
         assertNull(kpis.grossApr)
@@ -257,7 +257,7 @@ class NetRateChartTest {
             cap = 50000.0,
             currentPerDay = 0.0,
             grossApr = null,
-            spending = null,
+            avgDailySpend = null,
             points = points,
         )
 

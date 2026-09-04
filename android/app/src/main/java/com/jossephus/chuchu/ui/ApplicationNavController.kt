@@ -91,21 +91,33 @@ fun ApplicationNavController() {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    // Telegram deep link consumer: when a /kohi-open?host=<name> link armed
-    // the bus, look the profile up by name and jump straight to its terminal.
-    val deepLinkHost by com.jossephus.chuchu.DeepLinkBus.pendingHostName.collectAsStateWithLifecycle()
-    LaunchedEffect(deepLinkHost) {
-        val wanted = deepLinkHost ?: return@LaunchedEffect
-        val db = com.jossephus.chuchu.data.db.AppDatabase.getInstance(application)
-        val list = com.jossephus.chuchu.data.repository.HostRepository(db.hostProfileDao())
-            .observeAll()
-            .firstOrNull()
-        com.jossephus.chuchu.DeepLinkBus.pendingHostName.value = null
-        if (list != null) {
-            val match = list.firstOrNull { it.name.equals(wanted, ignoreCase = true) }
-                ?: list.firstOrNull { it.host.equals(wanted, ignoreCase = true) }
-            if (match != null) {
-                navController.navigate("terminal/${match.id}")
+    // Hai effect nay phai nam TRUOC gate `return` ben duoi: tu aea514d (20/8) chung
+    // nam SAU return nen khi khoa bat thi khong bao gio vao composition -> khong co
+    // BiometricPrompt, man "dang khoa" trong tron, khoa vinh vien (audit 4/9 #1).
+    LaunchedEffect(appLockEnabled) {
+        if (!appLockEnabled) {
+            appUnlocked = false
+            unlockPromptRequested = false
+            appLockBlockedUntilToggle = false
+        }
+    }
+    LaunchedEffect(appLockEnabled, appUnlocked, unlockPromptRequested, appLockBlockedUntilToggle) {
+        if (appLockEnabled && !appUnlocked && !unlockPromptRequested && !appLockBlockedUntilToggle) {
+            unlockPromptRequested = true
+            requireUserVerification(
+                context = context,
+                title = "Unlock Chuchu",
+                subtitle = "Authenticate to continue",
+            ) { result ->
+                appUnlocked = result == VerificationResult.Success
+                if (result != VerificationResult.Success) {
+                    // Chan tu dong hien lai (khong spam prompt), nhung nguoi dung
+                    // van bam nut "Mo khoa" duoc. Truoc day co day khong co loi ra:
+                    // huy mot lan la co khoa vinh vien... ma NavHost van ve, tuc la
+                    // "khoa vinh vien" that ra = mo khoa vinh vien.
+                    appLockBlockedUntilToggle = true
+                }
+                unlockPromptRequested = false
             }
         }
     }
@@ -120,6 +132,30 @@ fun ApplicationNavController() {
             onRetry = { appLockBlockedUntilToggle = false },
         )
         return
+    }
+
+    // Telegram deep link consumer: when a /kohi-open?host=<name> link armed
+    // the bus, look the profile up by name and jump straight to its terminal.
+    // Nam SAU gate khoa app: truoc gate thi luc dang khoa NavHost chua setGraph,
+    // navigate() nem "Navigation graph has not been set" (audit 4/9 #2). Bus giu
+    // gia tri toi khi mo khoa nen link van duoc tieu thu sau do.
+    val deepLinkHost by com.jossephus.chuchu.DeepLinkBus.pendingHostName.collectAsStateWithLifecycle()
+    LaunchedEffect(deepLinkHost) {
+        val wanted = deepLinkHost ?: return@LaunchedEffect
+        val db = com.jossephus.chuchu.data.db.AppDatabase.getInstance(application)
+        val list = com.jossephus.chuchu.data.repository.HostRepository(db.hostProfileDao())
+            .observeAll()
+            .firstOrNull()
+        com.jossephus.chuchu.DeepLinkBus.pendingHostName.value = null
+        if (list != null) {
+            val match = list.firstOrNull { it.name.equals(wanted, ignoreCase = true) }
+                ?: list.firstOrNull { it.host.equals(wanted, ignoreCase = true) }
+            if (match != null) {
+                // singleTop: bam link hai lan khong chong hai entry terminal/{id}
+                // = hai TerminalViewModel cho mot host.
+                navController.navigate("terminal/${match.id}") { launchSingleTop = true }
+            }
+        }
     }
 
     val sharedQueueVm: QueueViewModel = viewModel(factory = QueueViewModel.factory(application))
@@ -435,31 +471,6 @@ fun ApplicationNavController() {
         }
     }
 
-    if (!appLockEnabled) {
-        appUnlocked = false
-        unlockPromptRequested = false
-        appLockBlockedUntilToggle = false
-    }
-    LaunchedEffect(appLockEnabled, appUnlocked, unlockPromptRequested, appLockBlockedUntilToggle) {
-        if (appLockEnabled && !appUnlocked && !unlockPromptRequested && !appLockBlockedUntilToggle) {
-            unlockPromptRequested = true
-            requireUserVerification(
-                context = context,
-                title = "Unlock Chuchu",
-                subtitle = "Authenticate to continue",
-            ) { result ->
-                appUnlocked = result == VerificationResult.Success
-                if (result != VerificationResult.Success) {
-                    // Chan tu dong hien lai (khong spam prompt), nhung nguoi dung
-                    // van bam nut "Mo khoa" duoc. Truoc day co day khong co loi ra:
-                    // huy mot lan la co khoa vinh vien... ma NavHost van ve, tuc la
-                    // "khoa vinh vien" that ra = mo khoa vinh vien.
-                    appLockBlockedUntilToggle = true
-                }
-                unlockPromptRequested = false
-            }
-        }
-    }
 }
 
 /**

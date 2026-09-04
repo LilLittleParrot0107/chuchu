@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -56,7 +57,8 @@ internal fun MachineView(state: MachineUiState, modifier: Modifier = Modifier) {
     }
 
     val s = readout.snapshot
-    val ageS = (System.currentTimeMillis() / 1000 - s.ts).coerceAtLeast(0)
+    val now by com.jossephus.chuchu.ui.screens.Queue.rememberTicking()
+    val ageS = (now / 1000 - s.ts).coerceAtLeast(0)
     val stale = ageS > STALE_AFTER_S
 
     LazyColumn(modifier = modifier.fillMaxSize()) {

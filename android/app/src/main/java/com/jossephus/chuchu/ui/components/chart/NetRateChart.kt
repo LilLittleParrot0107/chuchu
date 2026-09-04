@@ -211,11 +211,17 @@ object CashflowEngine {
         return out
     }
 
+    /**
+     * [avgDailySpend]: mức chi/ngày ĐÃ dàn (trailSpend của điểm cuối chart). Bản trước tự
+     * chia monthUsd/30.4: đầu tháng monthUsd chỉ gồm 1–3 ngày chi nên burn ratio thấp
+     * 7–30×, net run-rate dương giả, và đổi cơ sở tính khi monthUsd>0 → card và đường
+     * vẽ có thể trái dấu nhau (audit 4/9 #7). null → tổng chi trong cửa sổ / số ngày.
+     */
     fun computeKpis(
         cap: Double,
         currentPerDay: Double?,
         grossApr: Double?,
-        spending: SpendingState?,
+        avgDailySpend: Double?,
         points: List<DailyCashflowPoint>,
     ): CashflowKpiSummary {
         val safeCap = if (cap > 0.0) cap else 1.0
@@ -225,11 +231,7 @@ object CashflowEngine {
         val totalCov = points.sumOf { it.coverage }
         val trailingNet = totalGross - totalSpend
 
-        val avgDailySpend = if (spending != null && spending.monthUsd > 0.0) {
-            spending.monthUsd / 30.416
-        } else {
-            totalSpend / n
-        }
+        val avgDailySpend = avgDailySpend ?: (totalSpend / n)
 
         // Thieu perday tuc thoi thi suy tu do do: chia cho so ngay DO DUOC.
         val dailyGross = currentPerDay ?: when {
