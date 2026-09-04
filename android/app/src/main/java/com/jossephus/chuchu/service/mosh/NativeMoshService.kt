@@ -85,16 +85,21 @@ class NativeMoshService(
     }
 
     /// Poll one output event. Returns null if no event is queued.
+    // Buffer đọc tái dùng: trước đây ByteArray(4096) mới MỖI lần pollOutput, kể cả
+    // khi không có event — vòng mosh gọi ≥1 lần/tick, tới 500 tick/s lúc gõ →
+    // vài MB rác/s, GC giật terminal (audit 4/9 P12). Đơn luồng nên an toàn.
+    private var outputBuf = ByteArray(INITIAL_OUTPUT_BUFFER_SIZE)
+
     fun pollOutput(): MoshOutputEvent? {
         if (handle == 0L) return null
-        var capacity = INITIAL_OUTPUT_BUFFER_SIZE
         while (true) {
-            val buf = ByteArray(capacity)
+            val buf = outputBuf
             val rc = bridge.nativePollOutput(handle, buf, outputMeta)
-            if (rc == OUTPUT_BUFFER_TOO_SMALL && capacity < MAX_OUTPUT_BUFFER_SIZE) {
-                capacity = (capacity * 2).coerceAtMost(MAX_OUTPUT_BUFFER_SIZE)
+            if (rc == OUTPUT_BUFFER_TOO_SMALL && buf.size < MAX_OUTPUT_BUFFER_SIZE) {
+                outputBuf = ByteArray((buf.size * 2).coerceAtMost(MAX_OUTPUT_BUFFER_SIZE))
                 continue
             }
+            val capacity = buf.size
             check(rc == 0) { "Failed to poll mosh output (error $rc, buffer $capacity bytes)" }
 
             val eventType = outputMeta[0].toInt()

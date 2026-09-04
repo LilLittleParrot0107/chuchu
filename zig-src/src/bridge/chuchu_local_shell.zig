@@ -29,6 +29,7 @@ const NativeLocalShellSession = struct {
     last_error: std.ArrayListUnmanaged(u8) = .empty,
     // Buffer doc tai su dung — nativeRead bi poll lien tuc, alloc 64KiB moi
     // lan (ke ca khi khong co du lieu) la malloc churn vo ich.
+    empty_reads: u32 = 0,
     read_buffer: std.ArrayListUnmanaged(u8) = .empty,
 };
 
@@ -426,23 +427,10 @@ export fn Java_com_jossephus_chuchu_service_terminal_NativeLocalShellBridge_nati
     const fd = session.master_fd;
     if (fd < 0) return null;
 
-    var poll_fd: [1]c.struct_pollfd = .{.{
-        .fd = fd,
-        .events = c.POLLIN | c.POLLHUP | c.POLLERR,
-        .revents = 0,
-    }};
-    const poll_rc = c.poll(&poll_fd, 1, read_wait_timeout_ms);
-    if (poll_rc == 0) {
-        reapChild(session);
-        return jniEmptyByteArray(env);
-    }
-    if (poll_rc < 0) {
-        const err = errnoValue();
-        if (err == c.EINTR) return jniEmptyByteArray(env);
-        setErrnoError(session, "local shell poll failed");
-        return null;
-    }
-
+    // Khong poll(0) truoc read: fd da O_NONBLOCK nen read() tra EAGAIN ngay khi
+    // rong — mot syscall thay vi ba (poll + read + waitpid) o 500 vong/s luc
+    // active (audit 4/9 P12). Con exit thi thay qua read=0/EIO; waitpid(WNOHANG)
+    // chi chay thua thot de bat ca con thoat ma pty van mo (chau giu fd).
     const cap: usize = @intCast(@max(max_bytes, 1));
     const capped = @min(cap, 1024 * 1024);
     session.read_buffer.resize(allocator, capped) catch {
@@ -462,6 +450,8 @@ export fn Java_com_jossephus_chuchu_service_terminal_NativeLocalShellBridge_nati
 
     const err = errnoValue();
     if (err == c.EINTR or isWouldBlock(err)) {
+        session.empty_reads +%= 1;
+        if (session.empty_reads % 64 == 0) reapChild(session);
         return jniEmptyByteArray(env);
     }
     if (err == c.EIO) {

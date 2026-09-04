@@ -233,10 +233,17 @@ class NativeSshService(
         }
     }
 
-    fun write(data: ByteArray) {
+    /**
+     * suspend + delay thay vì Thread.sleep(4)×64: hàm này chạy trên dispatcher đơn
+     * luồng của session, ngay trong read-loop (flushPtyWrites). Cửa sổ SSH đầy
+     * (remote `less`, ngưng đọc) từng ghim thread 256ms rồi ném "stalled" → mất
+     * kết nối vì backpressure thoáng qua. Ngưỡng stall giờ theo THỜI GIAN
+     * ([WRITE_STALL_MS]) — kết nối chết thật mới báo lỗi (audit 4/9 P13).
+     */
+    suspend fun write(data: ByteArray) {
         if (handle == 0L || data.isEmpty()) return
         var offset = 0
-        var stalledWrites = 0
+        var stalledSinceMs = -1L
         while (offset < data.size) {
             val chunk = if (offset == 0) data else data.copyOfRange(offset, data.size)
             val response =
@@ -255,11 +262,12 @@ class NativeSshService(
                         )
                 }
             if (written == 0) {
-                stalledWrites += 1
-                if (stalledWrites > 64) {
+                val now = System.currentTimeMillis()
+                if (stalledSinceMs < 0) stalledSinceMs = now
+                if (now - stalledSinceMs > WRITE_STALL_MS) {
                     throw IllegalStateException("Native SSH write stalled")
                 }
-                Thread.sleep(4)
+                kotlinx.coroutines.delay(4)
                 continue
             }
             val remaining = data.size - offset
@@ -268,7 +276,7 @@ class NativeSshService(
                     "Invalid native SSH ACK size: $written (remaining=$remaining)"
                 )
             }
-            stalledWrites = 0
+            stalledSinceMs = -1L
             offset += written
         }
     }
@@ -407,3 +415,6 @@ class NativeSshService(
         handle = 0L
     }
 }
+
+/** Cửa sổ SSH đóng lâu hơn thế này = kết nối chết thật. */
+private const val WRITE_STALL_MS = 2_000L

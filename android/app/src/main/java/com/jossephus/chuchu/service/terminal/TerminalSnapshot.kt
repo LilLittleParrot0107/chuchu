@@ -122,13 +122,16 @@ data class TerminalSnapshot(
             gen++
         }
 
-        internal fun obtain(key: Long, imgW: Int, imgH: Int, pixels: ByteBuffer): Bitmap {
+        /** [pixels] chỉ được gọi khi miss — đó là cú JNI + copy duy nhất của ảnh. */
+        internal fun obtain(key: Long, imgW: Int, imgH: Int, pixels: () -> ByteBuffer?): Bitmap? {
             entries[key]?.let { entry ->
                 entry.gen = gen
                 return entry.bitmap
             }
+            val px = pixels() ?: return null
+            if (px.remaining() < imgW.toLong() * imgH * 4) return null
             val bitmap = Bitmap.createBitmap(imgW, imgH, Bitmap.Config.ARGB_8888)
-            bitmap.copyPixelsFromBuffer(pixels)
+            bitmap.copyPixelsFromBuffer(px)
             entries[key] = Entry(bitmap, gen)
             return bitmap
         }
@@ -151,7 +154,7 @@ data class TerminalSnapshot(
         const val CELL_FLAG_FAINT: Int = 0x20
         private const val HEADER_I32_COUNT = 14
         private const val CELL_SIZE_BYTES = 11
-        private const val IMAGE_HEADER_BYTES = 52
+        private const val IMAGE_HEADER_BYTES = 64
         private const val FNV_OFFSET_BASIS = -0x340d631b7bdddcdbL // 0xcbf29ce484222325
         private const val FNV_PRIME = 0x100000001b3L
 
@@ -281,7 +284,17 @@ data class TerminalSnapshot(
             return snapshot
         }
 
-        fun parseImages(buffer: ByteBuffer?, cache: BitmapCache? = null): List<ImagePlacement> {
+        /**
+         * Record ảnh KHÔNG mang pixel nữa (data_len = 0): pixel lấy qua [pixelsFor]
+         * (nativeImagePixels) và CHỈ khi BitmapCache miss — khoá = (image_id,
+         * transmit_time) từ Zig, không hash mẫu pixel. Buffer trả về trỏ thẳng vào
+         * bộ nhớ native, chỉ hợp lệ tới lệnh JNI kế tiếp: copy ngay, không giữ.
+         */
+        fun parseImages(
+            buffer: ByteBuffer?,
+            cache: BitmapCache? = null,
+            pixelsFor: (imageId: Int) -> ByteBuffer? = { null },
+        ): List<ImagePlacement> {
             if (buffer == null || buffer.capacity() < 4) return emptyList()
             val wrapped = buffer.duplicate().order(ByteOrder.LITTLE_ENDIAN)
             wrapped.position(0)
@@ -307,47 +320,24 @@ data class TerminalSnapshot(
                 val srcH = wrapped.int
                 val imgW = wrapped.int
                 val imgH = wrapped.int
+                val imageId = wrapped.int
+                val keyLo = wrapped.int.toLong() and 0xffffffffL
+                val keyHi = wrapped.int.toLong() and 0xffffffffL
                 val dataLen = wrapped.int
 
                 val expectedLen = imgW.toLong() * imgH.toLong() * 4L
-                if (imgW <= 0 || imgH <= 0 || dataLen <= 0 ||
-                    expectedLen > Int.MAX_VALUE ||
-                    dataLen != expectedLen.toInt() ||
-                    wrapped.remaining() < dataLen
-                ) {
-                    Log.w(
-                        "TerminalSnapshot",
-                        "bad image record: img=${imgW}x$imgH dataLen=$dataLen expected=$expectedLen remaining=${wrapped.remaining()}",
-                    )
+                if (imgW <= 0 || imgH <= 0 || dataLen != 0 || expectedLen > Int.MAX_VALUE) {
+                    Log.w("TerminalSnapshot", "bad image record: img=${imgW}x$imgH dataLen=$dataLen")
                     break
                 }
-
-                val pixelBytes = wrapped.slice().order(ByteOrder.nativeOrder())
-                pixelBytes.limit(dataLen)
-
+                val key = (imageId.toLong() shl 40) xor (keyHi shl 32) xor keyLo
                 val bitmap = if (cache != null) {
-                    // Key noi dung: dims + len + FNV cua 3 lat cat 256 byte
-                    // (dau/giua/cuoi) — du de phan biet anh that ma khong
-                    // phai hash ca MB moi frame.
-                    var key = FNV_OFFSET_BASIS
-                    key = (key xor imgW.toLong()) * FNV_PRIME
-                    key = (key xor imgH.toLong()) * FNV_PRIME
-                    key = (key xor dataLen.toLong()) * FNV_PRIME
-                    val base = wrapped.position()
-                    val sampleStarts = intArrayOf(0, (dataLen / 2 - 128).coerceAtLeast(0), (dataLen - 256).coerceAtLeast(0))
-                    for (start in sampleStarts) {
-                        val end = (start + 256).coerceAtMost(dataLen)
-                        for (p in start until end) {
-                            key = (key xor wrapped.get(base + p).toLong()) * FNV_PRIME
-                        }
-                    }
-                    cache.obtain(key, imgW, imgH, pixelBytes)
+                    cache.obtain(key, imgW, imgH) { pixelsFor(imageId) }
                 } else {
-                    Bitmap.createBitmap(imgW, imgH, Bitmap.Config.ARGB_8888).also {
-                        it.copyPixelsFromBuffer(pixelBytes)
+                    pixelsFor(imageId)?.takeIf { it.remaining() >= expectedLen.toInt() }?.let { px ->
+                        Bitmap.createBitmap(imgW, imgH, Bitmap.Config.ARGB_8888).also { it.copyPixelsFromBuffer(px) }
                     }
-                }
-                wrapped.position(wrapped.position() + dataLen)
+                } ?: continue
 
                 images += ImagePlacement(
                     cellCol = cellCol,

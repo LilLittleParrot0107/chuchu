@@ -42,7 +42,12 @@ const CELL_FLAG_HAS_GRAPHEME: u8 = 1 << 6;
 // These are serialized with codepoint=32 but should not force a shaping
 // run break between neighboring glyph cells.
 const CELL_FLAG_SPACER: u8 = 1 << 7;
-const IMAGE_HEADER_BYTES = 52;
+// 64 byte: 13 truong cu (52) + image_id (u32) + data_key (u64). data_len luon 0 —
+// pixel KHONG con nam trong snapshot: Kotlin goi nativeImagePixels(id) khi
+// BitmapCache miss. Truoc day moi frame memcpy toan bo RGBA cua moi placement
+// (anh 1000x800 = 3,2MB/frame ~ 190MB/s) vi nhanh .rgba (duong thuong gap sau
+// khi ghostty decode PNG luc transmit) bo qua cache (audit 4/9 P5).
+const IMAGE_HEADER_BYTES = 64;
 const MAX_KITTY_IMAGES = 64;
 const MAX_OSC52_CLIPBOARD_BYTES = 1024 * 1024;
 const MAX_OSC7_PWD_BYTES = 4096;
@@ -79,6 +84,9 @@ const PlacementInfo = struct {
     src_h: u32,
     img_w: u32,
     img_h: u32,
+    image_id: u32,
+    /// instantKey(transmit_time): Kotlin ghep voi image_id lam khoa BitmapCache.
+    data_key: u64,
     data_ptr: [*c]const u8,
     data_len: usize,
     free_mode: ImageFreeMode,
@@ -646,6 +654,33 @@ export fn Java_com_jossephus_chuchu_service_terminal_GhosttyBridge_nativeSnapsho
     const buffer = chuchu_build_image_snapshot(handle, &size);
     if (buffer == null or size == 0) return jniNewDirectByteBuffer(env, null, 0);
     return jniNewDirectByteBuffer(env, @ptrCast(buffer), @intCast(size));
+}
+
+/// Pixel RGBA cua anh kitty [image_id] — DirectByteBuffer tro THANG vao storage
+/// cua kitty hoac cache decode, khong chep. Chi hop le toi lenh JNI ke tiep tren
+/// cung terminal (cung dispatcher don luong): Kotlin phai copyPixelsFromBuffer
+/// ngay. Truong hop hiem decode khong vao duoc cache (het RAM): chep tam vao
+/// image_snapshot_buffer roi free ban decode — van tra duoc anh.
+export fn Java_com_jossephus_chuchu_service_terminal_GhosttyBridge_nativeImagePixels(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong, image_id: c.jint) callconv(.c) c.jobject {
+    _ = thiz;
+    const terminal = chuchuFromHandle(handle) orelse return null;
+    if (image_id < 0) return null;
+    const id: u32 = @intCast(image_id);
+    const image = terminal.terminal.screens.active.kitty_images.imageById(id) orelse return null;
+    const prepared = prepareImageData(terminal, id, image) orelse return null;
+    const need: usize = @as(usize, prepared.img_w) * @as(usize, prepared.img_h) * 4;
+    if (prepared.data_ptr == null or prepared.data_len < need) return null;
+    if (prepared.free_mode == .none) {
+        return jniNewDirectByteBuffer(env, @ptrCast(@constCast(prepared.data_ptr)), @intCast(need));
+    }
+    const buf = ensureListSize(&terminal.image_snapshot_buffer, need) orelse return null;
+    @memcpy(buf[0..need], prepared.data_ptr[0..need]);
+    switch (prepared.free_mode) {
+        .malloc_buf => allocator.free(@constCast(prepared.data_ptr[0..prepared.data_len])),
+        .zignal => zignal_png.freePixels(@ptrCast(@constCast(prepared.data_ptr)), prepared.img_w, prepared.img_h),
+        .none => {},
+    }
+    return jniNewDirectByteBuffer(env, @ptrCast(buf), @intCast(need));
 }
 
 export fn Java_com_jossephus_chuchu_service_terminal_GhosttyBridge_nativeIsImageLoading(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong) callconv(.c) c.jboolean {
@@ -1354,6 +1389,8 @@ export fn chuchu_build_image_snapshot(handle: c.jlong, out_size: [*c]usize) call
             .src_h = rect.height,
             .img_w = prepared.img_w,
             .img_h = prepared.img_h,
+            .image_id = entry.key_ptr.image_id,
+            .data_key = instantKey(image.transmit_time),
             .data_ptr = prepared.data_ptr,
             .data_len = prepared.data_len,
             .free_mode = prepared.free_mode,
@@ -1402,6 +1439,8 @@ export fn chuchu_build_image_snapshot(handle: c.jlong, out_size: [*c]usize) call
                 .src_h = rendered.source_height,
                 .img_w = prepared.img_w,
                 .img_h = prepared.img_h,
+                .image_id = virtual_placement.image_id,
+                .data_key = instantKey(image.transmit_time),
                 .data_ptr = prepared.data_ptr,
                 .data_len = prepared.data_len,
                 .free_mode = prepared.free_mode,
@@ -1416,8 +1455,7 @@ export fn chuchu_build_image_snapshot(handle: c.jlong, out_size: [*c]usize) call
         return null;
     }
 
-    var total: usize = 4;
-    for (placements[0..count]) |p| total += IMAGE_HEADER_BYTES + p.data_len;
+    const total: usize = 4 + count * IMAGE_HEADER_BYTES;
     const buf = ensureListSize(&terminal.image_snapshot_buffer, total) orelse {
         for (placements[0..count]) |p| switch (p.free_mode) {
             .malloc_buf => allocator.free(@constCast(p.data_ptr[0..p.data_len])),
@@ -1442,9 +1480,13 @@ export fn chuchu_build_image_snapshot(handle: c.jlong, out_size: [*c]usize) call
         writeIntLe(u32, buf[0..total], offset + 36, p.src_h);
         writeIntLe(u32, buf[0..total], offset + 40, p.img_w);
         writeIntLe(u32, buf[0..total], offset + 44, p.img_h);
-        writeIntLe(u32, buf[0..total], offset + 48, @intCast(p.data_len));
-        @memcpy(buf[offset + IMAGE_HEADER_BYTES .. offset + IMAGE_HEADER_BYTES + p.data_len], p.data_ptr[0..p.data_len]);
-        offset += IMAGE_HEADER_BYTES + p.data_len;
+        writeIntLe(u32, buf[0..total], offset + 48, p.image_id);
+        writeIntLe(u32, buf[0..total], offset + 52, @truncate(p.data_key));
+        writeIntLe(u32, buf[0..total], offset + 56, @truncate(p.data_key >> 32));
+        writeIntLe(u32, buf[0..total], offset + 60, 0); // data_len: pixel lay qua nativeImagePixels
+        offset += IMAGE_HEADER_BYTES;
+        // Du lieu decode ma cache khong nhan (het RAM) thi free ngay; con lai
+        // thuoc cache/kitty, nativeImagePixels tra thang con tro khi Kotlin can.
         switch (p.free_mode) {
             .malloc_buf => allocator.free(@constCast(p.data_ptr[0..p.data_len])),
             .zignal => zignal_png.freePixels(@ptrCast(@constCast(p.data_ptr)), p.img_w, p.img_h),

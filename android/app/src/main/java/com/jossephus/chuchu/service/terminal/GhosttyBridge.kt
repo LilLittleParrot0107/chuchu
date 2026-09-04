@@ -66,6 +66,8 @@ class GhosttyBridge {
     external fun nativeEncodeFocus(handle: Long, focused: Boolean): ByteArray?
     external fun nativeDrainPtyWrites(handle: Long): ByteArray
     external fun nativeSnapshotImages(handle: Long): ByteBuffer
+    /** Pixel RGBA của ảnh kitty, trỏ thẳng bộ nhớ native — copy ngay, chỉ hợp lệ tới lệnh JNI kế. */
+    external fun nativeImagePixels(handle: Long, imageId: Int): ByteBuffer?
     external fun nativeIsImageLoading(handle: Long): Boolean
     external fun nativeFormatSelectionRange(handle: Long, startCell: Int, endCell: Int): String?
     external fun nativeFormatSelectionScreenRange(handle: Long, startScreenCell: Int, endScreenCell: Int): String?

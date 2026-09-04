@@ -769,7 +769,7 @@ class TerminalSessionEngine(
 
     private suspend fun startLocalShellReadLoop() = runReadLoop { localShellService.read(it) }
 
-    private fun feedRemoteChunk(chunk: ByteArray) {
+    private suspend fun feedRemoteChunk(chunk: ByteArray) {
         if (handle == 0L) return
         // wasImageLoading lay tu lan truoc thay vi goi JNI them mot lan;
         // pre-flush cung bo — post-flush cua chunk truoc da gui het pending.
@@ -1172,7 +1172,7 @@ class TerminalSessionEngine(
         }
     }
 
-    private fun writeRemote(data: ByteArray) {
+    private suspend fun writeRemote(data: ByteArray) {
         when (lastConnectionParams?.transport) {
             Transport.Mosh -> moshService.sendInput(data)
             Transport.LocalShell -> localShellService.write(data)
@@ -1202,13 +1202,13 @@ class TerminalSessionEngine(
         sendPostConnectCommand(params.postConnectCommand)
     }
 
-    private fun sendPostConnectCommand(command: String?) {
+    private suspend fun sendPostConnectCommand(command: String?) {
         val trimmed = command?.trim().orEmpty()
         if (trimmed.isEmpty()) return
         sendInteractiveCommand(trimmed, "post-connect command")
     }
 
-    private fun sendInteractiveCommand(command: String, logLabel: String) {
+    private suspend fun sendInteractiveCommand(command: String, logLabel: String) {
         try {
             writeRemote("$command\n".toByteArray(Charsets.UTF_8))
         } catch (e: Exception) {
@@ -1216,7 +1216,7 @@ class TerminalSessionEngine(
         }
     }
 
-    private fun flushPtyWrites() {
+    private suspend fun flushPtyWrites() {
         if (handle == 0L) return
         repeat(8) {
             val ptyWrites = bridge.nativeDrainPtyWrites(handle)
@@ -1327,7 +1327,7 @@ class TerminalSessionEngine(
         try {
             val raw = bridge.nativeSnapshot(handle)
             val rawImages = bridge.nativeSnapshotImages(handle)
-            images = TerminalSnapshot.parseImages(rawImages, bitmapCache)
+            images = TerminalSnapshot.parseImages(rawImages, bitmapCache) { id -> bridge.nativeImagePixels(handle, id) }
             val snap = TerminalSnapshot.fromByteBuffer(raw, images, parseScratch)
             val nextTitle = bridge.nativePollTitle(handle)
             val nextPwd = bridge.nativePollPwd(handle)
