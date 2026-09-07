@@ -70,8 +70,6 @@ fun SettingsScreen(
     onAppLockEnabledChanged: (Boolean) -> Unit,
     tailscaleFollowApp: Boolean = false,
     onTailscaleFollowAppChanged: (Boolean) -> Unit = {},
-    backgroundDisconnectMinutes: Int = 15,
-    onBackgroundDisconnectMinutesChanged: (Int) -> Unit = {},
     onRequireAuthOnConnectChanged: (Boolean) -> Unit,
     onLocalShellEnabledChanged: (Boolean) -> Unit,
     onKeepScreenAwakeChanged: (Boolean) -> Unit,
@@ -179,8 +177,6 @@ fun SettingsScreen(
                         appLockEnabled = appLockEnabled,
                         tailscaleFollowApp = tailscaleFollowApp,
                         onTailscaleFollowAppChanged = onTailscaleFollowAppChanged,
-                        backgroundDisconnectMinutes = backgroundDisconnectMinutes,
-                        onBackgroundDisconnectMinutesChanged = onBackgroundDisconnectMinutesChanged,
                         requireAuthOnConnect = requireAuthOnConnect,
                         onAppLockEnabledChanged = onAppLockEnabledChanged,
                         onRequireAuthOnConnectChanged = onRequireAuthOnConnectChanged,
@@ -264,8 +260,6 @@ private fun GeneralSettings(
     onAppLockEnabledChanged: (Boolean) -> Unit,
     tailscaleFollowApp: Boolean = false,
     onTailscaleFollowAppChanged: (Boolean) -> Unit = {},
-    backgroundDisconnectMinutes: Int = 15,
-    onBackgroundDisconnectMinutesChanged: (Int) -> Unit = {},
     onRequireAuthOnConnectChanged: (Boolean) -> Unit,
     onOpenBackup: () -> Unit = {},
 ) {
@@ -329,7 +323,7 @@ private fun GeneralSettings(
     }
     Spacer(modifier = Modifier.height(4.dp))
     ChuText(
-        "connect on open; disconnect after the background timeout below.",
+        "turn tailscale on when a session connects, off when the last session ends.",
         style = typography.bodySmall,
         color = colors.textMuted,
     )
@@ -337,32 +331,6 @@ private fun GeneralSettings(
     if (tsEvent.isNotEmpty()) {
         ChuText("last: $tsEvent", style = typography.bodySmall, color = colors.textSecondary)
     }
-    Spacer(modifier = Modifier.height(16.dp))
-    ChuText("disconnect after leaving the app for", style = typography.label)
-    Spacer(modifier = Modifier.height(8.dp))
-    Row(
-        modifier = Modifier.fillMaxWidth().border(1.dp, colors.border),
-    ) {
-        listOf(0 to "never", 5 to "5m", 15 to "15m", 60 to "1h").forEach { (min, label) ->
-            val selected = min == backgroundDisconnectMinutes
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .background(if (selected) colors.accent else Color.Transparent)
-                    .clickable { onBackgroundDisconnectMinutesChanged(min) }
-                    .padding(vertical = 10.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                ChuText(label, style = typography.label, color = if (selected) colors.background else colors.textSecondary)
-            }
-        }
-    }
-    Spacer(modifier = Modifier.height(4.dp))
-    ChuText(
-        "ssh tabs disconnect (tap to reconnect; herdr/tmux keep the session) and tailscale switches off if it follows the app. coming back sooner cancels it, so quick app switches don't churn the vpn.",
-        style = typography.bodySmall,
-        color = colors.textMuted,
-    )
     Spacer(modifier = Modifier.height(16.dp))
     Row(
         modifier = Modifier.fillMaxWidth(),

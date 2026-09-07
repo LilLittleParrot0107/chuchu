@@ -15,13 +15,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -131,34 +131,50 @@ class TerminalSessionRepository private constructor(application: Application) {
     private var foregroundServiceRunning = false
     private var foregroundNotificationLabel: String? = null
 
-    // Đếm ngược nền đang chạy (rời app, chờ N phút). Là StateFlow để gộp với tabStatuses
-    // quyết định foreground service: service chạy khi CÒN session sống HOẶC đang đếm
-    // ngược — tiến trình sống thì timer trong tiến trình chắc chắn nổ, không trông vào
-    // alarm bị doze/vivo lùi (7/9: "thoát 15 phút vẫn chưa tắt VPN").
-    private val _timeoutPending = MutableStateFlow(false)
-    private var timeoutJob: Job? = null
-
     init {
         scope.launch {
-            combine(tabStatuses, _timeoutPending) { pairs, pending ->
-                pairs.any { (_, status) -> status.isAlive() } to pending
-            }.collect { (anyAlive, pending) ->
-                val label = when {
-                    anyAlive -> currentNotificationLabel()
-                    pending -> "auto vpn · off in ${backgroundDisconnectMs / 60_000}m"
-                    else -> null
+            var wasAlive = false
+            tabStatuses
+                .collect { pairs ->
+                    val anyAlive = pairs.any { (_, status) -> status.isAlive() }
+                    val label = if (anyAlive) currentNotificationLabel() else null
+                    if (anyAlive && (!foregroundServiceRunning || foregroundNotificationLabel != label)) {
+                        SessionForegroundService.start(appContext, label ?: "Active session")
+                        foregroundServiceRunning = true
+                        foregroundNotificationLabel = label
+                    } else if (!anyAlive && foregroundServiceRunning) {
+                        SessionForegroundService.stop(appContext)
+                        foregroundServiceRunning = false
+                        foregroundNotificationLabel = null
+                    }
+                    // auto vpn (user chốt 7/9, luật duy nhất): session cuối cùng tắt → tắt
+                    // Tailscale. Không timer, không alarm, không đếm ngược. Reconnecting
+                    // vẫn tính là sống nên rớt mạng thoáng qua không làm VPN tắt.
+                    if (wasAlive && !anyAlive && autoVpn()) {
+                        com.jossephus.chuchu.service.TailscaleControl.disconnect(appContext)
+                    }
+                    wasAlive = anyAlive
                 }
-                val want = anyAlive || pending
-                if (want && (!foregroundServiceRunning || foregroundNotificationLabel != label)) {
-                    SessionForegroundService.start(appContext, label ?: "Active session")
-                    foregroundServiceRunning = true
-                    foregroundNotificationLabel = label
-                } else if (!want && foregroundServiceRunning) {
-                    SessionForegroundService.stop(appContext)
-                    foregroundServiceRunning = false
-                    foregroundNotificationLabel = null
-                }
-            }
+        }
+    }
+
+    private fun autoVpn(): Boolean =
+        com.jossephus.chuchu.data.repository.SettingsRepository.getInstance(appContext as Application)
+            .tailscaleFollowApp.value
+
+    /**
+     * Chiều ngược lại của luật: mở session qua tailnet → bật Tailscale trước, đợi tối đa
+     * [VPN_UP_WAIT_MS] cho tunnel lên (poll 250ms), rồi mới connect. VPN đang lên sẵn
+     * thì connect ngay, không chờ. Local shell không cần VPN.
+     */
+    private fun connectWithVpn(spec: TabSpec, connect: () -> Unit) {
+        val needsVpn = spec.transport != Transport.LocalShell && autoVpn()
+        if (!needsVpn || tailscaleStatusChecker.isActive()) { connect(); return }
+        com.jossephus.chuchu.service.TailscaleControl.connect(appContext)
+        scope.launch {
+            val deadline = System.currentTimeMillis() + VPN_UP_WAIT_MS
+            while (System.currentTimeMillis() < deadline && !tailscaleStatusChecker.isActive()) delay(250)
+            connect()
         }
     }
 
@@ -172,48 +188,10 @@ class TerminalSessionRepository private constructor(application: Application) {
         syncRenderGates()
     }
 
-    // Chính sách nền (pin, 7/9 — user chốt): rời app quá [backgroundDisconnectMs] thì
-    // BackgroundTimeoutReceiver ngắt mọi tab đang sống (giữ tab, user tự bấm nối lại)
-    // rồi tắt Tailscale nếu "follows app". Quay lại trong khoảng đó thì huỷ alarm —
-    // không có gì xảy ra, nên mở app liên tục không làm VPN bật/tắt liên tục.
-    // 0 = không bao giờ. KHÔNG tự nối lại khi quay về — user bảo thừa.
-    @Volatile var backgroundDisconnectMs: Long = 0L
-
     fun setForeground(value: Boolean) {
         if (foreground == value) return
         foreground = value
         syncRenderGates()
-        timeoutJob?.cancel(); timeoutJob = null
-        if (!value) {
-            val wait = backgroundDisconnectMs
-            if (wait > 0) {
-                // Hai lớp: timer trong tiến trình (foreground service giữ tiến trình sống
-                // — chắc chắn) + alarm exact làm dự phòng nếu tiến trình vẫn bị giết.
-                _timeoutPending.value = true
-                com.jossephus.chuchu.service.BackgroundTimeoutReceiver.schedule(appContext, wait)
-                timeoutJob = scope.launch {
-                    delay(wait)
-                    onBackgroundTimeoutFired()
-                }
-            }
-        } else {
-            _timeoutPending.value = false
-            com.jossephus.chuchu.service.BackgroundTimeoutReceiver.cancel(appContext)
-        }
-    }
-
-    /**
-     * Hết giờ nền (từ timer trong tiến trình hoặc từ alarm): ngắt mọi tab đang sống
-     * (giữ tab, user tự bấm nối lại), tắt Tailscale nếu "follows app", dừng đếm ngược
-     * → foreground service dừng → tiến trình được ngủ/chết. Idempotent: gọi hai lần vô hại.
-     */
-    fun onBackgroundTimeoutFired() {
-        if (foreground) return
-        _tabs.value.filter { it.engine.state.value.status.isAlive() }.forEach { it.engine.disconnect() }
-        val settings = com.jossephus.chuchu.data.repository.SettingsRepository.getInstance(appContext as Application)
-        if (settings.tailscaleFollowApp.value) com.jossephus.chuchu.service.TailscaleControl.disconnect(appContext)
-        _timeoutPending.value = false
-        com.jossephus.chuchu.service.BackgroundTimeoutReceiver.cancel(appContext)
     }
 
     /**
@@ -308,7 +286,7 @@ class TerminalSessionRepository private constructor(application: Application) {
         _tabs.value = _tabs.value + tab
         _activeTabId.value = id
         syncRenderGates()
-        engine.connect(
+        connectWithVpn(spec) { engine.connect(
             host = spec.host,
             port = spec.port,
             username = spec.username,
@@ -323,7 +301,7 @@ class TerminalSessionRepository private constructor(application: Application) {
             multiplexer = spec.multiplexer,
             multiplexerSessionName = spec.multiplexerSessionName,
             multiplexerCreateIfMissing = spec.multiplexerCreateIfMissing,
-        )
+        ) }
         return tab
     }
 
@@ -367,7 +345,7 @@ class TerminalSessionRepository private constructor(application: Application) {
 
     fun reconnectTab(tab: TabSession) {
         val spec = tab.spec
-        tab.engine.connect(
+        connectWithVpn(spec) { tab.engine.connect(
             host = spec.host,
             port = spec.port,
             username = spec.username,
@@ -382,7 +360,7 @@ class TerminalSessionRepository private constructor(application: Application) {
             multiplexer = spec.multiplexer,
             multiplexerSessionName = spec.multiplexerSessionName,
             multiplexerCreateIfMissing = spec.multiplexerCreateIfMissing,
-        )
+        ) }
     }
 
     fun disconnect() {
@@ -526,6 +504,8 @@ class TerminalSessionRepository private constructor(application: Application) {
     }
 
     companion object {
+        /** Tailscale lên tunnel mất ~1–3s; quá mức này thì cứ connect để lỗi hiện ra rõ. */
+        private const val VPN_UP_WAIT_MS = 8_000L
         @Volatile private var instance: TerminalSessionRepository? = null
 
         fun getInstance(application: Application): TerminalSessionRepository {

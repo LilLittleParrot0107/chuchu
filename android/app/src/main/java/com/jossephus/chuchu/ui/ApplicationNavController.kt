@@ -75,13 +75,6 @@ fun ApplicationNavController() {
     var appLockBlockedUntilToggle by rememberSaveable { mutableStateOf(false) }
     val settingsRepo = SettingsRepository.getInstance(application)
     val appLockEnabled by settingsRepo.appLockEnabled.collectAsStateWithLifecycle()
-    val tailscaleFollowApp by settingsRepo.tailscaleFollowApp.collectAsStateWithLifecycle()
-    val tailscaleFollowAppNow = rememberUpdatedState(tailscaleFollowApp)
-    val backgroundDisconnectMinutes by settingsRepo.backgroundDisconnectMinutes.collectAsStateWithLifecycle()
-    LaunchedEffect(backgroundDisconnectMinutes, tailscaleFollowApp) {
-        val sessions = com.jossephus.chuchu.service.terminal.TerminalSessionRepository.getInstance(application)
-        sessions.backgroundDisconnectMs = backgroundDisconnectMinutes * 60_000L
-    }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { source, event ->
@@ -89,16 +82,9 @@ fun ApplicationNavController() {
             // Cổng vẽ của terminal: màn tắt / app xuống nền thì engine ngừng dựng
             // snapshot cho tab đang mở (audit 4/9 P1).
             if (event == Lifecycle.Event.ON_START) {
-                com.jossephus.chuchu.service.AppForeground.inForeground = true
                 sessions.setForeground(true)
-                // Tailscale theo app (user 7/9): vào là bật; CONNECT lặp lại vô hại.
-                if (tailscaleFollowAppNow.value) com.jossephus.chuchu.service.TailscaleControl.connect(context)
             }
             if (event == Lifecycle.Event.ON_STOP) {
-                // Rời app: KHÔNG tắt Tailscale ngay — timer nền của repository (N phút,
-                // Settings) ngắt session rồi mới tắt VPN. Xoay màn hình (config change)
-                // cũng qua ON_STOP nhưng ON_START ngay sau đó huỷ timer, vô hại.
-                com.jossephus.chuchu.service.AppForeground.inForeground = false
                 sessions.setForeground(false)
                 val isConfigChange =
                     (source as? android.app.Activity)?.isChangingConfigurations == true
@@ -409,8 +395,6 @@ fun ApplicationNavController() {
                 onAppLockEnabledChanged = settingsRepo::setAppLockEnabled,
                 tailscaleFollowApp = settingsRepo.tailscaleFollowApp.collectAsStateWithLifecycle().value,
                 onTailscaleFollowAppChanged = settingsRepo::setTailscaleFollowApp,
-                backgroundDisconnectMinutes = settingsRepo.backgroundDisconnectMinutes.collectAsStateWithLifecycle().value,
-                onBackgroundDisconnectMinutesChanged = settingsRepo::setBackgroundDisconnectMinutes,
                 onRequireAuthOnConnectChanged = settingsRepo::setRequireAuthOnConnect,
                 onLocalShellEnabledChanged = settingsRepo::setLocalShellEnabled,
                 onKeepScreenAwakeChanged = settingsRepo::setKeepScreenAwake,

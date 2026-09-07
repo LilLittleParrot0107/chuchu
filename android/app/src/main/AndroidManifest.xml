@@ -6,10 +6,6 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
-    <!-- Đếm ngược "rời app N phút": alarm exact để doze/vivo không lùi tới cả giờ.
-         USE_EXACT_ALARM tự cấp từ Android 13 (app sideload, không qua Play policy); SCHEDULE_EXACT_ALARM cho 12. -->
-    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
-    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- Gửi broadcast tường minh tới app Tailscale (bật/tắt VPN theo app) cần khai gói này từ API 30. -->
@@ -99,10 +95,6 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
-        <!-- Hết giờ nền (N phút rời app): ngắt session + tắt Tailscale, sống ngoài tiến trình. -->
-        <receiver
-            android:name=".service.BackgroundTimeoutReceiver"
-            android:exported="false" />
     </application>
 
 </manifest>
