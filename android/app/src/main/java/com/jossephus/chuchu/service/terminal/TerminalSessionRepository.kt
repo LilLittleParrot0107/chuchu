@@ -131,22 +131,34 @@ class TerminalSessionRepository private constructor(application: Application) {
     private var foregroundServiceRunning = false
     private var foregroundNotificationLabel: String? = null
 
+    // Đếm ngược nền đang chạy (rời app, chờ N phút). Là StateFlow để gộp với tabStatuses
+    // quyết định foreground service: service chạy khi CÒN session sống HOẶC đang đếm
+    // ngược — tiến trình sống thì timer trong tiến trình chắc chắn nổ, không trông vào
+    // alarm bị doze/vivo lùi (7/9: "thoát 15 phút vẫn chưa tắt VPN").
+    private val _timeoutPending = MutableStateFlow(false)
+    private var timeoutJob: Job? = null
+
     init {
         scope.launch {
-            tabStatuses
-                .collect { pairs ->
-                    val anyAlive = pairs.any { (_, status) -> status.isAlive() }
-                    val label = if (anyAlive) currentNotificationLabel() else null
-                    if (anyAlive && (!foregroundServiceRunning || foregroundNotificationLabel != label)) {
-                        SessionForegroundService.start(appContext, label ?: "Active session")
-                        foregroundServiceRunning = true
-                        foregroundNotificationLabel = label
-                    } else if (!anyAlive && foregroundServiceRunning) {
-                        SessionForegroundService.stop(appContext)
-                        foregroundServiceRunning = false
-                        foregroundNotificationLabel = null
-                    }
+            combine(tabStatuses, _timeoutPending) { pairs, pending ->
+                pairs.any { (_, status) -> status.isAlive() } to pending
+            }.collect { (anyAlive, pending) ->
+                val label = when {
+                    anyAlive -> currentNotificationLabel()
+                    pending -> "auto vpn · off in ${backgroundDisconnectMs / 60_000}m"
+                    else -> null
                 }
+                val want = anyAlive || pending
+                if (want && (!foregroundServiceRunning || foregroundNotificationLabel != label)) {
+                    SessionForegroundService.start(appContext, label ?: "Active session")
+                    foregroundServiceRunning = true
+                    foregroundNotificationLabel = label
+                } else if (!want && foregroundServiceRunning) {
+                    SessionForegroundService.stop(appContext)
+                    foregroundServiceRunning = false
+                    foregroundNotificationLabel = null
+                }
+            }
         }
     }
 
@@ -171,21 +183,37 @@ class TerminalSessionRepository private constructor(application: Application) {
         if (foreground == value) return
         foreground = value
         syncRenderGates()
-        // Hẹn giờ bằng alarm hệ thống, KHÔNG phải coroutine: tiến trình có thể bị giết
-        // trong nền (không session = không foreground service) và timer chết theo —
-        // đó là lý do "VPN không tắt" (7/9). Alarm sống ngoài tiến trình.
+        timeoutJob?.cancel(); timeoutJob = null
         if (!value) {
             val wait = backgroundDisconnectMs
-            if (wait > 0) com.jossephus.chuchu.service.BackgroundTimeoutReceiver.schedule(appContext, wait)
+            if (wait > 0) {
+                // Hai lớp: timer trong tiến trình (foreground service giữ tiến trình sống
+                // — chắc chắn) + alarm exact làm dự phòng nếu tiến trình vẫn bị giết.
+                _timeoutPending.value = true
+                com.jossephus.chuchu.service.BackgroundTimeoutReceiver.schedule(appContext, wait)
+                timeoutJob = scope.launch {
+                    delay(wait)
+                    onBackgroundTimeoutFired()
+                }
+            }
         } else {
+            _timeoutPending.value = false
             com.jossephus.chuchu.service.BackgroundTimeoutReceiver.cancel(appContext)
         }
     }
 
-    /** Receiver gọi khi hết giờ nền: ngắt mọi tab đang sống, giữ tab để user bấm nối lại. */
-    fun parkAll() {
+    /**
+     * Hết giờ nền (từ timer trong tiến trình hoặc từ alarm): ngắt mọi tab đang sống
+     * (giữ tab, user tự bấm nối lại), tắt Tailscale nếu "follows app", dừng đếm ngược
+     * → foreground service dừng → tiến trình được ngủ/chết. Idempotent: gọi hai lần vô hại.
+     */
+    fun onBackgroundTimeoutFired() {
         if (foreground) return
         _tabs.value.filter { it.engine.state.value.status.isAlive() }.forEach { it.engine.disconnect() }
+        val settings = com.jossephus.chuchu.data.repository.SettingsRepository.getInstance(appContext as Application)
+        if (settings.tailscaleFollowApp.value) com.jossephus.chuchu.service.TailscaleControl.disconnect(appContext)
+        _timeoutPending.value = false
+        com.jossephus.chuchu.service.BackgroundTimeoutReceiver.cancel(appContext)
     }
 
     /**

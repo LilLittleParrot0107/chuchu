@@ -26,11 +26,14 @@ class BackgroundTimeoutReceiver : BroadcastReceiver() {
         // Alarm có thể nổ trùng lúc user vừa mở lại app (ON_START đã huỷ nhưng intent
         // đang bay): app đang mở thì KHÔNG làm gì — tắt VPN trước mặt họ là sai.
         if (AppForeground.inForeground) { Log.i(TAG, "timeout fired but app is foreground — ignored"); return }
-        // Ngắt session nếu tiến trình còn sống (không thì đã chết cùng tiến trình rồi).
-        runCatching { TerminalSessionRepository.getInstance(app).parkAll() }
-            .onFailure { Log.w(TAG, "parkAll: ${it.message}") }
-        if (settings.tailscaleFollowApp.value) TailscaleControl.disconnect(app)
-        Log.i(TAG, "background timeout fired")
+        // Cùng một đường với timer trong tiến trình (idempotent). Tiến trình mới sinh:
+        // repository rỗng, chỉ còn việc tắt VPN.
+        runCatching { TerminalSessionRepository.getInstance(app).onBackgroundTimeoutFired() }
+            .onFailure {
+                Log.w(TAG, "repo: ${it.message}")
+                if (settings.tailscaleFollowApp.value) TailscaleControl.disconnect(app)
+            }
+        Log.i(TAG, "background timeout fired (alarm)")
     }
 
     companion object {
@@ -47,7 +50,14 @@ class BackgroundTimeoutReceiver : BroadcastReceiver() {
         fun schedule(context: Context, delayMs: Long) {
             val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
             val at = System.currentTimeMillis() + delayMs
-            runCatching { am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pending(context)) }
+            // Exact trước (USE_EXACT_ALARM tự cấp từ Android 13; SCHEDULE_EXACT_ALARM cho 12):
+            // loại inexact bị doze/vivo lùi tới gần 1 giờ — "thoát 15 phút vẫn chưa tắt".
+            val ok = runCatching {
+                if (android.os.Build.VERSION.SDK_INT < 31 || am.canScheduleExactAlarms()) {
+                    am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pending(context)); true
+                } else false
+            }.getOrElse { Log.w(TAG, "exact: ${it.message}"); false }
+            if (!ok) runCatching { am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pending(context)) }
                 .onFailure { Log.w(TAG, "schedule: ${it.message}") }
         }
 
