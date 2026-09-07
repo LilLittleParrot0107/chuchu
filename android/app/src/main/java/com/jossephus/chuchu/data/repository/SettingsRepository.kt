@@ -96,7 +96,7 @@ class SettingsRepository(context: Context) {
     val appLockEnabled: StateFlow<Boolean> = _appLockEnabled.asStateFlow()
 
     private val _tailscaleFollowApp = MutableStateFlow(prefs.getBoolean(KEY_TAILSCALE_FOLLOW_APP, false))
-    /** auto vpn: mở session qua tailnet thì bật Tailscale, session cuối tắt thì tắt (user chốt 7/9). */
+    /** auto vpn (chỉ tắt): session cuối tắt ở nền / rời app 15 phút → tắt Tailscale (user chốt 7/9). */
     val tailscaleFollowApp: StateFlow<Boolean> = _tailscaleFollowApp.asStateFlow()
 
     private val _requireAuthOnConnect = MutableStateFlow(prefs.getBoolean(KEY_REQUIRE_AUTH_ON_CONNECT, false))

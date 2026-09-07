@@ -7,9 +7,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
 /**
- * Bật/tắt Tailscale qua intent mà app Tailscale Android công bố cho Tasker:
- * broadcast tường minh tới `com.tailscale.ipn.IPNReceiver` với action CONNECT_VPN /
- * DISCONNECT_VPN. Không có Tailscale thì broadcast rơi vào khoảng không — vô hại.
+ * Tắt Tailscale qua intent mà app Tailscale Android công bố cho Tasker: broadcast
+ * tường minh tới `com.tailscale.ipn.IPNReceiver` với action DISCONNECT_VPN. Không có
+ * Tailscale thì broadcast rơi vào khoảng không — vô hại.
  * Manifest cần <queries><package android:name="com.tailscale.ipn"/></queries> (API 30+).
  *
  * [lastEvent] = dòng chẩn đoán hiện ở Settings: user không đọc được logcat, mà "VPN
@@ -23,8 +23,12 @@ object TailscaleControl {
     private val _lastEvent = MutableStateFlow("")
     val lastEvent: StateFlow<String> = _lastEvent
 
-    /** [why] = luật nào bắn lệnh, hiện ở Settings để user đối chiếu khi test. */
-    fun connect(context: Context, why: String) = send(context, "$PKG.CONNECT_VPN", "connect", why)
+    /**
+     * Chỉ có tắt. CONNECT_VPN cố tình không có: Tailscale thi hành nó bằng job nền rồi
+     * startForegroundService — Android 12+ cấm app ở nền làm vậy trừ khi user tắt tối ưu
+     * pin cho Tailscale, nên lệnh bật rơi vào im lặng (user bỏ 7/9). DISCONNECT thì ăn vì
+     * lúc đó Tailscale đang là foreground service. [why] hiện ở Settings để đối chiếu.
+     */
     fun disconnect(context: Context, why: String) = send(context, "$PKG.DISCONNECT_VPN", "disconnect", why)
 
     private fun send(context: Context, action: String, label: String, why: String) {
