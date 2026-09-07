@@ -373,6 +373,7 @@ fun NetRateChart(
     val markPath = remember { Path() }
     val dashEffect = remember { PathEffect.dashPathEffect(floatArrayOf(5f, 5f), 0f) }
     val barBrush = remember(grossColor) { GradientBrushHolder() }
+    val spendBrush = remember(spendColor) { GradientBrushHolder() }
 
     val sidePadDp = 8.dp
     val sidePadPx = with(density) { sidePadDp.toPx() }
@@ -467,12 +468,24 @@ fun NetRateChart(
             val corner = CornerRadius(2.dp.toPx(), 2.dp.toPx())
             val activeIdx = selectedIndexState.intValue
 
-            if (barBrush.geometry != plotH || barBrush.brush == null) {
-                barBrush.geometry = plotH
+            // Key theo cả yZero: thang đổi (yMin đổi) thì đường zero dời mà plotH
+            // vẫn thế — brush cũ lệch (audit 4/9). Cột chi tiêu soi gương cột yield:
+            // đậm ở đầu mút, nhạt dần về đường zero — một khối đặc màu khác ở nửa
+            // dưới trông lạc quẻ (user 7/9).
+            if (barBrush.geometry != plotH || barBrush.zero != yZero || barBrush.brush == null) {
+                barBrush.geometry = plotH; barBrush.zero = yZero
                 barBrush.brush = Brush.verticalGradient(
                     colors = listOf(grossColor, grossColor.copy(alpha = 0.45f)),
                     startY = topPad,
                     endY = yZero,
+                )
+            }
+            if (spendBrush.geometry != plotH || spendBrush.zero != yZero || spendBrush.brush == null) {
+                spendBrush.geometry = plotH; spendBrush.zero = yZero
+                spendBrush.brush = Brush.verticalGradient(
+                    colors = listOf(spendColor.copy(alpha = 0.45f), spendColor),
+                    startY = yZero,
+                    endY = plotBottom,
                 )
             }
 
@@ -514,10 +527,11 @@ fun NetRateChart(
                     val bottomRaw = yOf(-p.trailSpend * anim)
                     val bottom = minOf(bottomRaw, plotBottom)
                     drawRoundRect(
-                        color = spendColor.copy(alpha = alpha * 0.85f),
+                        brush = spendBrush.brush!!,
                         topLeft = Offset(left, yZero),
                         size = Size(barW, (bottom - yZero).coerceAtLeast(0f)),
                         cornerRadius = corner,
+                        alpha = alpha,
                     )
                     // Vuot khung: mui nhon o day de biet cot con dai nua.
                     if (bottomRaw > plotBottom + 1f) {

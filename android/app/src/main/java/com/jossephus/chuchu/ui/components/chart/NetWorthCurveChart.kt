@@ -371,5 +371,7 @@ fun NetWorthCurveChart(
 /** Cache brush theo hinh hoc canvas, dung chung cho cac chart trong package. */
 internal class GradientBrushHolder {
     var geometry: Float = Float.NaN
+    /** Toạ độ đường zero lúc dựng brush — thang đổi thì zero dời dù geometry y nguyên. */
+    var zero: Float = Float.NaN
     var brush: Brush? = null
 }
