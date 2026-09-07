@@ -128,7 +128,10 @@ class TerminalSessionRepository private constructor(application: Application) {
     private var attachedClients = 0
     // App có đang ở foreground không (nav báo qua ON_START/ON_STOP). TerminalScreen
     // vẫn attached khi màn tắt nên attachedClients một mình không đủ để tắt vẽ.
-    private var foreground = true
+    // Khởi đầu là false để ON_START đầu tiên (cold start) thật sự đi qua setForeground(true)
+    // — nó phải bật tailnet khi auto vpn bật. Cổng vẽ không đổi: chưa có client attach.
+    private var foreground = false
+    private var idleCloseJob: Job? = null
     private var foregroundServiceRunning = false
     private var foregroundNotificationLabel: String? = null
 
@@ -199,6 +202,32 @@ class TerminalSessionRepository private constructor(application: Application) {
         if (foreground == value) return
         foreground = value
         syncRenderGates()
+        idleCloseJob?.cancel()
+        idleCloseJob = null
+        if (!autoVpn()) return
+        if (value) {
+            // App lên trước → bật tailnet sẵn: Queue/Dashboard/portal cũng đi qua tailnet,
+            // không có session vẫn cần. CONNECT khi đã lên là thừa nên hỏi trước.
+            scope.launch {
+                if (!withContext(Dispatchers.IO) { tailscaleStatusChecker.isActive() }) {
+                    com.jossephus.chuchu.service.TailscaleControl.connect(appContext)
+                }
+            }
+        } else {
+            // Rời app 15 phút → ngắt mọi session (tab giữ lại, bấm là nối lại) → luật
+            // "hết session → tắt VPN" tự chạy. Không có session thì tắt VPN thẳng.
+            // Đồng hồ là delay() thường: có session thì foreground service đã giữ tiến
+            // trình sống; không có session mà bị giết thì VPN ở lại — chấp nhận (user 7/9).
+            idleCloseJob = scope.launch {
+                delay(IDLE_CLOSE_MS)
+                val tabs = _tabs.value
+                if (tabs.any { it.sessionState.value.status.isAlive() }) {
+                    tabs.forEach { it.engine.disconnect() }
+                } else {
+                    com.jossephus.chuchu.service.TailscaleControl.disconnect(appContext)
+                }
+            }
+        }
     }
 
     /**
@@ -513,6 +542,8 @@ class TerminalSessionRepository private constructor(application: Application) {
     companion object {
         /** Tailscale lên tunnel mất ~1–3s; quá mức này thì cứ connect để lỗi hiện ra rõ. */
         private const val VPN_UP_WAIT_MS = 8_000L
+        /** Rời app bao lâu thì tự ngắt session + Tailscale (user chốt 7/9: 15 phút, không chỉnh). */
+        private const val IDLE_CLOSE_MS = 15 * 60_000L
         @Volatile private var instance: TerminalSessionRepository? = null
 
         fun getInstance(application: Application): TerminalSessionRepository {
