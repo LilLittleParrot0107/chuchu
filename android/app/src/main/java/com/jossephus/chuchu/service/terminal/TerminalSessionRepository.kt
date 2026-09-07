@@ -151,11 +151,12 @@ class TerminalSessionRepository private constructor(application: Application) {
                         foregroundServiceRunning = false
                         foregroundNotificationLabel = null
                     }
-                    // auto vpn (user chốt 7/9, luật duy nhất): session cuối cùng tắt → tắt
-                    // Tailscale. Không timer, không alarm, không đếm ngược. Reconnecting
-                    // vẫn tính là sống nên rớt mạng thoáng qua không làm VPN tắt.
-                    if (wasAlive && !anyAlive && autoVpn()) {
-                        com.jossephus.chuchu.service.TailscaleControl.disconnect(appContext)
+                    // auto vpn: session sống cuối cùng tắt KHI APP Ở NỀN → tắt Tailscale.
+                    // Đang ở trước mặt thì giữ — Dashboard/Queue còn cần tailnet; rời app
+                    // rồi đồng hồ 15 phút (setForeground) sẽ tắt. Reconnecting vẫn tính là
+                    // sống nên rớt mạng thoáng qua không làm VPN tắt.
+                    if (wasAlive && !anyAlive && !foreground && autoVpn()) {
+                        com.jossephus.chuchu.service.TailscaleControl.disconnect(appContext, "last session")
                     }
                     wasAlive = anyAlive
                 }
@@ -177,7 +178,7 @@ class TerminalSessionRepository private constructor(application: Application) {
         scope.launch {
             val checker = tailscaleStatusChecker
             if (!withContext(Dispatchers.IO) { checker.isActive() }) {
-                com.jossephus.chuchu.service.TailscaleControl.connect(appContext)
+                com.jossephus.chuchu.service.TailscaleControl.connect(appContext, "session")
                 val deadline = System.currentTimeMillis() + VPN_UP_WAIT_MS
                 while (System.currentTimeMillis() < deadline) {
                     delay(250)
@@ -210,7 +211,7 @@ class TerminalSessionRepository private constructor(application: Application) {
             // không có session vẫn cần. CONNECT khi đã lên là thừa nên hỏi trước.
             scope.launch {
                 if (!withContext(Dispatchers.IO) { tailscaleStatusChecker.isActive() }) {
-                    com.jossephus.chuchu.service.TailscaleControl.connect(appContext)
+                    com.jossephus.chuchu.service.TailscaleControl.connect(appContext, "app open")
                 }
             }
         } else {
@@ -220,11 +221,12 @@ class TerminalSessionRepository private constructor(application: Application) {
             // trình sống; không có session mà bị giết thì VPN ở lại — chấp nhận (user 7/9).
             idleCloseJob = scope.launch {
                 delay(IDLE_CLOSE_MS)
+                if (!autoVpn()) return@launch
                 val tabs = _tabs.value
                 if (tabs.any { it.sessionState.value.status.isAlive() }) {
                     tabs.forEach { it.engine.disconnect() }
                 } else {
-                    com.jossephus.chuchu.service.TailscaleControl.disconnect(appContext)
+                    com.jossephus.chuchu.service.TailscaleControl.disconnect(appContext, "idle 15m")
                 }
             }
         }

@@ -23,14 +23,15 @@ object TailscaleControl {
     private val _lastEvent = MutableStateFlow("")
     val lastEvent: StateFlow<String> = _lastEvent
 
-    fun connect(context: Context) = send(context, "$PKG.CONNECT_VPN", "connect")
-    fun disconnect(context: Context) = send(context, "$PKG.DISCONNECT_VPN", "disconnect")
+    /** [why] = luật nào bắn lệnh, hiện ở Settings để user đối chiếu khi test. */
+    fun connect(context: Context, why: String) = send(context, "$PKG.CONNECT_VPN", "connect", why)
+    fun disconnect(context: Context, why: String) = send(context, "$PKG.DISCONNECT_VPN", "disconnect", why)
 
-    private fun send(context: Context, action: String, label: String) {
+    private fun send(context: Context, action: String, label: String, why: String) {
         val stamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(java.util.Date())
         runCatching {
             context.applicationContext.sendBroadcast(Intent(action).setClassName(PKG, RECEIVER))
-            _lastEvent.value = "$label sent $stamp"
+            _lastEvent.value = "$label ($why) sent $stamp"
             Log.i("TailscaleControl", "$action sent")
         }.onFailure {
             _lastEvent.value = "$label FAILED $stamp: ${it.message}"
