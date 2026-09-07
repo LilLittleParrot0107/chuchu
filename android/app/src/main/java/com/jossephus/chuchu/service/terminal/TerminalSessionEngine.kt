@@ -29,6 +29,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.yield
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -203,7 +204,7 @@ class TerminalSessionEngine(
                 multiplexerCreateIfMissing = multiplexerCreateIfMissing,
             )
         lastConnectionParams = params
-        scope.launch(dispatcher) {
+        launchSession {
             reconnectJob?.cancel()
             reconnectJob = null
             _state.value =
@@ -221,7 +222,7 @@ class TerminalSessionEngine(
                         error =
                             "Native terminal library ${bridge.nativeStatus()}. Check ABI/NDK build.",
                     )
-                return@launch
+                return@launchSession
             }
             if (
                 transport != Transport.Mosh &&
@@ -234,7 +235,7 @@ class TerminalSessionEngine(
                         sessionKey = sessionKey,
                         error = "Native SSH unavailable. Check ABI/NDK build.",
                     )
-                return@launch
+                return@launchSession
             }
             if (transport == Transport.Mosh && !moshService.isLoaded) {
                 _state.value =
@@ -243,7 +244,7 @@ class TerminalSessionEngine(
                         sessionKey = sessionKey,
                         error = "Native mosh unavailable. Check ABI/NDK build.",
                     )
-                return@launch
+                return@launchSession
             }
             if (transport != Transport.LocalShell && username.isBlank()) {
                 _state.value =
@@ -252,7 +253,7 @@ class TerminalSessionEngine(
                         sessionKey = sessionKey,
                         error = "Username required",
                     )
-                return@launch
+                return@launchSession
             }
             val multiplexerAvailability = checkMultiplexerAvailability(params)
             val multiplexerError = multiplexerAvailabilityErrorMessage(
@@ -266,7 +267,7 @@ class TerminalSessionEngine(
                         sessionKey = sessionKey,
                         error = multiplexerError,
                     )
-                return@launch
+                return@launchSession
             }
             try {
                 establishConnection(params, username)
@@ -301,11 +302,11 @@ class TerminalSessionEngine(
     }
 
     fun writeKey(key: Int, codepoint: Int, mods: Int, action: Int, utf8: String? = null) {
-        scope.launch(dispatcher) {
-            if (handle == 0L) return@launch
+        launchSession {
+            if (handle == 0L) return@launchSession
             val encoded =
-                bridge.nativeEncodeKey(handle, key, codepoint, mods, action, utf8) ?: return@launch
-            if (encoded.isEmpty()) return@launch
+                bridge.nativeEncodeKey(handle, key, codepoint, mods, action, utf8) ?: return@launchSession
+            if (encoded.isEmpty()) return@launchSession
             try {
                 writeRemote(encoded)
             } catch (_: Exception) {}
@@ -327,11 +328,11 @@ class TerminalSessionEngine(
      */
     fun writeKeyRepeat(key: Int, codepoint: Int, mods: Int, action: Int, repeat: Int) {
         if (repeat <= 0) return
-        scope.launch(dispatcher) {
-            if (handle == 0L) return@launch
+        launchSession {
+            if (handle == 0L) return@launchSession
             val encoded =
-                bridge.nativeEncodeKey(handle, key, codepoint, mods, action, null) ?: return@launch
-            if (encoded.isEmpty()) return@launch
+                bridge.nativeEncodeKey(handle, key, codepoint, mods, action, null) ?: return@launchSession
+            if (encoded.isEmpty()) return@launchSession
             val payload =
                 if (repeat == 1) {
                     encoded
@@ -349,9 +350,9 @@ class TerminalSessionEngine(
     }
 
     fun writeText(text: String) {
-        scope.launch(dispatcher) {
-            if (handle == 0L) return@launch
-            if (text.isEmpty()) return@launch
+        launchSession {
+            if (handle == 0L) return@launchSession
+            if (text.isEmpty()) return@launchSession
             try {
                 writeRemote(text.toByteArray(Charsets.UTF_8))
             } catch (_: Exception) {}
@@ -359,11 +360,11 @@ class TerminalSessionEngine(
     }
 
     fun writePaste(text: String) {
-        scope.launch(dispatcher) {
-            if (handle == 0L) return@launch
-            if (text.isEmpty()) return@launch
-            val encoded = bridge.nativeEncodePaste(handle, text) ?: return@launch
-            if (encoded.isEmpty()) return@launch
+        launchSession {
+            if (handle == 0L) return@launchSession
+            if (text.isEmpty()) return@launchSession
+            val encoded = bridge.nativeEncodePaste(handle, text) ?: return@launchSession
+            if (encoded.isEmpty()) return@launchSession
             try {
                 writeRemote(encoded)
             } catch (_: Exception) {}
@@ -373,26 +374,26 @@ class TerminalSessionEngine(
     fun setColorScheme(isDark: Boolean) {
         val scheme = if (isDark) 1 else 0
         pendingColorScheme = scheme
-        scope.launch(dispatcher) {
-            if (handle == 0L) return@launch
+        launchSession {
+            if (handle == 0L) return@launchSession
             bridge.nativeSetColorScheme(handle, scheme)
         }
     }
 
     fun setDefaultColors(fg: IntArray?, bg: IntArray?, cursor: IntArray?, palette: ByteArray?) {
         pendingDefaultColors = DefaultColors(fg, bg, cursor, palette)
-        scope.launch(dispatcher) {
-            if (handle == 0L) return@launch
+        launchSession {
+            if (handle == 0L) return@launchSession
             bridge.nativeSetDefaultColors(handle, fg, bg, cursor, palette)
             requestSnapshot(force = true)
         }
     }
 
     fun sendFocusEvent(focused: Boolean) {
-        scope.launch(dispatcher) {
-            if (handle == 0L) return@launch
-            val encoded = bridge.nativeEncodeFocus(handle, focused) ?: return@launch
-            if (encoded.isEmpty()) return@launch
+        launchSession {
+            if (handle == 0L) return@launchSession
+            val encoded = bridge.nativeEncodeFocus(handle, focused) ?: return@launchSession
+            if (encoded.isEmpty()) return@launchSession
             try {
                 writeRemote(encoded)
             } catch (_: Exception) {}
@@ -408,8 +409,8 @@ class TerminalSessionEngine(
         anyButtonPressed: Boolean,
         trackLastCell: Boolean,
     ) {
-        scope.launch(dispatcher) {
-            if (handle == 0L) return@launch
+        launchSession {
+            if (handle == 0L) return@launchSession
             val encoded =
                 bridge.nativeEncodeMouse(
                     handle,
@@ -420,8 +421,8 @@ class TerminalSessionEngine(
                     y,
                     anyButtonPressed,
                     trackLastCell,
-                ) ?: return@launch
-            if (encoded.isEmpty()) return@launch
+                ) ?: return@launchSession
+            if (encoded.isEmpty()) return@launchSession
             try {
                 writeRemote(encoded)
             } catch (_: Exception) {}
@@ -436,10 +437,10 @@ class TerminalSessionEngine(
         newScreenWidth: Int,
         newScreenHeight: Int,
     ) {
-        scope.launch(dispatcher) {
+        launchSession {
             try {
-                if (newCols <= 0 || newRows <= 0) return@launch
-                if (newCellWidth <= 0 || newCellHeight <= 0) return@launch
+                if (newCols <= 0 || newRows <= 0) return@launchSession
+                if (newCellWidth <= 0 || newCellHeight <= 0) return@launchSession
                 cols = newCols
                 rows = newRows
                 cellWidth = newCellWidth
@@ -491,9 +492,9 @@ class TerminalSessionEngine(
     }
 
     fun scroll(delta: Int, x: Float, y: Float) {
-        scope.launch(dispatcher) {
+        launchSession {
             if (handle == 0L || delta == 0) {
-                return@launch
+                return@launchSession
             }
             bridge.nativeScroll(handle, delta, x, y)
             flushPtyWrites()
@@ -502,8 +503,8 @@ class TerminalSessionEngine(
     }
 
     fun scrollToActive() {
-        scope.launch(dispatcher) {
-            if (handle == 0L) return@launch
+        launchSession {
+            if (handle == 0L) return@launchSession
             bridge.nativeScrollToActive(handle)
             requestSnapshot(force = true)
         }
@@ -625,7 +626,7 @@ class TerminalSessionEngine(
         reconnectJob = null
         lastConnectionParams = null
         cancelHostKeyPrompt()
-        scope.launch(dispatcher) {
+        launchSession {
             readJob?.cancel()
             readJob = null
             nativeSsh.close()
@@ -703,7 +704,7 @@ class TerminalSessionEngine(
 
     private fun startReadLoop() {
         readJob =
-            scope.launch(dispatcher) {
+            launchSession {
                 val transport = lastConnectionParams?.transport
                 var failed = false
                 var moshFailureCode: Int? = null
@@ -749,25 +750,48 @@ class TerminalSessionEngine(
             }
     }
 
-    private suspend fun runReadLoop(read: suspend (Int) -> ByteArray?) {
-        var lastActivityMs = System.currentTimeMillis()
+    /**
+     * Vòng đọc NGỦ THẬT (pin, 7/9): hết data thì chặn trong poll() native trên socket +
+     * ống wake thay vì dậy 4–15 lần/giây hỏi "có gì không". Có data thì poll trả ngay;
+     * phím gõ / việc xếp lên dispatcher thì [launchSession] gọi wake() trước nên cũng
+     * trả ngay, rồi vòng nhường lượt (yield) cho việc đó chạy. Khi còn snapshot đang
+     * hẹn (16ms) thì chỉ đợi ngắn để nó không bị giam sau poll.
+     */
+    private suspend fun runReadLoop(read: suspend (Int) -> ByteArray?, wait: (Int) -> Int) {
         while (currentCoroutineContext().isActive) {
             val chunk = read(READ_CHUNK_BYTES) ?: break
             if (chunk.isEmpty()) {
-                // Adaptive poll: stay snappy while data is flowing, back off when
-                // idle so a quiet session doesn't spin at 500 wakeups/sec.
-                // Ngủ có thể bị đánh thức sớm bởi writeRemote (phím gõ).
-                idleSleep(idleReadDelayMs(System.currentTimeMillis() - lastActivityMs))
+                val timeout = when {
+                    snapshotScheduled -> SNAPSHOT_WAIT_MS
+                    renderEnabled -> FOREGROUND_WAIT_MS
+                    else -> BACKGROUND_WAIT_MS
+                }
+                val r = wait(timeout)
+                if (r < 0) delay(FOREGROUND_WAIT_MS.toLong())   // không poll được: lùi về ngủ thường
+                yield()                                          // việc vừa đánh thức được chạy trước
                 continue
             }
-            lastActivityMs = System.currentTimeMillis()
             feedRemoteChunk(chunk)
         }
     }
 
-    private suspend fun startSshReadLoop() = runReadLoop { nativeSsh.read(it) }
+    private suspend fun startSshReadLoop() = runReadLoop({ nativeSsh.read(it) }, { nativeSsh.waitReadable(it) })
 
-    private suspend fun startLocalShellReadLoop() = runReadLoop { localShellService.read(it) }
+    private suspend fun startLocalShellReadLoop() =
+        runReadLoop({ localShellService.read(it) }, { localShellService.waitReadable(it) })
+
+    /**
+     * MỌI việc xếp lên dispatcher của session đi qua đây: đánh thức read-loop đang chặn
+     * trong poll() trước, không thì việc nằm chờ tới hết timeout (tối đa 30s ở nền).
+     */
+    private fun launchSession(block: suspend CoroutineScope.() -> Unit): Job {
+        when (lastConnectionParams?.transport) {
+            Transport.LocalShell -> localShellService.wake()
+            Transport.Mosh -> readWake.trySend(Unit)
+            else -> nativeSsh.wake()
+        }
+        return scope.launch(dispatcher, block = block)
+    }
 
     private suspend fun feedRemoteChunk(chunk: ByteArray) {
         if (handle == 0L) return
@@ -1095,7 +1119,7 @@ class TerminalSessionEngine(
                 }
         if (reconnectJob?.isActive == true) return
         reconnectJob =
-            scope.launch(dispatcher) {
+            launchSession {
                 readJob?.cancel()
                 readJob = null
                 var attempt = 0
@@ -1115,7 +1139,7 @@ class TerminalSessionEngine(
                                 status = SessionStatus.Error,
                                 error = "Username required",
                             )
-                        return@launch
+                        return@launchSession
                     }
                     try {
                         establishConnection(params, params.username)
@@ -1128,7 +1152,7 @@ class TerminalSessionEngine(
                         requestSnapshot(force = true)
                         startReadLoop()
                         sendStartupCommand(params)
-                        return@launch
+                        return@launchSession
                     } catch (e: Exception) {
                         Log.e("TerminalSession", "Reconnect attempt $attempt failed", e)
                         if (attempt >= 8) {
@@ -1137,7 +1161,7 @@ class TerminalSessionEngine(
                                     status = SessionStatus.Error,
                                     error = "Reconnect failed: ${e.message}",
                                 )
-                            return@launch
+                            return@launchSession
                         }
                     }
                 }
@@ -1225,7 +1249,7 @@ class TerminalSessionEngine(
                 writeRemote(ptyWrites)
             } catch (e: Exception) {
                 Log.e("TerminalSession", "flushPtyWrites failed: ${e.message}")
-                scope.launch(dispatcher) {
+                launchSession {
                     _state.value =
                         _state.value.copy(
                             status = SessionStatus.Error,
@@ -1261,6 +1285,9 @@ class TerminalSessionEngine(
         private const val NEAR_IDLE_WINDOW_MS = 500L
         private const val IDLE_WINDOW_MS = 3_000L
         private const val BACKGROUND_READ_DELAY_MS = 250L
+        private const val SNAPSHOT_WAIT_MS = 16
+        private const val FOREGROUND_WAIT_MS = 1_000
+        private const val BACKGROUND_WAIT_MS = 30_000
         private const val MIN_READ_DELAY_MS = 2L
         private const val NEAR_IDLE_DELAY_MS = 8L
         private const val IDLE_DELAY_MS = 24L
@@ -1290,9 +1317,9 @@ class TerminalSessionEngine(
         if (renderEnabled == enabled) return
         renderEnabled = enabled
         if (enabled && snapshotDirty) {
-            scope.launch(dispatcher) {
+            launchSession {
                 snapshotDirty = false
-                if (handle == 0L) return@launch
+                if (handle == 0L) return@launchSession
                 emitSnapshot()
                 lastSnapshotAtMs = System.currentTimeMillis()
             }
@@ -1313,10 +1340,10 @@ class TerminalSessionEngine(
         if (snapshotScheduled) return
         snapshotScheduled = true
         val waitMs = (snapshotIntervalMs - elapsed).coerceAtLeast(1L)
-        scope.launch(dispatcher) {
+        launchSession {
             delay(waitMs)
             snapshotScheduled = false
-            if (handle == 0L) return@launch
+            if (handle == 0L) return@launchSession
             emitSnapshot()
             lastSnapshotAtMs = System.currentTimeMillis()
         }

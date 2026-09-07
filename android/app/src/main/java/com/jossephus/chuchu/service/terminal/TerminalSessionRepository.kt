@@ -149,6 +149,9 @@ class TerminalSessionRepository private constructor(application: Application) {
         }
     }
 
+    /** Còn tab nào đang kết nối không — dùng để KHÔNG tắt Tailscale sau lưng một SSH đang chạy. */
+    fun hasAliveSessions(): Boolean = _tabs.value.any { it.engine.state.value.status.isAlive() }
+
     fun attachClient() {
         attachedClients += 1
         syncRenderGates()

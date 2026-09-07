@@ -30,6 +30,7 @@ const NativeLocalShellSession = struct {
     // Buffer doc tai su dung — nativeRead bi poll lien tuc, alloc 64KiB moi
     // lan (ke ca khi khong co du lieu) la malloc churn vo ich.
     empty_reads: u32 = 0,
+    wake_fds: [2]c_int = .{ -1, -1 },
     read_buffer: std.ArrayListUnmanaged(u8) = .empty,
 };
 
@@ -268,10 +269,77 @@ export fn Java_com_jossephus_chuchu_service_terminal_NativeLocalShellBridge_nati
     return handleFromSession(session);
 }
 
+
+// ---- Ngu that thay vi hoi socket 4-15 lan/giay (pin, 7/9) ----------------------
+// wake_fds: ong pipe; Kotlin goi nativeWake() (tu bat ky thread nao) truoc khi xep
+// viec len dispatcher cua session -> poll() ben duoi tra ve ngay, read-loop nhuong
+// luot cho viec do. Khong co data lan phim thi thread ngu het timeout, CPU khong dong.
+fn ensureWakePipe(fds: *[2]c_int) void {
+    if (fds[0] >= 0) return;
+    var tmp: [2]c_int = .{ -1, -1 };
+    if (c.pipe(&tmp) != 0) return;            // pipe2 khong co trong header bionic ma cimport thay
+    for (tmp) |fd| {
+        const fl = c.fcntl(fd, c.F_GETFL, @as(c_int, 0));
+        if (fl >= 0) _ = c.fcntl(fd, c.F_SETFL, fl | c.O_NONBLOCK);
+        _ = c.fcntl(fd, c.F_SETFD, c.FD_CLOEXEC);
+    }
+    fds.* = tmp;
+}
+
+fn closeWakePipe(fds: *[2]c_int) void {
+    if (fds[0] >= 0) _ = c.close(fds[0]);
+    if (fds[1] >= 0) _ = c.close(fds[1]);
+    fds.* = .{ -1, -1 };
+}
+
+/// 1 = fd co du lieu, 2 = bi danh thuc (wake), 0 = het gio, -1 = loi/khong co fd.
+fn waitReadableFd(fd: c_int, fds: *[2]c_int, timeout_ms: c_int) c_int {
+    if (fd < 0) return -1;
+    ensureWakePipe(fds);
+    var pfd: [2]c.struct_pollfd = .{
+        .{ .fd = fd, .events = c.POLLIN | c.POLLHUP | c.POLLERR, .revents = 0 },
+        .{ .fd = fds[0], .events = c.POLLIN, .revents = 0 },
+    };
+    const n: c.nfds_t = if (fds[0] >= 0) 2 else 1;
+    const rc = c.poll(&pfd, n, timeout_ms);
+    if (rc < 0) return if (errnoValue() == c.EINTR) 0 else -1;
+    if (rc == 0) return 0;
+    var woke = false;
+    if (n == 2 and pfd[1].revents != 0) {
+        var drain: [64]u8 = undefined;
+        while (c.read(fds[0], &drain, drain.len) > 0) {}
+        woke = true;
+    }
+    if (pfd[0].revents != 0) return 1;
+    return if (woke) 2 else 0;
+}
+
+fn wakeFd(fds: *[2]c_int) void {
+    ensureWakePipe(fds);
+    if (fds[1] < 0) return;
+    const b: [1]u8 = .{1};
+    _ = c.write(fds[1], &b, 1);
+}
+
+export fn Java_com_jossephus_chuchu_service_terminal_NativeLocalShellBridge_nativeWaitReadable(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong, timeout_ms: c.jint) callconv(.c) c.jint {
+    _ = env;
+    _ = thiz;
+    const session = sessionFromHandle(handle) orelse return -1;
+    return waitReadableFd(session.master_fd, &session.wake_fds, timeout_ms);
+}
+
+export fn Java_com_jossephus_chuchu_service_terminal_NativeLocalShellBridge_nativeWake(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong) callconv(.c) void {
+    _ = env;
+    _ = thiz;
+    const session = sessionFromHandle(handle) orelse return;
+    wakeFd(&session.wake_fds);
+}
+
 export fn Java_com_jossephus_chuchu_service_terminal_NativeLocalShellBridge_nativeDestroySession(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong) callconv(.c) void {
     _ = env;
     _ = thiz;
     const session = sessionFromHandle(handle) orelse return;
+    closeWakePipe(&session.wake_fds);
     destroySession(session);
 }
 

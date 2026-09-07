@@ -95,6 +95,10 @@ class SettingsRepository(context: Context) {
     private val _appLockEnabled = MutableStateFlow(prefs.getBoolean(KEY_APP_LOCK_ENABLED, false))
     val appLockEnabled: StateFlow<Boolean> = _appLockEnabled.asStateFlow()
 
+    private val _tailscaleFollowApp = MutableStateFlow(prefs.getBoolean(KEY_TAILSCALE_FOLLOW_APP, false))
+    /** Vào app bật Tailscale, rời app (không còn session sống) tắt — tiết kiệm pin (user 7/9). */
+    val tailscaleFollowApp: StateFlow<Boolean> = _tailscaleFollowApp.asStateFlow()
+
     private val _requireAuthOnConnect = MutableStateFlow(prefs.getBoolean(KEY_REQUIRE_AUTH_ON_CONNECT, false))
     val requireAuthOnConnect: StateFlow<Boolean> = _requireAuthOnConnect.asStateFlow()
 
@@ -226,6 +230,11 @@ class SettingsRepository(context: Context) {
         _terminalTabMode.value = mode
     }
 
+    fun setTailscaleFollowApp(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_TAILSCALE_FOLLOW_APP, enabled).apply()
+        _tailscaleFollowApp.value = enabled
+    }
+
     fun setAppLockEnabled(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_APP_LOCK_ENABLED, enabled).apply()
         _appLockEnabled.value = enabled
@@ -334,6 +343,7 @@ class SettingsRepository(context: Context) {
         )
         private const val KEY_TAB_MODE = "terminal_tab_mode"
         private const val KEY_APP_LOCK_ENABLED = "app_lock_enabled"
+        private const val KEY_TAILSCALE_FOLLOW_APP = "tailscale_follow_app"
         private const val KEY_REQUIRE_AUTH_ON_CONNECT = "require_auth_on_connect"
         private const val KEY_LOCAL_SHELL_ENABLED = "local_shell_enabled"
         private const val KEY_KEEP_SCREEN_AWAKE = "keep_screen_awake"

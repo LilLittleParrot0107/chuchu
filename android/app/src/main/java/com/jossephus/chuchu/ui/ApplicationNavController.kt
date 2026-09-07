@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.LaunchedEffect
 import kotlinx.coroutines.flow.firstOrNull
@@ -74,16 +75,27 @@ fun ApplicationNavController() {
     var appLockBlockedUntilToggle by rememberSaveable { mutableStateOf(false) }
     val settingsRepo = SettingsRepository.getInstance(application)
     val appLockEnabled by settingsRepo.appLockEnabled.collectAsStateWithLifecycle()
+    val tailscaleFollowApp by settingsRepo.tailscaleFollowApp.collectAsStateWithLifecycle()
+    val tailscaleFollowAppNow = rememberUpdatedState(tailscaleFollowApp)
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { source, event ->
+            val sessions = com.jossephus.chuchu.service.terminal.TerminalSessionRepository.getInstance(application)
             // Cổng vẽ của terminal: màn tắt / app xuống nền thì engine ngừng dựng
             // snapshot cho tab đang mở (audit 4/9 P1).
             if (event == Lifecycle.Event.ON_START) {
-                com.jossephus.chuchu.service.terminal.TerminalSessionRepository.getInstance(application).setForeground(true)
+                sessions.setForeground(true)
+                // Tailscale theo app (user 7/9): vào là bật; CONNECT lặp lại vô hại.
+                if (tailscaleFollowAppNow.value) com.jossephus.chuchu.service.TailscaleControl.connect(context)
             }
             if (event == Lifecycle.Event.ON_STOP) {
-                com.jossephus.chuchu.service.terminal.TerminalSessionRepository.getInstance(application).setForeground(false)
+                sessions.setForeground(false)
+                val isConfigChangeTs = (source as? android.app.Activity)?.isChangingConfigurations == true
+                // Rời app: chỉ tắt khi KHÔNG còn SSH nào sống — tắt giữa chừng là tự cắt
+                // cầu của chính mình (foreground service đang giữ session).
+                if (tailscaleFollowAppNow.value && !isConfigChangeTs && !sessions.hasAliveSessions()) {
+                    com.jossephus.chuchu.service.TailscaleControl.disconnect(context)
+                }
                 val isConfigChange =
                     (source as? android.app.Activity)?.isChangingConfigurations == true
                 if (!isConfigChange) {
@@ -391,6 +403,8 @@ fun ApplicationNavController() {
                 onLightThemeSelected = settingsRepo::setLightTheme,
                 onFontSelected = settingsRepo::setFont,
                 onAppLockEnabledChanged = settingsRepo::setAppLockEnabled,
+                tailscaleFollowApp = settingsRepo.tailscaleFollowApp.collectAsStateWithLifecycle().value,
+                onTailscaleFollowAppChanged = settingsRepo::setTailscaleFollowApp,
                 onRequireAuthOnConnectChanged = settingsRepo::setRequireAuthOnConnect,
                 onLocalShellEnabledChanged = settingsRepo::setLocalShellEnabled,
                 onKeepScreenAwakeChanged = settingsRepo::setKeepScreenAwake,

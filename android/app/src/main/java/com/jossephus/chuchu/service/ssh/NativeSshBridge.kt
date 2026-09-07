@@ -94,6 +94,10 @@ class NativeSshBridge {
     external fun nativeSftpDeleteDirectory(handle: Long, path: String): Boolean
 
     external fun nativeClose(handle: Long)
+    /** poll() trên socket + ống wake: 1 = có data, 2 = bị đánh thức, 0 = hết giờ, -1 = lỗi. */
+    external fun nativeWaitReadable(handle: Long, timeoutMs: Int): Int
+    /** Gọi từ bất kỳ thread nào để kéo read-loop ra khỏi nativeWaitReadable. */
+    external fun nativeWake(handle: Long)
 
     external fun nativeGenerateEd25519Key(comment: String, passphrase: String?): Array<String>?
 }

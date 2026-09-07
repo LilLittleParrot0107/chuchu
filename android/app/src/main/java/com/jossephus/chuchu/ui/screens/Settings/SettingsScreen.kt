@@ -64,6 +64,8 @@ fun SettingsScreen(
     onLightThemeSelected: (String) -> Unit,
     onFontSelected: (String) -> Unit,
     onAppLockEnabledChanged: (Boolean) -> Unit,
+    tailscaleFollowApp: Boolean = false,
+    onTailscaleFollowAppChanged: (Boolean) -> Unit = {},
     onRequireAuthOnConnectChanged: (Boolean) -> Unit,
     onLocalShellEnabledChanged: (Boolean) -> Unit,
     onKeepScreenAwakeChanged: (Boolean) -> Unit,
@@ -169,6 +171,8 @@ fun SettingsScreen(
                         onLightThemeSelected = onLightThemeSelected,
                         onFontSelected = onFontSelected,
                         appLockEnabled = appLockEnabled,
+                        tailscaleFollowApp = tailscaleFollowApp,
+                        onTailscaleFollowAppChanged = onTailscaleFollowAppChanged,
                         requireAuthOnConnect = requireAuthOnConnect,
                         onAppLockEnabledChanged = onAppLockEnabledChanged,
                         onRequireAuthOnConnectChanged = onRequireAuthOnConnectChanged,
@@ -250,6 +254,8 @@ private fun GeneralSettings(
     appLockEnabled: Boolean,
     requireAuthOnConnect: Boolean,
     onAppLockEnabledChanged: (Boolean) -> Unit,
+    tailscaleFollowApp: Boolean = false,
+    onTailscaleFollowAppChanged: (Boolean) -> Unit = {},
     onRequireAuthOnConnectChanged: (Boolean) -> Unit,
     onOpenBackup: () -> Unit = {},
 ) {
@@ -295,6 +301,28 @@ private fun GeneralSettings(
     }
     Spacer(modifier = Modifier.height(4.dp))
     ChuText("use biometrics or device PIN/pattern.", style = typography.bodySmall, color = colors.textMuted)
+    Spacer(modifier = Modifier.height(16.dp))
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        ChuText("── ", style = typography.labelSmall, color = colors.textMuted)
+        ChuText("BATTERY", style = typography.labelSmall, color = colors.textMuted)
+        ChuText(" ", style = typography.labelSmall, color = colors.textMuted)
+        Box(modifier = Modifier.height(1.dp).background(colors.textMuted).fillMaxWidth())
+    }
+    Spacer(modifier = Modifier.height(12.dp))
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        ChuText("tailscale follows app", style = typography.label)
+        ChuSwitch(checked = tailscaleFollowApp, onCheckedChange = onTailscaleFollowAppChanged)
+    }
+    Spacer(modifier = Modifier.height(4.dp))
+    ChuText(
+        "connect on open, disconnect on leave — only when no session is running.",
+        style = typography.bodySmall,
+        color = colors.textMuted,
+    )
     Spacer(modifier = Modifier.height(16.dp))
     Row(
         modifier = Modifier.fillMaxWidth(),

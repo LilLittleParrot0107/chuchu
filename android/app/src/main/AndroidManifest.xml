@@ -8,6 +8,11 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Gửi broadcast tường minh tới app Tailscale (bật/tắt VPN theo app) cần khai gói này từ API 30. -->
+    <queries>
+        <package android:name="com.tailscale.ipn" />
+    </queries>
+
     <application
         android:name=".ChuchuApplication"
         android:allowBackup="true"

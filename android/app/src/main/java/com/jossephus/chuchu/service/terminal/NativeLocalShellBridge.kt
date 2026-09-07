@@ -46,4 +46,6 @@ class NativeLocalShellBridge {
     ): Boolean
 
     external fun nativeGetLastError(handle: Long): String?
+    external fun nativeWaitReadable(handle: Long, timeoutMs: Int): Int
+    external fun nativeWake(handle: Long)
 }

@@ -281,6 +281,11 @@ class NativeSshService(
         }
     }
 
+    /** Ngủ tới khi socket có data / bị wake / hết giờ — xem NativeSshBridge.nativeWaitReadable. */
+    fun waitReadable(timeoutMs: Int): Int = if (handle == 0L) -1 else bridge.nativeWaitReadable(handle, timeoutMs)
+
+    fun wake() { if (handle != 0L) bridge.nativeWake(handle) }
+
     fun read(maxBytes: Int = 8192): ByteArray? {
         if (handle == 0L) return null
         val response = bridge.nativeIpcExchange(handle, Ipc.encodeRead(maxBytes)) ?: return null
