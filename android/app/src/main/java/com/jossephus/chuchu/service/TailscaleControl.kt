@@ -13,8 +13,8 @@ import kotlinx.coroutines.flow.StateFlow
  * Manifest cần <queries><package android:name="com.tailscale.ipn"/></queries> (API 30+).
  *
  * [lastEvent] = dòng chẩn đoán hiện ở Settings: user không đọc được logcat, mà "VPN
- * không tắt" có thể do kohi chưa gửi lệnh (timer chưa tới) hoặc gửi rồi mà Tailscale
- * không nghe (Always-on VPN của Android bật lại ngay). Phải phân biệt được hai cái.
+ * không tắt" có thể do kohi chưa gửi lệnh (session vẫn còn sống) hoặc gửi rồi mà
+ * Tailscale không nghe (Always-on VPN của Android bật lại ngay). Phải phân biệt được.
  */
 object TailscaleControl {
     private const val PKG = "com.tailscale.ipn"

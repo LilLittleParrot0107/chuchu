@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -165,16 +166,22 @@ class TerminalSessionRepository private constructor(application: Application) {
     /**
      * Chiều ngược lại của luật: mở session qua tailnet → bật Tailscale trước, đợi tối đa
      * [VPN_UP_WAIT_MS] cho tunnel lên (poll 250ms), rồi mới connect. VPN đang lên sẵn
-     * thì connect ngay, không chờ. Local shell không cần VPN.
+     * thì connect ngay, không chờ. Local shell không cần VPN. Đọc trạng thái tailnet
+     * (liệt kê network interface) ở IO, không ở main; tab bị đóng trong lúc đợi thì thôi.
      */
-    private fun connectWithVpn(spec: TabSpec, connect: () -> Unit) {
-        val needsVpn = spec.transport != Transport.LocalShell && autoVpn()
-        if (!needsVpn || tailscaleStatusChecker.isActive()) { connect(); return }
-        com.jossephus.chuchu.service.TailscaleControl.connect(appContext)
+    private fun connectWithVpn(tab: TabSession, connect: () -> Unit) {
+        if (tab.spec.transport == Transport.LocalShell || !autoVpn()) { connect(); return }
         scope.launch {
-            val deadline = System.currentTimeMillis() + VPN_UP_WAIT_MS
-            while (System.currentTimeMillis() < deadline && !tailscaleStatusChecker.isActive()) delay(250)
-            connect()
+            val checker = tailscaleStatusChecker
+            if (!withContext(Dispatchers.IO) { checker.isActive() }) {
+                com.jossephus.chuchu.service.TailscaleControl.connect(appContext)
+                val deadline = System.currentTimeMillis() + VPN_UP_WAIT_MS
+                while (System.currentTimeMillis() < deadline) {
+                    delay(250)
+                    if (withContext(Dispatchers.IO) { checker.isActive() }) break
+                }
+            }
+            if (_tabs.value.any { it === tab }) connect()
         }
     }
 
@@ -286,7 +293,7 @@ class TerminalSessionRepository private constructor(application: Application) {
         _tabs.value = _tabs.value + tab
         _activeTabId.value = id
         syncRenderGates()
-        connectWithVpn(spec) { engine.connect(
+        connectWithVpn(tab) { engine.connect(
             host = spec.host,
             port = spec.port,
             username = spec.username,
@@ -345,7 +352,7 @@ class TerminalSessionRepository private constructor(application: Application) {
 
     fun reconnectTab(tab: TabSession) {
         val spec = tab.spec
-        connectWithVpn(spec) { tab.engine.connect(
+        connectWithVpn(tab) { tab.engine.connect(
             host = spec.host,
             port = spec.port,
             username = spec.username,
