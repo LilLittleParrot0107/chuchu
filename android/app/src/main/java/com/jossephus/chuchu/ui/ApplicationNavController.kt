@@ -77,6 +77,15 @@ fun ApplicationNavController() {
     val appLockEnabled by settingsRepo.appLockEnabled.collectAsStateWithLifecycle()
     val tailscaleFollowApp by settingsRepo.tailscaleFollowApp.collectAsStateWithLifecycle()
     val tailscaleFollowAppNow = rememberUpdatedState(tailscaleFollowApp)
+    val backgroundDisconnectMinutes by settingsRepo.backgroundDisconnectMinutes.collectAsStateWithLifecycle()
+    LaunchedEffect(backgroundDisconnectMinutes, tailscaleFollowApp) {
+        val sessions = com.jossephus.chuchu.service.terminal.TerminalSessionRepository.getInstance(application)
+        sessions.backgroundDisconnectMs = backgroundDisconnectMinutes * 60_000L
+        sessions.reconnectDelayMs = if (tailscaleFollowApp) 2_500L else 0L
+        sessions.onParkedInBackground = {
+            if (tailscaleFollowApp) com.jossephus.chuchu.service.TailscaleControl.disconnect(context)
+        }
+    }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { source, event ->
@@ -405,6 +414,8 @@ fun ApplicationNavController() {
                 onAppLockEnabledChanged = settingsRepo::setAppLockEnabled,
                 tailscaleFollowApp = settingsRepo.tailscaleFollowApp.collectAsStateWithLifecycle().value,
                 onTailscaleFollowAppChanged = settingsRepo::setTailscaleFollowApp,
+                backgroundDisconnectMinutes = settingsRepo.backgroundDisconnectMinutes.collectAsStateWithLifecycle().value,
+                onBackgroundDisconnectMinutesChanged = settingsRepo::setBackgroundDisconnectMinutes,
                 onRequireAuthOnConnectChanged = settingsRepo::setRequireAuthOnConnect,
                 onLocalShellEnabledChanged = settingsRepo::setLocalShellEnabled,
                 onKeepScreenAwakeChanged = settingsRepo::setKeepScreenAwake,

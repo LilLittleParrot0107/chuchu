@@ -2,6 +2,9 @@ package com.jossephus.chuchu.ui.screens.Settings
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -66,6 +69,8 @@ fun SettingsScreen(
     onAppLockEnabledChanged: (Boolean) -> Unit,
     tailscaleFollowApp: Boolean = false,
     onTailscaleFollowAppChanged: (Boolean) -> Unit = {},
+    backgroundDisconnectMinutes: Int = 15,
+    onBackgroundDisconnectMinutesChanged: (Int) -> Unit = {},
     onRequireAuthOnConnectChanged: (Boolean) -> Unit,
     onLocalShellEnabledChanged: (Boolean) -> Unit,
     onKeepScreenAwakeChanged: (Boolean) -> Unit,
@@ -173,6 +178,8 @@ fun SettingsScreen(
                         appLockEnabled = appLockEnabled,
                         tailscaleFollowApp = tailscaleFollowApp,
                         onTailscaleFollowAppChanged = onTailscaleFollowAppChanged,
+                        backgroundDisconnectMinutes = backgroundDisconnectMinutes,
+                        onBackgroundDisconnectMinutesChanged = onBackgroundDisconnectMinutesChanged,
                         requireAuthOnConnect = requireAuthOnConnect,
                         onAppLockEnabledChanged = onAppLockEnabledChanged,
                         onRequireAuthOnConnectChanged = onRequireAuthOnConnectChanged,
@@ -256,6 +263,8 @@ private fun GeneralSettings(
     onAppLockEnabledChanged: (Boolean) -> Unit,
     tailscaleFollowApp: Boolean = false,
     onTailscaleFollowAppChanged: (Boolean) -> Unit = {},
+    backgroundDisconnectMinutes: Int = 15,
+    onBackgroundDisconnectMinutesChanged: (Int) -> Unit = {},
     onRequireAuthOnConnectChanged: (Boolean) -> Unit,
     onOpenBackup: () -> Unit = {},
 ) {
@@ -320,6 +329,32 @@ private fun GeneralSettings(
     Spacer(modifier = Modifier.height(4.dp))
     ChuText(
         "connect on open, disconnect on leave — only when no session is running.",
+        style = typography.bodySmall,
+        color = colors.textMuted,
+    )
+    Spacer(modifier = Modifier.height(16.dp))
+    ChuText("park sessions in background after", style = typography.label)
+    Spacer(modifier = Modifier.height(8.dp))
+    Row(
+        modifier = Modifier.fillMaxWidth().border(1.dp, colors.border),
+    ) {
+        listOf(0 to "never", 5 to "5m", 15 to "15m", 60 to "1h").forEach { (min, label) ->
+            val selected = min == backgroundDisconnectMinutes
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .background(if (selected) colors.accent else Color.Transparent)
+                    .clickable { onBackgroundDisconnectMinutesChanged(min) }
+                    .padding(vertical = 10.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                ChuText(label, style = typography.label, color = if (selected) colors.background else colors.textSecondary)
+            }
+        }
+    }
+    Spacer(modifier = Modifier.height(4.dp))
+    ChuText(
+        "ssh tabs disconnect after this long in the background and reconnect when you return; herdr/tmux keep the session. lets the phone sleep and tailscale switch off.",
         style = typography.bodySmall,
         color = colors.textMuted,
     )

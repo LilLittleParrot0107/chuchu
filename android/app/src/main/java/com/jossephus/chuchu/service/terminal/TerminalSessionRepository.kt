@@ -18,6 +18,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -162,10 +163,38 @@ class TerminalSessionRepository private constructor(application: Application) {
         syncRenderGates()
     }
 
+    // Chính sách nền (pin, 7/9): ở nền quá [backgroundDisconnectMs] thì ngắt mọi tab đang
+    // sống (giữ tab, nhớ id), quay lại là nối lại. 0 = tắt. Nav gán từ Settings.
+    @Volatile var backgroundDisconnectMs: Long = 0L
+    /** Chờ trước khi nối lại lúc quay về (Tailscale theo app cần ~2s để VPN lên). */
+    @Volatile var reconnectDelayMs: Long = 0L
+    /** Gọi sau khi đã ngắt hết vì ở nền lâu — nav dùng để tắt Tailscale nếu theo app. */
+    @Volatile var onParkedInBackground: (() -> Unit)? = null
+    private var parkJob: Job? = null
+    private val parkedTabIds = mutableSetOf<String>()
+
     fun setForeground(value: Boolean) {
         if (foreground == value) return
         foreground = value
         syncRenderGates()
+        parkJob?.cancel(); parkJob = null
+        if (!value) {
+            val wait = backgroundDisconnectMs
+            if (wait > 0) parkJob = scope.launch {
+                delay(wait)
+                if (foreground) return@launch
+                val alive = _tabs.value.filter { it.engine.state.value.status.isAlive() }
+                if (alive.isEmpty()) return@launch
+                alive.forEach { parkedTabIds += it.id; it.engine.disconnect() }
+                onParkedInBackground?.invoke()
+            }
+        } else if (parkedTabIds.isNotEmpty()) {
+            val ids = parkedTabIds.toSet(); parkedTabIds.clear()
+            scope.launch {
+                if (reconnectDelayMs > 0) delay(reconnectDelayMs)
+                _tabs.value.filter { it.id in ids }.forEach { reconnectTab(it) }
+            }
+        }
     }
 
     /**
