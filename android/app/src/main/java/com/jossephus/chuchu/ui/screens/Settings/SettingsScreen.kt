@@ -323,7 +323,7 @@ private fun GeneralSettings(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        ChuText("tailscale follows app", style = typography.label)
+        ChuText("auto vpn (tailscale)", style = typography.label)
         ChuSwitch(checked = tailscaleFollowApp, onCheckedChange = onTailscaleFollowAppChanged)
     }
     Spacer(modifier = Modifier.height(4.dp))
