@@ -163,15 +163,15 @@ class TerminalSessionRepository private constructor(application: Application) {
         syncRenderGates()
     }
 
-    // Chính sách nền (pin, 7/9): ở nền quá [backgroundDisconnectMs] thì ngắt mọi tab đang
-    // sống (giữ tab, nhớ id), quay lại là nối lại. 0 = tắt. Nav gán từ Settings.
+    // Chính sách nền (pin, 7/9 — user chốt lần 2): rời app quá [backgroundDisconnectMs]
+    // thì ngắt mọi tab đang sống (giữ tab, user tự bấm nối lại) rồi gọi
+    // [onBackgroundTimeout] (nav: tắt Tailscale nếu theo app). Quay lại trong khoảng đó
+    // thì huỷ timer — không có gì xảy ra, nên mở app liên tục không làm VPN bật/tắt
+    // liên tục (mỗi lần bật là một handshake + tải bản đồ DERP, tốn hơn để yên).
+    // 0 = không bao giờ. KHÔNG tự nối lại khi quay về — user bảo thừa.
     @Volatile var backgroundDisconnectMs: Long = 0L
-    /** Chờ trước khi nối lại lúc quay về (Tailscale theo app cần ~2s để VPN lên). */
-    @Volatile var reconnectDelayMs: Long = 0L
-    /** Gọi sau khi đã ngắt hết vì ở nền lâu — nav dùng để tắt Tailscale nếu theo app. */
-    @Volatile var onParkedInBackground: (() -> Unit)? = null
+    @Volatile var onBackgroundTimeout: (() -> Unit)? = null
     private var parkJob: Job? = null
-    private val parkedTabIds = mutableSetOf<String>()
 
     fun setForeground(value: Boolean) {
         if (foreground == value) return
@@ -183,16 +183,8 @@ class TerminalSessionRepository private constructor(application: Application) {
             if (wait > 0) parkJob = scope.launch {
                 delay(wait)
                 if (foreground) return@launch
-                val alive = _tabs.value.filter { it.engine.state.value.status.isAlive() }
-                if (alive.isEmpty()) return@launch
-                alive.forEach { parkedTabIds += it.id; it.engine.disconnect() }
-                onParkedInBackground?.invoke()
-            }
-        } else if (parkedTabIds.isNotEmpty()) {
-            val ids = parkedTabIds.toSet(); parkedTabIds.clear()
-            scope.launch {
-                if (reconnectDelayMs > 0) delay(reconnectDelayMs)
-                _tabs.value.filter { it.id in ids }.forEach { reconnectTab(it) }
+                _tabs.value.filter { it.engine.state.value.status.isAlive() }.forEach { it.engine.disconnect() }
+                onBackgroundTimeout?.invoke()
             }
         }
     }

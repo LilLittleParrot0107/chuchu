@@ -81,8 +81,7 @@ fun ApplicationNavController() {
     LaunchedEffect(backgroundDisconnectMinutes, tailscaleFollowApp) {
         val sessions = com.jossephus.chuchu.service.terminal.TerminalSessionRepository.getInstance(application)
         sessions.backgroundDisconnectMs = backgroundDisconnectMinutes * 60_000L
-        sessions.reconnectDelayMs = if (tailscaleFollowApp) 2_500L else 0L
-        sessions.onParkedInBackground = {
+        sessions.onBackgroundTimeout = {
             if (tailscaleFollowApp) com.jossephus.chuchu.service.TailscaleControl.disconnect(context)
         }
     }
@@ -98,13 +97,10 @@ fun ApplicationNavController() {
                 if (tailscaleFollowAppNow.value) com.jossephus.chuchu.service.TailscaleControl.connect(context)
             }
             if (event == Lifecycle.Event.ON_STOP) {
+                // Rời app: KHÔNG tắt Tailscale ngay — timer nền của repository (N phút,
+                // Settings) ngắt session rồi mới tắt VPN. Xoay màn hình (config change)
+                // cũng qua ON_STOP nhưng ON_START ngay sau đó huỷ timer, vô hại.
                 sessions.setForeground(false)
-                val isConfigChangeTs = (source as? android.app.Activity)?.isChangingConfigurations == true
-                // Rời app: chỉ tắt khi KHÔNG còn SSH nào sống — tắt giữa chừng là tự cắt
-                // cầu của chính mình (foreground service đang giữ session).
-                if (tailscaleFollowAppNow.value && !isConfigChangeTs && !sessions.hasAliveSessions()) {
-                    com.jossephus.chuchu.service.TailscaleControl.disconnect(context)
-                }
                 val isConfigChange =
                     (source as? android.app.Activity)?.isChangingConfigurations == true
                 if (!isConfigChange) {

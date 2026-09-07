@@ -328,12 +328,12 @@ private fun GeneralSettings(
     }
     Spacer(modifier = Modifier.height(4.dp))
     ChuText(
-        "connect on open, disconnect on leave — only when no session is running.",
+        "connect on open; disconnect after the background timeout below.",
         style = typography.bodySmall,
         color = colors.textMuted,
     )
     Spacer(modifier = Modifier.height(16.dp))
-    ChuText("park sessions in background after", style = typography.label)
+    ChuText("disconnect after leaving the app for", style = typography.label)
     Spacer(modifier = Modifier.height(8.dp))
     Row(
         modifier = Modifier.fillMaxWidth().border(1.dp, colors.border),
@@ -354,7 +354,7 @@ private fun GeneralSettings(
     }
     Spacer(modifier = Modifier.height(4.dp))
     ChuText(
-        "ssh tabs disconnect after this long in the background and reconnect when you return; herdr/tmux keep the session. lets the phone sleep and tailscale switch off.",
+        "ssh tabs disconnect (tap to reconnect; herdr/tmux keep the session) and tailscale switches off if it follows the app. coming back sooner cancels it, so quick app switches don't churn the vpn.",
         style = typography.bodySmall,
         color = colors.textMuted,
     )
