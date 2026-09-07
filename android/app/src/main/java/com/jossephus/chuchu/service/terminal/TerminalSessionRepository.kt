@@ -159,6 +159,10 @@ class TerminalSessionRepository private constructor(application: Application) {
                     }
                     if (wasConnected && !anyAlive && !foreground && autoVpn()) {
                         vpnOff("last session")
+                        // Đồng hồ 15 phút hết việc: không còn session, VPN đã tắt. Để nó
+                        // chạy tiếp thì 15 phút sau nó giết VPN user có thể vừa bật tay.
+                        idleCloseJob?.cancel()
+                        idleCloseJob = null
                     }
                     wasConnected = anyAlive && (wasConnected || pairs.any { (_, status) ->
                         status == SessionStatus.Connected || status == SessionStatus.Reconnecting
