@@ -31,6 +31,20 @@ object TailscaleControl {
      */
     fun disconnect(context: Context, why: String) = send(context, "$PKG.DISCONNECT_VPN", "disconnect", why)
 
+    /**
+     * BẢN THỬ 8/9 — chỉ nút "test: send connect" ở Settings gọi. Gửi CONNECT_VPN vô điều
+     * kiện, ghi kết quả kiểm tra tailnet trước và 3s sau để phân biệt: (a) kohi đọc sai
+     * "up" nên xưa nay không gửi, (b) Android chặn Tailscale khởi động ở nền, (c) ăn.
+     * Kết luận xong thì xoá hàm này cùng nút.
+     */
+    suspend fun testConnect(context: Context, checker: com.jossephus.chuchu.service.ssh.TailscaleStatusChecker): String {
+        val before = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { checker.probe() }
+        send(context, "$PKG.CONNECT_VPN", "connect", "test")
+        kotlinx.coroutines.delay(3_000)
+        val after = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { checker.probe() }
+        return "before: $before · after 3s: $after"
+    }
+
     private fun send(context: Context, action: String, label: String, why: String) {
         val stamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(java.util.Date())
         runCatching {

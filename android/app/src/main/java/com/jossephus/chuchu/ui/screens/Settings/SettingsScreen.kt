@@ -37,6 +37,7 @@ import com.jossephus.chuchu.ui.terminal.TerminalCustomKeyGroup
 import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTypography
 import com.jossephus.chuchu.ui.theme.ThemeMode
+import kotlinx.coroutines.launch
 
 enum class SettingsCategory(val label: String) {
     General("general"),
@@ -331,6 +332,26 @@ private fun GeneralSettings(
     if (tsEvent.isNotEmpty()) {
         ChuText("last: $tsEvent", style = typography.bodySmall, color = colors.textSecondary)
     }
+    // BẢN THỬ 8/9 — xoá cả khối này khi đã kết luận (xem TailscaleControl.testConnect).
+    val tsContext = androidx.compose.ui.platform.LocalContext.current
+    val tsChecker = remember(tsContext) { com.jossephus.chuchu.service.ssh.TailscaleStatusChecker(tsContext) }
+    val tsScope = androidx.compose.runtime.rememberCoroutineScope()
+    var tsProbe by remember { mutableStateOf("") }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        tsProbe = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { tsChecker.probe() }
+    }
+    Spacer(modifier = Modifier.height(8.dp))
+    ChuText("tailnet check: $tsProbe", style = typography.bodySmall, color = colors.textSecondary)
+    Spacer(modifier = Modifier.height(6.dp))
+    ChuButton(
+        onClick = {
+            tsProbe = "sending…"
+            tsScope.launch {
+                tsProbe = com.jossephus.chuchu.service.TailscaleControl.testConnect(tsContext, tsChecker)
+            }
+        },
+        variant = ChuButtonVariant.Outlined,
+    ) { ChuText("test: send connect", style = typography.label) }
     Spacer(modifier = Modifier.height(16.dp))
     Row(
         modifier = Modifier.fillMaxWidth(),
