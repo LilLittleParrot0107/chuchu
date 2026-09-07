@@ -153,51 +153,56 @@ class QueueViewModel(
         }
     }
 
+    // Cả hai chế độ đều LONG-POLL (pin, 7/9): request nằm ở server tới LONGPOLL_S hoặc
+    // tới khi rev đổi. Lúc rảnh ~2 request/phút thay vì 30 (foreground) / 4–17 (ambient),
+    // thay đổi hiện ngay. MIN_GAP chặn vòng xoáy khi rev đổi liên tục (agent đổi trạng
+    // thái từng giây); hỏng thì giãn theo backoff như cũ.
     private fun launchForegroundPolling(): Job = viewModelScope.launch {
-        var backoff = FOREGROUND_POLL_MS
+        var backoff = 0L
         var firstScan = true
         while (isActive) {
+            val t0 = System.currentTimeMillis()
             // Mỗi lần mở Queue phải lấy lại full payload. Nếu chỉ gửi `since`,
             // một state UI cũ/khuyết có thể mắc kẹt mãi sau các lượt 304.
-            val failed = refreshOnce(forceFull = firstScan)
+            val failed = refreshOnce(forceFull = firstScan, waitSec = LONGPOLL_S)
             firstScan = false
-            backoff = if (failed) {
-                minOf(backoff * 2, MAX_FOREGROUND_BACKOFF_MS)
-            } else {
-                FOREGROUND_POLL_MS
-            }
-            delay(backoff)
+            backoff = if (failed) minOf(maxOf(backoff * 2, FOREGROUND_POLL_MS), MAX_FOREGROUND_BACKOFF_MS) else 0L
+            val elapsed = System.currentTimeMillis() - t0
+            delay(maxOf(backoff, MIN_GAP_MS - elapsed))
         }
     }
 
-    /** Polling thích ứng tiết kiệm pin cho Terminal/AccessoryBar. */
+    /** Ambient (app mở nhưng không ở tab Queue): cũng long-poll, chỉ khác nhịp lúc hỏng. */
     private fun launchAmbientPolling(): Job = viewModelScope.launch {
         while (isActive) {
-            val failed = refreshOnce()
-            val summary = _ambientSummary.value
-            val nextDelay = when {
-                failed -> AMBIENT_IDLE_POLL_MS
-                summary.isAnyWorking || summary.isAnyBlocked -> AMBIENT_BUSY_POLL_MS
-                summary.totalActive > 0 -> AMBIENT_ACTIVE_POLL_MS
-                else -> AMBIENT_IDLE_POLL_MS
-            }
-            delay(nextDelay)
+            val t0 = System.currentTimeMillis()
+            val failed = refreshOnce(waitSec = LONGPOLL_S)
+            val elapsed = System.currentTimeMillis() - t0
+            delay(if (failed) AMBIENT_IDLE_POLL_MS else maxOf(0L, AMBIENT_MIN_GAP_MS - elapsed))
         }
     }
 
-    /** Trả về true nếu lần đọc này hỏng (để phía gọi giãn nhịp poll ra). */
-    private suspend fun refreshOnce(forceFull: Boolean = false): Boolean = refreshMutex.withLock {
+    /**
+     * Trả về true nếu lần đọc này hỏng (để phía gọi giãn nhịp poll ra).
+     * Mutex CHỈ bọc phần áp kết quả, KHÔNG bọc cú mạng: long-poll giữ tới 25s, mà
+     * runAction/refreshNow cũng gọi hàm này — giữ mutex xuyên mạng là bấm SEND xong
+     * phải đợi long-poll xả mới thấy hàng đợi đổi. Hai kết quả về gần nhau thì áp
+     * theo thứ tự về (server luôn trả trạng thái tại lúc trả), không cần đánh số.
+     */
+    private suspend fun refreshOnce(forceFull: Boolean = false, waitSec: Int = 0): Boolean {
         val c = client() ?: run {
-            _ui.update { it.copy(needsSetup = true, loading = false, error = null) }
-            _ambientSummary.value = QueueAmbientSummary.from(_ui.value.state, null)
-            return@withLock true
+            refreshMutex.withLock {
+                _ui.update { it.copy(needsSetup = true, loading = false, error = null) }
+                _ambientSummary.value = QueueAmbientSummary.from(_ui.value.state, null)
+            }
+            return true
         }
         val since = _ui.value.state.rev.takeIf { !forceFull && _ui.value.everLoaded }
         _ui.update { it.copy(loading = forceFull || !it.everLoaded) }
 
-        val result = withContext(Dispatchers.IO) { c.fetch(since) }
+        val result = withContext(Dispatchers.IO) { c.fetch(since, waitSec) }
         persistAuthRecovery(c)
-        return@withLock when (val r = result) {
+        return refreshMutex.withLock { when (val r = result) {
             is QueueClient.Fetch.Fresh -> {
                 _ui.update {
                     it.copy(state = r.state, loading = false, everLoaded = true,
@@ -222,7 +227,7 @@ class QueueViewModel(
                 _ambientSummary.value = QueueAmbientSummary.from(_ui.value.state, r.message)
                 true
             }
-        }
+        } }
     }
 
     fun refreshNow() {
@@ -443,6 +448,9 @@ class QueueViewModel(
     companion object {
         /** 5s — ở Queue người ta liếc chứ không theo dõi; tab MACHINE thì 2s. */
         private const val MACHINE_POLL_MS = 5_000L
+        private const val LONGPOLL_S = 25
+        private const val MIN_GAP_MS = 1_000L
+        private const val AMBIENT_MIN_GAP_MS = 2_000L
         private const val FOREGROUND_POLL_MS = 2_000L
         private const val MAX_FOREGROUND_BACKOFF_MS = 30_000L
         private const val AMBIENT_BUSY_POLL_MS = 3_500L

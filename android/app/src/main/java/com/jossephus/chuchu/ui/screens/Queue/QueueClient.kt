@@ -63,11 +63,18 @@ class QueueClient(
         data class Failed(val message: String) : FetchResponse
     }
 
-    fun fetch(sinceRev: String?): Fetch {
+    /**
+     * [waitSec] > 0 (và có [sinceRev]) = LONG-POLL: server giữ request tới khi rev đổi hoặc
+     * hết [waitSec] rồi mới trả (200 mới / 304 không đổi). Tab Queue mở từng bắn 30 request
+     * mỗi phút dù 304 — radio thức liên tục (pin, 7/9); giờ lúc rảnh ~2 request/phút mà
+     * thay đổi hiện NGAY. Read-timeout nới theo wait để không tự cắt ngang.
+     */
+    fun fetch(sinceRev: String?, waitSec: Int = 0): Fetch {
+        val wait = if (sinceRev.isNullOrEmpty()) 0 else waitSec.coerceIn(0, 25)
         val q = if (sinceRev.isNullOrEmpty()) "" else
-            "&since=" + URLEncoder.encode(sinceRev, "UTF-8")
+            "&since=" + URLEncoder.encode(sinceRev, "UTF-8") + (if (wait > 0) "&wait=$wait" else "")
         return try {
-            val (code, body) = request("/state?view=app$q", null)
+            val (code, body) = request("/state?view=app$q", null, readTimeoutMs + wait * 1000)
             when {
                 code == HttpURLConnection.HTTP_NOT_MODIFIED -> Fetch.Unchanged
                 code == HttpURLConnection.HTTP_OK -> {
@@ -194,9 +201,9 @@ class QueueClient(
         Act.Failed("Could not send the command")
     }
 
-    private fun request(path: String, body: ByteArray?): Pair<Int, String> {
+    private fun request(path: String, body: ByteArray?, readTimeout: Int = readTimeoutMs): Pair<Int, String> {
         val configuredToken = token.takeUnless { omitConfiguredToken || it.isBlank() }
-        val first = requestOnce(path, body, configuredToken)
+        val first = requestOnce(path, body, configuredToken, readTimeout)
         if (first.first != HttpURLConnection.HTTP_UNAUTHORIZED || configuredToken == null) {
             return first
         }
@@ -204,7 +211,7 @@ class QueueClient(
         // A 401 is produced before qsrv mutates state, so retrying POST here
         // cannot duplicate an add/action. Custom servers that require a token
         // simply return 401 again and retain the original auth failure.
-        val withoutToken = requestOnce(path, body, null)
+        val withoutToken = requestOnce(path, body, null, readTimeout)
         if (withoutToken.first in 200..299 ||
             withoutToken.first == HttpURLConnection.HTTP_NOT_MODIFIED
         ) {
@@ -218,11 +225,12 @@ class QueueClient(
         path: String,
         body: ByteArray?,
         bearerToken: String?,
+        readTimeout: Int = readTimeoutMs,
     ): Pair<Int, String> {
         val endpoint = normalizeQueueBaseUrl(baseUrl)
         val conn = (URL(endpoint + path).openConnection() as HttpURLConnection).apply {
             connectTimeout = connectTimeoutMs
-            readTimeout = readTimeoutMs
+            this.readTimeout = readTimeout
             instanceFollowRedirects = true
             if (!bearerToken.isNullOrBlank()) {
                 setRequestProperty("Authorization", "Bearer $bearerToken")
