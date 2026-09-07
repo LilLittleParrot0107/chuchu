@@ -266,6 +266,7 @@ export fn Java_com_jossephus_chuchu_service_terminal_NativeLocalShellBridge_nati
     _ = thiz;
     const session = allocator.create(NativeLocalShellSession) catch return 0;
     session.* = .{};
+    ensureWakePipe(&session.wake_fds);   // xem chuchu_ssh.zig: tranh race tao ong tu hai thread
     return handleFromSession(session);
 }
 

@@ -23,6 +23,9 @@ class BackgroundTimeoutReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val app = context.applicationContext as Application
         val settings = SettingsRepository.getInstance(app)
+        // Alarm có thể nổ trùng lúc user vừa mở lại app (ON_START đã huỷ nhưng intent
+        // đang bay): app đang mở thì KHÔNG làm gì — tắt VPN trước mặt họ là sai.
+        if (AppForeground.inForeground) { Log.i(TAG, "timeout fired but app is foreground — ignored"); return }
         // Ngắt session nếu tiến trình còn sống (không thì đã chết cùng tiến trình rồi).
         runCatching { TerminalSessionRepository.getInstance(app).parkAll() }
             .onFailure { Log.w(TAG, "parkAll: ${it.message}") }

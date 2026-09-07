@@ -150,9 +150,6 @@ class TerminalSessionRepository private constructor(application: Application) {
         }
     }
 
-    /** Còn tab nào đang kết nối không — dùng để KHÔNG tắt Tailscale sau lưng một SSH đang chạy. */
-    fun hasAliveSessions(): Boolean = _tabs.value.any { it.engine.state.value.status.isAlive() }
-
     fun attachClient() {
         attachedClients += 1
         syncRenderGates()
@@ -163,15 +160,12 @@ class TerminalSessionRepository private constructor(application: Application) {
         syncRenderGates()
     }
 
-    // Chính sách nền (pin, 7/9 — user chốt lần 2): rời app quá [backgroundDisconnectMs]
-    // thì ngắt mọi tab đang sống (giữ tab, user tự bấm nối lại) rồi gọi
-    // [onBackgroundTimeout] (nav: tắt Tailscale nếu theo app). Quay lại trong khoảng đó
-    // thì huỷ timer — không có gì xảy ra, nên mở app liên tục không làm VPN bật/tắt
-    // liên tục (mỗi lần bật là một handshake + tải bản đồ DERP, tốn hơn để yên).
+    // Chính sách nền (pin, 7/9 — user chốt): rời app quá [backgroundDisconnectMs] thì
+    // BackgroundTimeoutReceiver ngắt mọi tab đang sống (giữ tab, user tự bấm nối lại)
+    // rồi tắt Tailscale nếu "follows app". Quay lại trong khoảng đó thì huỷ alarm —
+    // không có gì xảy ra, nên mở app liên tục không làm VPN bật/tắt liên tục.
     // 0 = không bao giờ. KHÔNG tự nối lại khi quay về — user bảo thừa.
     @Volatile var backgroundDisconnectMs: Long = 0L
-    /** Nav có thể gắn thêm việc lúc hết giờ (receiver đã tự lo DISCONNECT_VPN). */
-    @Volatile var onBackgroundTimeout: (() -> Unit)? = null
 
     fun setForeground(value: Boolean) {
         if (foreground == value) return
@@ -192,7 +186,6 @@ class TerminalSessionRepository private constructor(application: Application) {
     fun parkAll() {
         if (foreground) return
         _tabs.value.filter { it.engine.state.value.status.isAlive() }.forEach { it.engine.disconnect() }
-        onBackgroundTimeout?.invoke()
     }
 
     /**

@@ -805,11 +805,13 @@ class TerminalSessionEngine(
      * trong poll() trước, không thì việc nằm chờ tới hết timeout (tối đa 30s ở nền).
      */
     private fun launchSession(block: suspend CoroutineScope.() -> Unit): Job {
-        when (lastConnectionParams?.transport) {
-            Transport.LocalShell -> localShellService.wake()
-            Transport.Mosh -> readWake.trySend(Unit)
-            else -> nativeSsh.wake()
-        }
+        // Đánh thức CẢ BA, không chọn theo transport: disconnect() xoá
+        // lastConnectionParams TRƯỚC khi xếp việc, chọn theo nó là local shell không
+        // được đánh thức → lệnh ngắt nằm chờ tới 30s ở nền (review 7/9). wake() trên
+        // handle rỗng là no-op nên rẻ.
+        nativeSsh.wake()
+        localShellService.wake()
+        readWake.trySend(Unit)
         return scope.launch(dispatcher, block = block)
     }
 

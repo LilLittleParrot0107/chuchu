@@ -453,8 +453,6 @@ class QueueViewModel(
         private const val AMBIENT_MIN_GAP_MS = 2_000L
         private const val FOREGROUND_POLL_MS = 2_000L
         private const val MAX_FOREGROUND_BACKOFF_MS = 30_000L
-        private const val AMBIENT_BUSY_POLL_MS = 3_500L
-        private const val AMBIENT_ACTIVE_POLL_MS = 8_000L
         private const val AMBIENT_IDLE_POLL_MS = 15_000L
 
         fun factory(application: Application): ViewModelProvider.Factory =

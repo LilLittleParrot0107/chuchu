@@ -605,6 +605,9 @@ export fn Java_com_jossephus_chuchu_service_ssh_NativeSshBridge_nativeCreateSess
     _ = c.libssh2_init(0);
     const session = allocator.create(NativeSshSession) catch return 0;
     session.* = .{};
+    // Tao ong wake NGAY o day: ensureWakePipe goi tu nhieu thread (wake tu UI, wait
+    // tu dispatcher) — lan dau hai ben cung tao la ro fd, wake vao ong chet (review 7/9).
+    ensureWakePipe(&session.wake_fds);
     return handleFromSession(session);
 }
 
