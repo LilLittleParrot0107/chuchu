@@ -95,6 +95,10 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+        <!-- Hết giờ nền (N phút rời app): ngắt session + tắt Tailscale, sống ngoài tiến trình. -->
+        <receiver
+            android:name=".service.BackgroundTimeoutReceiver"
+            android:exported="false" />
     </application>
 
 </manifest>

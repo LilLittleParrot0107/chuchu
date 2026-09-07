@@ -81,9 +81,7 @@ fun ApplicationNavController() {
     LaunchedEffect(backgroundDisconnectMinutes, tailscaleFollowApp) {
         val sessions = com.jossephus.chuchu.service.terminal.TerminalSessionRepository.getInstance(application)
         sessions.backgroundDisconnectMs = backgroundDisconnectMinutes * 60_000L
-        sessions.onBackgroundTimeout = {
-            if (tailscaleFollowApp) com.jossephus.chuchu.service.TailscaleControl.disconnect(context)
-        }
+        sessions.onBackgroundTimeout = null   // BackgroundTimeoutReceiver tự gửi DISCONNECT_VPN
     }
 
     DisposableEffect(lifecycleOwner) {

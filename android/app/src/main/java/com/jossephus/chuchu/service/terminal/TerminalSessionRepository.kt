@@ -170,23 +170,29 @@ class TerminalSessionRepository private constructor(application: Application) {
     // liên tục (mỗi lần bật là một handshake + tải bản đồ DERP, tốn hơn để yên).
     // 0 = không bao giờ. KHÔNG tự nối lại khi quay về — user bảo thừa.
     @Volatile var backgroundDisconnectMs: Long = 0L
+    /** Nav có thể gắn thêm việc lúc hết giờ (receiver đã tự lo DISCONNECT_VPN). */
     @Volatile var onBackgroundTimeout: (() -> Unit)? = null
-    private var parkJob: Job? = null
 
     fun setForeground(value: Boolean) {
         if (foreground == value) return
         foreground = value
         syncRenderGates()
-        parkJob?.cancel(); parkJob = null
+        // Hẹn giờ bằng alarm hệ thống, KHÔNG phải coroutine: tiến trình có thể bị giết
+        // trong nền (không session = không foreground service) và timer chết theo —
+        // đó là lý do "VPN không tắt" (7/9). Alarm sống ngoài tiến trình.
         if (!value) {
             val wait = backgroundDisconnectMs
-            if (wait > 0) parkJob = scope.launch {
-                delay(wait)
-                if (foreground) return@launch
-                _tabs.value.filter { it.engine.state.value.status.isAlive() }.forEach { it.engine.disconnect() }
-                onBackgroundTimeout?.invoke()
-            }
+            if (wait > 0) com.jossephus.chuchu.service.BackgroundTimeoutReceiver.schedule(appContext, wait)
+        } else {
+            com.jossephus.chuchu.service.BackgroundTimeoutReceiver.cancel(appContext)
         }
+    }
+
+    /** Receiver gọi khi hết giờ nền: ngắt mọi tab đang sống, giữ tab để user bấm nối lại. */
+    fun parkAll() {
+        if (foreground) return
+        _tabs.value.filter { it.engine.state.value.status.isAlive() }.forEach { it.engine.disconnect() }
+        onBackgroundTimeout?.invoke()
     }
 
     /**
