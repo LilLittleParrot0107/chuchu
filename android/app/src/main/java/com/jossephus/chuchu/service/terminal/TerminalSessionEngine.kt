@@ -757,25 +757,45 @@ class TerminalSessionEngine(
      * trả ngay, rồi vòng nhường lượt (yield) cho việc đó chạy. Khi còn snapshot đang
      * hẹn (16ms) thì chỉ đợi ngắn để nó không bị giam sau poll.
      */
-    private suspend fun runReadLoop(read: suspend (Int) -> ByteArray?, wait: (Int) -> Int) {
+    private suspend fun runReadLoop(
+        read: suspend (Int) -> ByteArray?,
+        wait: (Int) -> Int,
+        eof: () -> Boolean = { false },
+    ) {
+        // Đếm số lần poll() báo "có tin" mà read() vẫn rỗng: kênh EOF/HUP trả rỗng chứ
+        // không null (readChannel: rc==0 -> slice rỗng), nên không có gì để break → vòng
+        // xoay 100% CPU, điện thoại nóng rực (user báo 7/9, bản .40–.43). Trước đây
+        // idleSleep 250ms che mất. Giờ: EOF thật thì thoát để đi đường reconnect;
+        // không thì lùi dần tới 250ms.
+        var emptyReadable = 0
         while (currentCoroutineContext().isActive) {
             val chunk = read(READ_CHUNK_BYTES) ?: break
             if (chunk.isEmpty()) {
+                if (emptyReadable >= 2 && eof()) break
                 val timeout = when {
                     snapshotScheduled -> SNAPSHOT_WAIT_MS
                     renderEnabled -> FOREGROUND_WAIT_MS
                     else -> BACKGROUND_WAIT_MS
                 }
                 val r = wait(timeout)
-                if (r < 0) delay(FOREGROUND_WAIT_MS.toLong())   // không poll được: lùi về ngủ thường
-                yield()                                          // việc vừa đánh thức được chạy trước
+                when {
+                    r < 0 -> delay(FOREGROUND_WAIT_MS.toLong())          // không poll được: ngủ thường
+                    r == 1 -> {                                           // "có tin" nhưng vừa đọc rỗng
+                        emptyReadable = (emptyReadable + 1).coerceAtMost(8)
+                        delay((4L shl emptyReadable).coerceAtMost(250L))
+                    }
+                    else -> emptyReadable = 0
+                }
+                yield()                                                   // việc vừa đánh thức được chạy trước
                 continue
             }
+            emptyReadable = 0
             feedRemoteChunk(chunk)
         }
     }
 
-    private suspend fun startSshReadLoop() = runReadLoop({ nativeSsh.read(it) }, { nativeSsh.waitReadable(it) })
+    private suspend fun startSshReadLoop() =
+        runReadLoop({ nativeSsh.read(it) }, { nativeSsh.waitReadable(it) }, { nativeSsh.isChannelEof() })
 
     private suspend fun startLocalShellReadLoop() =
         runReadLoop({ localShellService.read(it) }, { localShellService.waitReadable(it) })
