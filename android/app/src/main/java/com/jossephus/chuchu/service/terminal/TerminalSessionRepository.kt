@@ -137,8 +137,8 @@ class TerminalSessionRepository private constructor(application: Application) {
 
     init {
         scope.launch {
-            // auto vpn (user chốt 7/9: CHỈ TỰ TẮT, không tự bật): session đã từng nối
-            // được (Connected/Reconnecting) tắt hết khi app ở nền → tắt Tailscale.
+            // auto vpn — chiều tắt: session đã từng nối được (Connected/Reconnecting)
+            // tắt hết khi app ở nền → tắt Tailscale.
             // Connecting→Error không tính — connect hỏng không được phép giết VPN user
             // vừa bật tay. Ở trước mặt thì giữ (Dashboard/Queue cần tailnet), rời app
             // rồi đồng hồ 15 phút lo. Reconnecting vẫn là sống nên rớt mạng thoáng
@@ -180,12 +180,37 @@ class TerminalSessionRepository private constructor(application: Application) {
      * vivo có thể hoãn job đó rồi cho chạy muộn — DISCONNECT gửi lúc VPN đã tắt sẵn sẽ
      * giết VPN user bật tay sau đó. Kiểm tra ở IO (liệt kê network interface).
      */
-    private fun vpnOff(why: String) {
+    private suspend fun tailnetUp(): Boolean =
+        withContext(Dispatchers.IO) { tailscaleStatusChecker.isActive() }
+
+    /** Gửi CONNECT_VPN nếu tailnet chưa lên. Bản thử 8/9: lệnh ăn, không cần miễn trừ pin. */
+    private fun vpnOn(why: String) {
+        scope.launch { if (!tailnetUp()) com.jossephus.chuchu.service.TailscaleControl.connect(appContext, why) }
+    }
+
+    /**
+     * Mở session qua tailnet: tailnet chưa lên thì CONNECT rồi đợi tối đa [VPN_UP_WAIT_MS]
+     * (poll 250ms; Tailscale khởi động lạnh có thể quá 8s — .50 đợi 8s là hụt), thêm
+     * [VPN_SETTLE_MS] cho handshake rồi mới connect. Đang lên sẵn thì connect ngay. Local
+     * shell không cần VPN. Tab bị đóng trong lúc đợi thì thôi.
+     */
+    private fun connectWithVpn(tab: TabSession, connect: () -> Unit) {
+        if (tab.spec.transport == Transport.LocalShell || !autoVpn()) { connect(); return }
         scope.launch {
-            if (withContext(Dispatchers.IO) { tailscaleStatusChecker.isActive() }) {
-                com.jossephus.chuchu.service.TailscaleControl.disconnect(appContext, why)
+            if (!tailnetUp()) {
+                com.jossephus.chuchu.service.TailscaleControl.connect(appContext, "session")
+                val deadline = System.currentTimeMillis() + VPN_UP_WAIT_MS
+                while (System.currentTimeMillis() < deadline) {
+                    delay(250)
+                    if (tailnetUp()) { delay(VPN_SETTLE_MS); break }
+                }
             }
+            if (_tabs.value.any { it === tab }) connect()
         }
+    }
+
+    private fun vpnOff(why: String) {
+        scope.launch { if (tailnetUp()) com.jossephus.chuchu.service.TailscaleControl.disconnect(appContext, why) }
     }
 
     fun attachClient() {
@@ -205,7 +230,10 @@ class TerminalSessionRepository private constructor(application: Application) {
         idleCloseJob?.cancel()
         idleCloseJob = null
         if (!autoVpn()) return
-        if (!value) {
+        if (value) {
+            // App lên trước → bật tailnet sẵn: Queue/Dashboard/portal cũng đi qua tailnet.
+            vpnOn("app open")
+        } else {
             // Rời app 15 phút → ngắt mọi session đang sống (tab giữ lại, bấm là nối lại)
             // rồi tắt VPN. Đồng hồ là delay() thường: có session thì foreground service
             // đã giữ tiến trình sống; không có session mà bị giết thì VPN ở lại — chấp
@@ -314,7 +342,7 @@ class TerminalSessionRepository private constructor(application: Application) {
         _tabs.value = _tabs.value + tab
         _activeTabId.value = id
         syncRenderGates()
-        engine.connect(
+        connectWithVpn(tab) { engine.connect(
             host = spec.host,
             port = spec.port,
             username = spec.username,
@@ -329,7 +357,7 @@ class TerminalSessionRepository private constructor(application: Application) {
             multiplexer = spec.multiplexer,
             multiplexerSessionName = spec.multiplexerSessionName,
             multiplexerCreateIfMissing = spec.multiplexerCreateIfMissing,
-        )
+        ) }
         return tab
     }
 
@@ -373,7 +401,7 @@ class TerminalSessionRepository private constructor(application: Application) {
 
     fun reconnectTab(tab: TabSession) {
         val spec = tab.spec
-        tab.engine.connect(
+        connectWithVpn(tab) { tab.engine.connect(
             host = spec.host,
             port = spec.port,
             username = spec.username,
@@ -388,7 +416,7 @@ class TerminalSessionRepository private constructor(application: Application) {
             multiplexer = spec.multiplexer,
             multiplexerSessionName = spec.multiplexerSessionName,
             multiplexerCreateIfMissing = spec.multiplexerCreateIfMissing,
-        )
+        ) }
     }
 
     fun disconnect() {
@@ -532,6 +560,10 @@ class TerminalSessionRepository private constructor(application: Application) {
     }
 
     companion object {
+        /** Tailscale khởi động lạnh (tiến trình Go) có thể mất >8s; quá mức này cứ connect để lỗi hiện rõ. */
+        private const val VPN_UP_WAIT_MS = 20_000L
+        /** Interface có địa chỉ rồi nhưng handshake WireGuard chưa chắc xong. */
+        private const val VPN_SETTLE_MS = 500L
         /** Rời app bao lâu thì tự ngắt session + Tailscale (user chốt 7/9: 15 phút, không chỉnh). */
         private const val IDLE_CLOSE_MS = 15 * 60_000L
         @Volatile private var instance: TerminalSessionRepository? = null
