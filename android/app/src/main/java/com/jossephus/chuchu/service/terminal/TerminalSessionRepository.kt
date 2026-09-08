@@ -132,6 +132,7 @@ class TerminalSessionRepository private constructor(application: Application) {
     // vì chưa có client attach.
     private var foreground = false
     private var idleCloseJob: Job? = null
+    private var vpnUpJob: Job? = null
     private var foregroundServiceRunning = false
     private var foregroundNotificationLabel: String? = null
 
@@ -183,33 +184,38 @@ class TerminalSessionRepository private constructor(application: Application) {
     private suspend fun tailnetUp(): Boolean =
         withContext(Dispatchers.IO) { tailscaleStatusChecker.isActive() }
 
-    /** Gửi CONNECT_VPN nếu tailnet chưa lên. Bản thử 8/9: lệnh ăn, không cần miễn trừ pin. */
-    private fun vpnOn(why: String) {
-        scope.launch { if (!tailnetUp()) com.jossephus.chuchu.service.TailscaleControl.connect(appContext, why) }
+    /**
+     * Đưa tailnet lên, MỘT lệnh CONNECT cho mỗi lần lên. Tailscale không có chốt "đang
+     * nối thì bỏ qua": CONNECT thứ hai khi đang nối/đã nối làm nó dựng lại tunnel
+     * (tailscale#8013 — bản vá 2023 mất khi app viết lại 2024; IPNService.START_VPN gọi
+     * requestVPN vô điều kiện). Bản .55/.56 gửi "app open" rồi "session" cách nhau vài
+     * giây là dính đúng chỗ đó. Job đang chạy thì trả lại job đó để chờ chung.
+     */
+    private fun ensureVpn(why: String): Job {
+        vpnUpJob?.takeIf { it.isActive }?.let { return it }
+        return scope.launch {
+            if (tailnetUp()) return@launch
+            com.jossephus.chuchu.service.TailscaleControl.connect(appContext, why)
+            val deadline = System.currentTimeMillis() + VPN_UP_WAIT_MS
+            while (System.currentTimeMillis() < deadline) {
+                delay(250)
+                if (tailnetUp()) { delay(VPN_SETTLE_MS); return@launch }
+            }
+        }.also { vpnUpJob = it }
     }
 
-    /**
-     * Mở session qua tailnet: tailnet chưa lên thì CONNECT rồi đợi tối đa [VPN_UP_WAIT_MS]
-     * (poll 250ms; Tailscale khởi động lạnh có thể quá 8s — .50 đợi 8s là hụt), thêm
-     * [VPN_SETTLE_MS] cho handshake rồi mới connect. Đang lên sẵn thì connect ngay. Local
-     * shell không cần VPN. Tab bị đóng trong lúc đợi thì thôi.
-     */
+    /** Mở session qua tailnet: đợi [ensureVpn] xong rồi mới connect. Tab đóng trong lúc đợi thì thôi. */
     private fun connectWithVpn(tab: TabSession, connect: () -> Unit) {
         if (tab.spec.transport == Transport.LocalShell || !autoVpn()) { connect(); return }
         scope.launch {
-            if (!tailnetUp()) {
-                com.jossephus.chuchu.service.TailscaleControl.connect(appContext, "session")
-                val deadline = System.currentTimeMillis() + VPN_UP_WAIT_MS
-                while (System.currentTimeMillis() < deadline) {
-                    delay(250)
-                    if (tailnetUp()) { delay(VPN_SETTLE_MS); break }
-                }
-            }
+            ensureVpn("session").join()
             if (_tabs.value.any { it === tab }) connect()
         }
     }
 
     private fun vpnOff(why: String) {
+        vpnUpJob?.cancel()
+        vpnUpJob = null
         scope.launch { if (tailnetUp()) com.jossephus.chuchu.service.TailscaleControl.disconnect(appContext, why) }
     }
 
@@ -232,12 +238,17 @@ class TerminalSessionRepository private constructor(application: Application) {
         if (!autoVpn()) return
         if (value) {
             // App lên trước → bật tailnet sẵn: Queue/Dashboard/portal cũng đi qua tailnet.
-            vpnOn("app open")
+            ensureVpn("app open")
         } else if (_tabs.value.none { it.sessionState.value.status.isAlive() }) {
-            // Không có session → tắt VPN ngay lúc rời app. Không có foreground service
-            // giữ tiến trình, vivo giết kohi là đồng hồ 15 phút chết theo và VPN sáng
-            // mãi (user chốt 8/9). Quay lại là CONNECT lại, 2–5s.
-            vpnOff("left app")
+            // Không có session → tắt VPN sau [LEAVE_GRACE_MS]. Không tắt ngay vì tắt/bật
+            // màn hình với kohi ở trước mặt là một chu kỳ ON_STOP/ON_START: tắt ngay
+            // rồi bật lại khi Tailscale còn đang dừng là dựng lại tunnel liên tục
+            // (tailscale#18847: backend kẹt ở Stopping, bỏ qua lệnh start). 60s đủ ngắn
+            // để vivo chưa kịp giết kohi (đồng hồ chết theo thì VPN ở lại).
+            idleCloseJob = scope.launch {
+                delay(LEAVE_GRACE_MS)
+                if (autoVpn()) vpnOff("left app")
+            }
         } else {
             // Có session → rời app 15 phút thì ngắt mọi session đang sống (tab giữ lại,
             // bấm là nối lại) rồi tắt VPN. Đồng hồ là delay() thường, đủ vì foreground
@@ -568,6 +579,8 @@ class TerminalSessionRepository private constructor(application: Application) {
         private const val VPN_UP_WAIT_MS = 20_000L
         /** Interface có địa chỉ rồi nhưng handshake WireGuard chưa chắc xong. */
         private const val VPN_SETTLE_MS = 500L
+        /** Rời app không có session: tắt VPN sau chừng này (đệm cho tắt/bật màn hình). */
+        private const val LEAVE_GRACE_MS = 60_000L
         /** Rời app bao lâu thì tự ngắt session + Tailscale (user chốt 7/9: 15 phút, không chỉnh). */
         private const val IDLE_CLOSE_MS = 15 * 60_000L
         @Volatile private var instance: TerminalSessionRepository? = null
