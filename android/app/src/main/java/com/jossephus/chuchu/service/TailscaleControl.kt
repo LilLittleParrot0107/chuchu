@@ -14,7 +14,7 @@ import kotlinx.coroutines.flow.StateFlow
  * ngay sau đó (xem TerminalSessionRepository).
  * Manifest cần <queries><package android:name="com.tailscale.ipn"/></queries> (API 30+).
  *
- * [lastEvent] = dòng chẩn đoán hiện ở Settings: user không đọc được logcat, mà "VPN
+ * [events] = các dòng chẩn đoán hiện ở Settings: user không đọc được logcat, mà "VPN
  * không tắt" có thể do kohi chưa gửi lệnh (session vẫn còn sống) hoặc gửi rồi mà
  * Tailscale không nghe (Always-on VPN của Android bật lại ngay). Phải phân biệt được.
  */
@@ -22,8 +22,9 @@ object TailscaleControl {
     private const val PKG = "com.tailscale.ipn"
     private const val RECEIVER = "com.tailscale.ipn.IPNReceiver"
 
-    private val _lastEvent = MutableStateFlow("")
-    val lastEvent: StateFlow<String> = _lastEvent
+    /** 8 lệnh gần nhất, mới nhất trước — Settings hiện để thấy có bật/tắt liên tục không. */
+    private val _events = MutableStateFlow<List<String>>(emptyList())
+    val events: StateFlow<List<String>> = _events
 
     /** [why] = luật nào bắn lệnh, hiện ở Settings để đối chiếu khi test. */
     fun connect(context: Context, why: String) = send(context, "$PKG.CONNECT_VPN", "connect", why)
@@ -40,11 +41,15 @@ object TailscaleControl {
                     .setClassName(PKG, RECEIVER)
                     .addFlags(Intent.FLAG_INCLUDE_STOPPED_PACKAGES),
             )
-            _lastEvent.value = "$label ($why) sent $stamp"
+            record("$label ($why) sent $stamp")
             Log.i("TailscaleControl", "$action sent")
         }.onFailure {
-            _lastEvent.value = "$label FAILED $stamp: ${it.message}"
+            record("$label FAILED $stamp: ${it.message}")
             Log.w("TailscaleControl", "$action failed: ${it.message}")
         }
+    }
+
+    private fun record(line: String) {
+        _events.value = (listOf(line) + _events.value).take(8)
     }
 }

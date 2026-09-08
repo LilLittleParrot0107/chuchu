@@ -327,13 +327,13 @@ private fun GeneralSettings(
         style = typography.bodySmall,
         color = colors.textMuted,
     )
-    val tsEvent by com.jossephus.chuchu.service.TailscaleControl.lastEvent.collectAsState()
-    if (tsEvent.isNotEmpty()) {
-        ChuText("last: $tsEvent", style = typography.bodySmall, color = colors.textSecondary)
+    val tsEvents by com.jossephus.chuchu.service.TailscaleControl.events.collectAsState()
+    tsEvents.forEach { line ->
+        ChuText(line, style = typography.bodySmall, color = colors.textSecondary)
     }
     val tsContext = androidx.compose.ui.platform.LocalContext.current
     var tsProbe by remember { mutableStateOf("") }
-    androidx.compose.runtime.LaunchedEffect(tsEvent) {
+    androidx.compose.runtime.LaunchedEffect(tsEvents) {
         tsProbe = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             com.jossephus.chuchu.service.ssh.TailscaleStatusChecker(tsContext).probe()
         }
