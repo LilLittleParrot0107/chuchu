@@ -68,8 +68,6 @@ fun SettingsScreen(
     onLightThemeSelected: (String) -> Unit,
     onFontSelected: (String) -> Unit,
     onAppLockEnabledChanged: (Boolean) -> Unit,
-    tailscaleFollowApp: Boolean = false,
-    onTailscaleFollowAppChanged: (Boolean) -> Unit = {},
     onRequireAuthOnConnectChanged: (Boolean) -> Unit,
     onLocalShellEnabledChanged: (Boolean) -> Unit,
     onKeepScreenAwakeChanged: (Boolean) -> Unit,
@@ -175,8 +173,6 @@ fun SettingsScreen(
                         onLightThemeSelected = onLightThemeSelected,
                         onFontSelected = onFontSelected,
                         appLockEnabled = appLockEnabled,
-                        tailscaleFollowApp = tailscaleFollowApp,
-                        onTailscaleFollowAppChanged = onTailscaleFollowAppChanged,
                         requireAuthOnConnect = requireAuthOnConnect,
                         onAppLockEnabledChanged = onAppLockEnabledChanged,
                         onRequireAuthOnConnectChanged = onRequireAuthOnConnectChanged,
@@ -258,8 +254,6 @@ private fun GeneralSettings(
     appLockEnabled: Boolean,
     requireAuthOnConnect: Boolean,
     onAppLockEnabledChanged: (Boolean) -> Unit,
-    tailscaleFollowApp: Boolean = false,
-    onTailscaleFollowAppChanged: (Boolean) -> Unit = {},
     onRequireAuthOnConnectChanged: (Boolean) -> Unit,
     onOpenBackup: () -> Unit = {},
 ) {
@@ -305,40 +299,6 @@ private fun GeneralSettings(
     }
     Spacer(modifier = Modifier.height(4.dp))
     ChuText("use biometrics or device PIN/pattern.", style = typography.bodySmall, color = colors.textMuted)
-    Spacer(modifier = Modifier.height(16.dp))
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        ChuText("── ", style = typography.labelSmall, color = colors.textMuted)
-        ChuText("BATTERY", style = typography.labelSmall, color = colors.textMuted)
-        ChuText(" ", style = typography.labelSmall, color = colors.textMuted)
-        Box(modifier = Modifier.height(1.dp).background(colors.textMuted).fillMaxWidth())
-    }
-    Spacer(modifier = Modifier.height(12.dp))
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        ChuText("tailscale follows app", style = typography.label)
-        ChuSwitch(checked = tailscaleFollowApp, onCheckedChange = onTailscaleFollowAppChanged)
-    }
-    Spacer(modifier = Modifier.height(4.dp))
-    ChuText(
-        "tailscale on when kohi opens or a session connects. off 1 min after you leave with no session, when the last session ends in the background, or 15 min after leaving with sessions open (they are closed too).",
-        style = typography.bodySmall,
-        color = colors.textMuted,
-    )
-    val tsEvents by com.jossephus.chuchu.service.TailscaleControl.events.collectAsState()
-    tsEvents.forEach { line ->
-        ChuText(line, style = typography.bodySmall, color = colors.textSecondary)
-    }
-    val tsContext = androidx.compose.ui.platform.LocalContext.current
-    var tsProbe by remember { mutableStateOf("") }
-    androidx.compose.runtime.LaunchedEffect(tsEvents) {
-        tsProbe = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            com.jossephus.chuchu.service.ssh.TailscaleStatusChecker(tsContext).probe()
-        }
-    }
-    ChuText("tailnet: $tsProbe", style = typography.bodySmall, color = colors.textSecondary)
     Spacer(modifier = Modifier.height(16.dp))
     Row(
         modifier = Modifier.fillMaxWidth(),

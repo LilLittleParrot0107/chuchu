@@ -393,8 +393,6 @@ fun ApplicationNavController() {
                 onLightThemeSelected = settingsRepo::setLightTheme,
                 onFontSelected = settingsRepo::setFont,
                 onAppLockEnabledChanged = settingsRepo::setAppLockEnabled,
-                tailscaleFollowApp = settingsRepo.tailscaleFollowApp.collectAsStateWithLifecycle().value,
-                onTailscaleFollowAppChanged = settingsRepo::setTailscaleFollowApp,
                 onRequireAuthOnConnectChanged = settingsRepo::setRequireAuthOnConnect,
                 onLocalShellEnabledChanged = settingsRepo::setLocalShellEnabled,
                 onKeepScreenAwakeChanged = settingsRepo::setKeepScreenAwake,

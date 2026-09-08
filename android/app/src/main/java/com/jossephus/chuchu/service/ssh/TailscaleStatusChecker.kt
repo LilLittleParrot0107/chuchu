@@ -20,13 +20,6 @@ class TailscaleStatusChecker(
         return hasVpnTransport()
     }
 
-    /** Chẩn đoán cho Settings: kiểm tra trả lời gì và vì sao, tại đúng thời điểm gọi. */
-    fun probe(): String {
-        tailnetAddress()?.let { return "up ($it)" }
-        if (hasVpnTransport()) return "up (vpn transport, no 100.x address)"
-        return "down"
-    }
-
     private fun hasVpnTransport(): Boolean {
         val connectivity = context.getSystemService(ConnectivityManager::class.java) ?: return false
         val network = connectivity.activeNetwork ?: return false
