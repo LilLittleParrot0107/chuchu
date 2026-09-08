@@ -323,7 +323,7 @@ private fun GeneralSettings(
     }
     Spacer(modifier = Modifier.height(4.dp))
     ChuText(
-        "tailscale on when kohi opens or a session connects; off when the last session ends in the background, or 15 min after you leave the app (sessions are closed too).",
+        "tailscale on when kohi opens or a session connects. off when you leave the app with no session, when the last session ends in the background, or 15 min after leaving with sessions open (they are closed too).",
         style = typography.bodySmall,
         color = colors.textMuted,
     )

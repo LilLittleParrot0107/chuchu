@@ -32,7 +32,14 @@ object TailscaleControl {
     private fun send(context: Context, action: String, label: String, why: String) {
         val stamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(java.util.Date())
         runCatching {
-            context.applicationContext.sendBroadcast(Intent(action).setClassName(PKG, RECEIVER))
+            // FLAG_INCLUDE_STOPPED_PACKAGES: vivo dọn app nền kiểu force-stop → Tailscale ở
+            // trạng thái "stopped" và broadcast mặc định bị hệ thống bỏ im lặng. Có cờ thì
+            // hệ thống khởi động lại tiến trình Tailscale để giao lệnh (user nhận ra 8/9).
+            context.applicationContext.sendBroadcast(
+                Intent(action)
+                    .setClassName(PKG, RECEIVER)
+                    .addFlags(Intent.FLAG_INCLUDE_STOPPED_PACKAGES),
+            )
             _lastEvent.value = "$label ($why) sent $stamp"
             Log.i("TailscaleControl", "$action sent")
         }.onFailure {

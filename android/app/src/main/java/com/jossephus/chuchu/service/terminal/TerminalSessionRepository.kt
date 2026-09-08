@@ -233,11 +233,15 @@ class TerminalSessionRepository private constructor(application: Application) {
         if (value) {
             // App lên trước → bật tailnet sẵn: Queue/Dashboard/portal cũng đi qua tailnet.
             vpnOn("app open")
+        } else if (_tabs.value.none { it.sessionState.value.status.isAlive() }) {
+            // Không có session → tắt VPN ngay lúc rời app. Không có foreground service
+            // giữ tiến trình, vivo giết kohi là đồng hồ 15 phút chết theo và VPN sáng
+            // mãi (user chốt 8/9). Quay lại là CONNECT lại, 2–5s.
+            vpnOff("left app")
         } else {
-            // Rời app 15 phút → ngắt mọi session đang sống (tab giữ lại, bấm là nối lại)
-            // rồi tắt VPN. Đồng hồ là delay() thường: có session thì foreground service
-            // đã giữ tiến trình sống; không có session mà bị giết thì VPN ở lại — chấp
-            // nhận (user 7/9).
+            // Có session → rời app 15 phút thì ngắt mọi session đang sống (tab giữ lại,
+            // bấm là nối lại) rồi tắt VPN. Đồng hồ là delay() thường, đủ vì foreground
+            // service của session đang giữ tiến trình sống.
             idleCloseJob = scope.launch {
                 delay(IDLE_CLOSE_MS)
                 if (!autoVpn()) return@launch
