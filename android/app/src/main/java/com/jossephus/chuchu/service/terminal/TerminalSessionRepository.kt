@@ -156,6 +156,10 @@ class TerminalSessionRepository private constructor(application: Application) {
 
     fun detachClient() {
         attachedClients = (attachedClients - 1).coerceAtLeast(0)
+        // Man terminal cuoi cung dong (back) khi tab con dang noi: huy cu connect ngay
+        // (user chot 9/9 "back la huy"). Tab giu nguyen voi loi "Connection cancelled" + Retry;
+        // app xuong nen (ON_STOP) KHONG di qua day nen connect chay tiep binh thuong.
+        if (attachedClients == 0) _tabs.value.forEach { it.engine.abortConnectIfPending() }
         syncRenderGates()
     }
 

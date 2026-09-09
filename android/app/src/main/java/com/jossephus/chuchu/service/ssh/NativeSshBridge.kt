@@ -99,5 +99,8 @@ class NativeSshBridge {
     /** Gọi từ bất kỳ thread nào để kéo read-loop ra khỏi nativeWaitReadable. */
     external fun nativeWake(handle: Long)
 
+    /** Huy cu connect/handshake/auth/mo kenh dang cho tren [handle] (9/9): dat co + ghi ong wake. */
+    external fun nativeAbortConnect(handle: Long)
+
     external fun nativeGenerateEd25519Key(comment: String, passphrase: String?): Array<String>?
 }

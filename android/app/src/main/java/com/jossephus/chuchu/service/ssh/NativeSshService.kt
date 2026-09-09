@@ -95,7 +95,10 @@ class NativeSshService(
             get() = TAG_ERROR
     }
 
-    private var handle: Long = 0L
+    @Volatile private var handle: Long = 0L
+    // abortConnect() chay tu thread khac (UI) trong luc close() co the dang huy handle
+    // tren dispatcher cua session: khoa chung de khong dua handle da free vao native.
+    private val handleLock = Any()
 
     fun isAvailable(): Boolean = bridge.isLoaded()
 
@@ -286,6 +289,15 @@ class NativeSshService(
 
     fun wake() { if (handle != 0L) bridge.nativeWake(handle) }
 
+    /**
+     * Huy cu connect dang cho (9/9): poll cua TCP connect / handshake / auth / mo kenh
+     * ben native nghe ong wake, tra ve ngay voi loi "Connection cancelled". Khong co
+     * connect dang cho (handle rong hoac da qua pha noi) thi la no-op.
+     */
+    fun abortConnect() {
+        synchronized(handleLock) { if (handle != 0L) bridge.nativeAbortConnect(handle) }
+    }
+
     fun read(maxBytes: Int = 8192): ByteArray? {
         if (handle == 0L) return null
         val response = bridge.nativeIpcExchange(handle, Ipc.encodeRead(maxBytes)) ?: return null
@@ -414,10 +426,12 @@ class NativeSshService(
     }
 
     override fun close() {
-        if (handle == 0L) return
-        bridge.nativeClose(handle)
-        bridge.nativeDestroySession(handle)
-        handle = 0L
+        synchronized(handleLock) {
+            if (handle == 0L) return
+            bridge.nativeClose(handle)
+            bridge.nativeDestroySession(handle)
+            handle = 0L
+        }
     }
 }
 

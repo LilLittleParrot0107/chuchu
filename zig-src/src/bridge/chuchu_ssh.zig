@@ -42,6 +42,12 @@ const sftp_idle_limit_ms: i64 = 15_000;
 const NativeSshSession = struct {
     socket_fd: c_int = -1,
     wake_fds: [2]c_int = .{ -1, -1 },
+    // Huy connect (9/9): Kotlin goi nativeAbortConnect tu thread khac -> dat co + ghi ong
+    // wake. Trong pha connecting (TCP connect, handshake, auth, mo kenh) moi vong poll
+    // nghe them ong nay; co phan biet "huy" voi wake thuong cua launchSession.
+    // Doc/ghi bang @atomicLoad/@atomicStore vi hai thread.
+    connecting: bool = false,
+    abort_connect: bool = false,
     session: ?*c.LIBSSH2_SESSION = null,
     channel: ?*c.LIBSSH2_CHANNEL = null,
     sftp: ?*c.LIBSSH2_SFTP = null,
@@ -68,7 +74,22 @@ fn handleFromSession(session: *NativeSshSession) c.jlong {
     return @bitCast(raw_ptr);
 }
 
+const cancelled_msg = "Connection cancelled";
+
+fn abortRequested(session: *NativeSshSession) bool {
+    return @atomicLoad(bool, &session.abort_connect, .seq_cst);
+}
+
 fn setError(session: *NativeSshSession, comptime fmt: []const u8, args: anytype) void {
+    // Da huy thi giu "Connection cancelled": cac loi phu sinh ra sau do (handshake timed
+    // out, Socket connect failed...) chi la he qua cua viec huy, Kotlin can dung ly do.
+    if (abortRequested(session)) {
+        if (!std.mem.eql(u8, session.last_error.items, cancelled_msg)) {
+            session.last_error.clearRetainingCapacity();
+            session.last_error.appendSlice(allocator, cancelled_msg) catch return;
+        }
+        return;
+    }
     session.last_error.clearRetainingCapacity();
     std.fmt.format(session.last_error.writer(allocator), fmt, args) catch return;
 }
@@ -163,6 +184,7 @@ fn waitSocket(session: *NativeSshSession, timeout_ms: c_int) bool {
         events = c.POLLIN | c.POLLOUT;
     }
 
+    if (session.connecting) return waitFdOrAbort(session, session.socket_fd, events, timeout_ms) > 0;
     var poll_fds: [1]c.struct_pollfd = .{.{
         .fd = session.socket_fd,
         .events = events,
@@ -170,6 +192,36 @@ fn waitSocket(session: *NativeSshSession, timeout_ms: c_int) bool {
     }};
     const poll_rc = c.poll(&poll_fds, 1, timeout_ms);
     return poll_rc > 0;
+}
+
+/// Poll fd + ong wake trong pha connect. 1 = fd san sang, 0 = het gio, -1 = bi huy.
+/// Wake thuong (launchSession xep viec, khong phai huy) chi lam poll tinh: xa ong roi
+/// cho tiep phan thoi gian con lai, khong cat cuoc cho.
+fn waitFdOrAbort(session: *NativeSshSession, fd: c_int, events: c_short, timeout_ms: c_int) c_int {
+    const deadline = nowMs() + timeout_ms;
+    while (true) {
+        if (abortRequested(session)) return -1;
+        const wfd = session.wake_fds[0];
+        var pfd: [2]c.struct_pollfd = .{
+            .{ .fd = fd, .events = events, .revents = 0 },
+            .{ .fd = wfd, .events = c.POLLIN, .revents = 0 },
+        };
+        const n: c.nfds_t = if (wfd >= 0) 2 else 1;
+        const left = deadline - nowMs();
+        if (left <= 0) return 0;
+        const rc = c.poll(&pfd, n, @intCast(@min(left, @as(i64, timeout_ms))));
+        if (rc < 0) {
+            if (c.__errno().* == c.EINTR) continue;
+            return 0;
+        }
+        if (rc == 0) return 0;
+        if (n == 2 and pfd[1].revents != 0) {
+            var drain: [64]u8 = undefined;
+            while (c.read(wfd, &drain, drain.len) > 0) {}
+            if (abortRequested(session)) return -1;
+        }
+        if (pfd[0].revents != 0) return 1;
+    }
 }
 
 fn trySetChannelEnv(session: *NativeSshSession, channel: *c.LIBSSH2_CHANNEL, name: []const u8, value: []const u8) void {
@@ -366,7 +418,6 @@ fn sftpOpenDir(session: *NativeSshSession, sftp: *c.LIBSSH2_SFTP, path_z: [:0]u8
     }
 }
 
-
 // ---- Ngu that thay vi hoi socket 4-15 lan/giay (pin, 7/9) ----------------------
 // wake_fds: ong pipe; Kotlin goi nativeWake() (tu bat ky thread nao) truoc khi xep
 // viec len dispatcher cua session -> poll() ben duoi tra ve ngay, read-loop nhuong
@@ -374,7 +425,7 @@ fn sftpOpenDir(session: *NativeSshSession, sftp: *c.LIBSSH2_SFTP, path_z: [:0]u8
 fn ensureWakePipe(fds: *[2]c_int) void {
     if (fds[0] >= 0) return;
     var tmp: [2]c_int = .{ -1, -1 };
-    if (c.pipe(&tmp) != 0) return;            // pipe2 khong co trong header bionic ma cimport thay
+    if (c.pipe(&tmp) != 0) return; // pipe2 khong co trong header bionic ma cimport thay
     for (tmp) |fd| {
         const fl = c.fcntl(fd, c.F_GETFL, @as(c_int, 0));
         if (fl >= 0) _ = c.fcntl(fd, c.F_SETFL, fl | c.O_NONBLOCK);
@@ -432,7 +483,18 @@ export fn Java_com_jossephus_chuchu_service_ssh_NativeSshBridge_nativeWake(env: 
     wakeFd(&session.wake_fds);
 }
 
-fn connectSocket(host: [:0]const u8, port: u16) !c_int {
+/// Huy cu connect/handshake/auth/mo kenh dang cho (9/9). Goi tu bat ky thread nao:
+/// dat co roi ghi ong wake de poll ben duoi tinh ngay; ket qua la nativeConnect (hoac
+/// buoc dang cho) tra false voi last_error = "Connection cancelled".
+export fn Java_com_jossephus_chuchu_service_ssh_NativeSshBridge_nativeAbortConnect(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong) callconv(.c) void {
+    _ = env;
+    _ = thiz;
+    const session = sessionFromHandle(handle) orelse return;
+    @atomicStore(bool, &session.abort_connect, true, .seq_cst);
+    wakeFd(&session.wake_fds);
+}
+
+fn connectSocket(session: *NativeSshSession, host: [:0]const u8, port: u16) !c_int {
     var hints: c.struct_addrinfo = std.mem.zeroes(c.struct_addrinfo);
     hints.ai_family = c.AF_UNSPEC;
     hints.ai_socktype = c.SOCK_STREAM;
@@ -456,11 +518,15 @@ fn connectSocket(host: [:0]const u8, port: u16) !c_int {
         setSocketNonBlocking(fd);
         if (c.connect(fd, info.ai_addr, info.ai_addrlen) == 0) return fd;
         if (c.__errno().* == c.EINPROGRESS) {
-            var pfd: [1]c.struct_pollfd = .{.{ .fd = fd, .events = c.POLLOUT, .revents = 0 }};
-            if (c.poll(&pfd, 1, connect_timeout_ms) > 0) {
+            // Huy duoc (9/9): poll them ong wake; back/Retry/dong tab khong phai doi het 10s.
+            const w = waitFdOrAbort(session, fd, c.POLLOUT, connect_timeout_ms);
+            if (w > 0) {
                 var so_err: c_int = 0;
                 var so_len: c.socklen_t = @sizeOf(c_int);
                 if (c.getsockopt(fd, c.SOL_SOCKET, c.SO_ERROR, &so_err, &so_len) == 0 and so_err == 0) return fd;
+            } else if (w < 0) {
+                closeSocket(fd);
+                return error.Aborted;
             }
         }
         closeSocket(fd);
@@ -655,6 +721,10 @@ export fn Java_com_jossephus_chuchu_service_ssh_NativeSshBridge_nativeConnect(en
 
     logInfo("nativeConnect host={s} port={} user={s}", .{ host_slice, port, username_slice });
 
+    // Pha connecting keo dai qua handshake/auth/mo kenh (JNI rieng): tat o cuoi
+    // nativeOpenShell/OpenExec/OpenExecPty va nativeClose. Khong xoa abort_connect o day:
+    // session la moi (nativeCreateSession), huy toi truoc luc nay van phai co hieu luc.
+    session.connecting = true;
     session.last_error.clearRetainingCapacity();
     clearHostKeyCopy(session);
     if (session.username) |old| allocator.free(old);
@@ -663,7 +733,12 @@ export fn Java_com_jossephus_chuchu_service_ssh_NativeSshBridge_nativeConnect(en
         return c.JNI_FALSE;
     };
 
-    const fd = connectSocket(host_z, @intCast(@max(port, 0))) catch {
+    const fd = connectSocket(session, host_z, @intCast(@max(port, 0))) catch |err| {
+        if (err == error.Aborted) {
+            logInfo("Socket connect cancelled host={s} port={}", .{ host_slice, port });
+            setError(session, cancelled_msg, .{});
+            return c.JNI_FALSE;
+        }
         logError("Socket connect failed host={s} port={}", .{ host_slice, port });
         setError(session, "Socket connect failed host={s} port={}", .{ host_slice, port });
         return c.JNI_FALSE;
@@ -1056,6 +1131,7 @@ export fn Java_com_jossephus_chuchu_service_ssh_NativeSshBridge_nativeOpenShell(
     setSocketNonBlocking(session.socket_fd);
     c.libssh2_session_set_blocking(ssh_session, 0);
     c.libssh2_channel_set_blocking(channel.?, 0);
+    session.connecting = false;
     return c.JNI_TRUE;
 }
 
@@ -1116,6 +1192,7 @@ export fn Java_com_jossephus_chuchu_service_ssh_NativeSshBridge_nativeOpenExec(e
     setSocketNonBlocking(session.socket_fd);
     c.libssh2_session_set_blocking(ssh_session, 0);
     c.libssh2_channel_set_blocking(channel.?, 0);
+    session.connecting = false;
     return c.JNI_TRUE;
 }
 
@@ -1196,6 +1273,7 @@ export fn Java_com_jossephus_chuchu_service_ssh_NativeSshBridge_nativeOpenExecPt
     setSocketNonBlocking(session.socket_fd);
     c.libssh2_session_set_blocking(ssh_session, 0);
     c.libssh2_channel_set_blocking(channel.?, 0);
+    session.connecting = false;
     return c.JNI_TRUE;
 }
 
@@ -1287,6 +1365,7 @@ export fn Java_com_jossephus_chuchu_service_ssh_NativeSshBridge_nativeClose(env:
     _ = env;
     _ = thiz;
     const session = sessionFromHandle(handle) orelse return;
+    session.connecting = false;
     // Best-effort SFTP teardown: even if it stalls (e.g. the peer is gone), we
     // must still free the channel, session, and socket below. libssh2_session_free
     // releases any remaining SFTP state, so a stalled shutdown is not fatal here.

@@ -204,6 +204,9 @@ class TerminalSessionEngine(
                 multiplexerCreateIfMissing = multiplexerCreateIfMissing,
             )
         lastConnectionParams = params
+        // Retry giua luc cu connect truoc con dang cho: huy no ngay, khong thi khoi
+        // connect moi xep hang sau toi 10s poll tren dispatcher mot luong (9/9).
+        nativeSsh.abortConnect()
         launchSession {
             reconnectJob?.cancel()
             reconnectJob = null
@@ -626,6 +629,7 @@ class TerminalSessionEngine(
         reconnectJob = null
         lastConnectionParams = null
         cancelHostKeyPrompt()
+        nativeSsh.abortConnect()          // dong tab dang noi: khong doi het poll
         launchSession {
             readJob?.cancel()
             readJob = null
@@ -647,6 +651,12 @@ class TerminalSessionEngine(
                     sessionKey = _state.value.sessionKey,
                 )
         }
+    }
+
+    /** Roi man terminal khi tab con dang noi (back): huy cu connect, tab o lai voi loi + Retry (9/9). */
+    fun abortConnectIfPending() {
+        val st = _state.value.status
+        if (st == SessionStatus.Connecting || st == SessionStatus.Reconnecting) nativeSsh.abortConnect()
     }
 
     fun dispose() {
