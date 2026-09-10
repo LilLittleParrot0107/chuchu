@@ -92,11 +92,10 @@ class DbtopUiStateTest {
         )
 
         val watchlist = testState.buildWatchlist()
-        assertEquals(3, watchlist.size)
+        assertEquals(2, watchlist.size)
         assertEquals("BTC", watchlist[0].symbol)
         assertEquals(77000.0, watchlist[0].price, 0.01)
         assertEquals(0.0, watchlist[0].totalUsd, 0.01)
         assertEquals("ETH", watchlist[1].symbol)
-        assertEquals("MON", watchlist[2].symbol)
     }
 }

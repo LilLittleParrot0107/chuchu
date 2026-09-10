@@ -111,9 +111,8 @@ fun DbtopState.buildWatchlist(px24: Map<String, Double> = emptyMap()): List<Watc
 
     return map.mapNotNull { (baseSym, holdings) ->
         val totalUsd = holdings.sumOf { it.usd }
-        // Hiển thị nếu: vị thế đang giữ >= 100 USD, HOẶC được server chủ động đẩy vào px (server-driven watchlist)
-        val isServerTicker = px.containsKey(baseSym) || px.containsKey(baseSym.lowercase()) || px.containsKey(baseSym.uppercase())
-        if (totalUsd < 100.0 && !isServerTicker) return@mapNotNull null
+        // Luật dbtop: chỉ show những token có vị thế trong danh mục >= 100 USD (trừ tài sản mốc thị trường như BTC)
+        if (totalUsd < 100.0 && baseSym != "BTC") return@mapNotNull null
 
         // Giá của token gốc (LST -> giá token gốc: MON, HYPE, BTC, ETH...)
         val currentPx = px[baseSym]
