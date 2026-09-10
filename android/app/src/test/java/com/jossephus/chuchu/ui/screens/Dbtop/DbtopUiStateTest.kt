@@ -5,6 +5,7 @@ import com.jossephus.chuchu.data.model.dbtop.DappRow
 import com.jossephus.chuchu.data.model.dbtop.DataFreshness
 import com.jossephus.chuchu.data.model.dbtop.DbtopState
 import com.jossephus.chuchu.data.model.dbtop.OptionDetail
+import com.jossephus.chuchu.data.model.dbtop.WalletToken
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
@@ -79,5 +80,22 @@ class DbtopUiStateTest {
         )
 
         assertEquals(null, ui.currentPerDay(nowSec = 1_000L))
+    }
+
+    @Test
+    fun `buildWatchlist always includes and pins BTC first even with zero holdings`() {
+        val testState = DbtopState(
+            px = mapOf("ETH" to 2500.0, "BTC" to 77000.0, "MON" to 0.025),
+            walletTokens = listOf(
+                WalletToken(sym = "ETH", amt = 1.0, usd = 2500.0, px = 2500.0),
+            ),
+        )
+
+        val watchlist = testState.buildWatchlist()
+        assertEquals(2, watchlist.size)
+        assertEquals("BTC", watchlist[0].symbol)
+        assertEquals(77000.0, watchlist[0].price, 0.01)
+        assertEquals(0.0, watchlist[0].totalUsd, 0.01)
+        assertEquals("ETH", watchlist[1].symbol)
     }
 }

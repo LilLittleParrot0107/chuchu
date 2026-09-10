@@ -76,6 +76,8 @@ private data class TokenHoldingAccum(
     val proto: String,
 )
 
+internal val ALWAYS_WATCH = setOf("BTC")
+
 fun DbtopState.buildWatchlist(px24: Map<String, Double> = emptyMap()): List<WatchlistTokenItem> {
     val map = mutableMapOf<String, MutableList<TokenHoldingAccum>>()
 
@@ -111,8 +113,8 @@ fun DbtopState.buildWatchlist(px24: Map<String, Double> = emptyMap()): List<Watc
 
     return map.mapNotNull { (baseSym, holdings) ->
         val totalUsd = holdings.sumOf { it.usd }
-        // Luật dbtop: chỉ show những token có vị thế nhiều hơn 100 USD
-        if (totalUsd < 100.0) return@mapNotNull null
+        // Luật dbtop: chỉ show những token có vị thế nhiều hơn 100 USD (trừ tài sản mốc thị trường như BTC)
+        if (totalUsd < 100.0 && baseSym !in ALWAYS_WATCH) return@mapNotNull null
 
         // Giá của token gốc (LST -> giá token gốc: MON, HYPE, BTC, ETH...)
         val currentPx = px[baseSym]
@@ -134,7 +136,8 @@ fun DbtopState.buildWatchlist(px24: Map<String, Double> = emptyMap()): List<Watc
             changePct24h = prev?.takeIf { it > 0 }?.let { (currentPx - it) / it * 100.0 },
         )
     }.sortedWith(
-        compareByDescending<WatchlistTokenItem> { it.totalUsd }
+        compareBy<WatchlistTokenItem> { if (it.symbol in ALWAYS_WATCH) 0 else 1 }
+            .thenByDescending { it.totalUsd }
             .thenByDescending { it.price }
             .thenBy { it.symbol }
     )
