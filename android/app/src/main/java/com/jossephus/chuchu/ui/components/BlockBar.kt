@@ -81,6 +81,12 @@ fun BlockBar(
     tailWidth: Int = 92,
     fontSize: Int = 9,
     textSize: Int = 11,
+    /**
+     * Giữ chỗ cột đuôi cả khi [tail] rỗng. Mặc định false để ba thanh Dashboard vẫn
+     * kéo hết bề ngang; panel MACHINE/USAGE bật lên vì một dòng không đuôi (CPU không
+     * có cảm biến nhiệt) làm thanh dài thêm 96dp, cột lệch cả bảng (user báo 13/9).
+     */
+    reserveTail: Boolean = false,
 ) {
     val colors = ChuColors.current
     val type = ChuTypography.current
@@ -114,7 +120,7 @@ fun BlockBar(
             maxLines = 1,
             modifier = Modifier.padding(start = 6.dp).width(valueWidth.dp),
         )
-        if (tail.isNotEmpty()) {
+        if (tail.isNotEmpty() || reserveTail) {
             ChuText(tail, style = textStyle.copy(textAlign = TextAlign.End),
                 color = colors.textMuted.copy(alpha = alpha), maxLines = 1,
                 overflow = TextOverflow.Clip, softWrap = false,

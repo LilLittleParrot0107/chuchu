@@ -29,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jossephus.chuchu.data.model.machine.MachineReadout
@@ -185,7 +186,9 @@ private fun MachineStripPages(
     // Hai trang PHẢI cao bằng nhau, nếu không lướt qua lại là giật (user chốt
     // 3/9). Lấy theo trang nhiều dòng hơn; trang ngắn hơn thì chừa chỗ trống.
     val rows = maxOf(machineRowCount(readout), usageRowCount(readout))
-    val pageHeight = (rows * ROW_HEIGHT_DP).dp
+    // + đệm dọc của Column bên trong: hàng đã khoá cứng thì khung phải chứa đủ,
+    // không thì trang đủ 8 dòng bị xén 6dp mỗi đầu.
+    val pageHeight = (rows * ROW_HEIGHT_DP + 2 * PAGE_PAD_DP).dp
 
     // Trang USAGE chỉ được LÀM MỚI khi người dùng trượt tới (user chốt 3/9):
     // đọc cache quota thì gần như miễn phí, nhưng làm mới nó tốn 5s + 380MB
@@ -198,12 +201,14 @@ private fun MachineStripPages(
             modifier = Modifier.fillMaxWidth().height(pageHeight),
             verticalAlignment = Alignment.Top,
         ) { page ->
-            // Trang ít dòng hơn DÀN ĐỀU ra cho kín khung, thay vì dồn lên trên
-            // rồi để một khoảng trống dưới đáy — khung đã cao bằng nhau mà phần
-            // có chữ lại dài ngắn khác nhau thì nhìn vẫn lệch (user báo 4/9).
+            // Trang ít dòng hơn: khối CĂN GIỮA, giãn dòng y hệt trang kia (13/9, user
+            // giao em chọn). Dàn đều (4/9) làm USAGE 5 dòng cách 35dp còn MACHINE 22dp,
+            // hai trang nhìn như hai bảng khác nhau; dồn lên trên thì để hố trống dưới
+            // đáy, chính cái user chê 4/9. Mỗi hàng khoá cứng ROW_HEIGHT_DP nên chiều
+            // cao khung = số dòng × 22 chính xác, không còn ước lượng dư vài dp.
             Column(
-                Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 6.dp),
-                verticalArrangement = Arrangement.SpaceEvenly,
+                Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = PAGE_PAD_DP.dp),
+                verticalArrangement = Arrangement.Center,
             ) {
                 if (page == 0) MachinePage(readout, alpha) else UsagePage(readout, alpha)
             }
@@ -251,27 +256,30 @@ private fun MachinePage(readout: MachineReadout, alpha: Float) {
     val colors = ChuColors.current
     val s = readout.snapshot
     BlockBar("CPU", readout.cpuPct?.div(100.0), pct(readout.cpuPct), colors.accentSecondary,
-        tail = s.tempCpu?.let { "$it°C" } ?: "", alpha = alpha, labelWidth = PANEL_LABEL_W, fontSize = PANEL_BAR_SP, textSize = PANEL_TEXT_SP)
+        tail = s.tempCpu?.let { "$it°C" } ?: "", alpha = alpha, labelWidth = PANEL_LABEL_W, reserveTail = true, modifier = rowMod(), fontSize = PANEL_BAR_SP, textSize = PANEL_TEXT_SP)
     BlockBar("RAM", s.memPct / 100.0, pct(s.memPct), colors.accent,
-        tail = "${g(s.memUsedKb)}/${g(s.memTotalKb)}G", alpha = alpha, labelWidth = PANEL_LABEL_W, fontSize = PANEL_BAR_SP, textSize = PANEL_TEXT_SP)
+        tail = "${g(s.memUsedKb)}/${g(s.memTotalKb)}G", alpha = alpha, labelWidth = PANEL_LABEL_W, reserveTail = true, modifier = rowMod(), fontSize = PANEL_BAR_SP, textSize = PANEL_TEXT_SP)
     s.gpu?.let {
-        BlockBar("GPU", it.util / 100.0, "${it.util}%", colors.success, tail = "${it.temp}°C", alpha = alpha, labelWidth = PANEL_LABEL_W, fontSize = PANEL_BAR_SP, textSize = PANEL_TEXT_SP)
+        BlockBar("GPU", it.util / 100.0, "${it.util}%", colors.success, tail = "${it.temp}°C", alpha = alpha, labelWidth = PANEL_LABEL_W, reserveTail = true, modifier = rowMod(), fontSize = PANEL_BAR_SP, textSize = PANEL_TEXT_SP)
         BlockBar("VRA", it.memPct / 100.0, pct(it.memPct), colors.success,
-            tail = "${gMb(it.memUsedMb)}/${gMb(it.memTotalMb)}G", alpha = alpha, labelWidth = PANEL_LABEL_W, fontSize = PANEL_BAR_SP, textSize = PANEL_TEXT_SP)
+            tail = "${gMb(it.memUsedMb)}/${gMb(it.memTotalMb)}G", alpha = alpha, labelWidth = PANEL_LABEL_W, reserveTail = true, modifier = rowMod(), fontSize = PANEL_BAR_SP, textSize = PANEL_TEXT_SP)
     }
     BlockBar("DSK", s.diskPct / 100.0, pct(s.diskPct), colors.warning,
-        tail = "${g(s.diskUsedKb)}/${g(s.diskTotalKb)}G", alpha = alpha, labelWidth = PANEL_LABEL_W, fontSize = PANEL_BAR_SP, textSize = PANEL_TEXT_SP)
+        tail = "${g(s.diskUsedKb)}/${g(s.diskTotalKb)}G", alpha = alpha, labelWidth = PANEL_LABEL_W, reserveTail = true, modifier = rowMod(), fontSize = PANEL_BAR_SP, textSize = PANEL_TEXT_SP)
     val load = s.load.firstOrNull() ?: 0.0
     BlockBar("LOAD", load / s.ncpu.coerceAtLeast(1), String.format(Locale.US, "%.2f", load),
-        colors.accentSecondary, tail = "${s.ncpu} core", alpha = alpha, labelWidth = PANEL_LABEL_W, fontSize = PANEL_BAR_SP, textSize = PANEL_TEXT_SP)
+        colors.accentSecondary, tail = "${s.ncpu} core", alpha = alpha, labelWidth = PANEL_LABEL_W, reserveTail = true, modifier = rowMod(), fontSize = PANEL_BAR_SP, textSize = PANEL_TEXT_SP)
     // Tiến trình không có "phần trăm của cái gì" nên đừng ép vào khuôn bar —
-    // bản trước làm thế khiến tên bị cắt còn "clau".
+    // bản trước làm thế khiến tên bị cắt còn "clau". Nhưng vẫn phải NẰM TRONG LƯỚI
+    // của BlockBar: tên chiếm cột nhãn + thanh, số chiếm cột số + đuôi (đúng
+    // 6 + 46 + 4 + 92 dp), để mép phải và mép thanh thẳng với các dòng trên (13/9).
     readout.topRam.take(2).forEach { p ->
-        Row(Modifier.fillMaxWidth().padding(vertical = 1.dp)) {
+        Row(rowMod().fillMaxWidth().padding(vertical = 1.dp), verticalAlignment = Alignment.CenterVertically) {
             ChuText(p.comm, style = rowStyle(), color = colors.textSecondary.copy(alpha = alpha),
                 maxLines = 1, modifier = Modifier.weight(1f))
-            ChuText("${g(p.rssKb)}G ×${p.n}", style = rowStyle(),
-                color = colors.textMuted.copy(alpha = alpha), maxLines = 1)
+            ChuText("${g(p.rssKb)}G ×${p.n}", style = rowStyle().copy(textAlign = TextAlign.End),
+                color = colors.textMuted.copy(alpha = alpha), maxLines = 1,
+                modifier = Modifier.width(PANEL_RIGHT_W.dp))
         }
     }
 }
@@ -297,14 +305,14 @@ private fun UsagePage(readout: MachineReadout, alpha: Float) {
         val left = 100 - it.usedPct
         BlockBar("cl·5h", left / 100.0, "$left%", leftColor(left, colors),
             tail = resetIn(it.resetsEpoch, it.resetsAt ?: ""),
-            alpha = alpha, labelColor = colors.accent, labelWidth = PANEL_LABEL_W,
+            alpha = alpha, labelColor = colors.accent, labelWidth = PANEL_LABEL_W, reserveTail = true, modifier = rowMod(),
             fontSize = PANEL_BAR_SP, textSize = PANEL_TEXT_SP)
     }
     s.claude?.week?.let {
         val left = 100 - it.usedPct
         BlockBar("cl·week", left / 100.0, "$left%", leftColor(left, colors),
             tail = resetIn(it.resetsEpoch, it.resetsAt ?: ""),
-            alpha = alpha, labelColor = colors.accent, labelWidth = PANEL_LABEL_W,
+            alpha = alpha, labelColor = colors.accent, labelWidth = PANEL_LABEL_W, reserveTail = true, modifier = rowMod(),
             fontSize = PANEL_BAR_SP, textSize = PANEL_TEXT_SP)
     }
     // Mỗi tài khoản MỘT dòng, lấy cửa sổ căng nhất — thứ đáng biết là "con nào
@@ -321,14 +329,20 @@ private fun UsagePage(readout: MachineReadout, alpha: Float) {
         val mark = if (a.id == s.agy?.current) "▸" else " "
         BlockBar("${mark}agy·${a.id.removePrefix("acc")}",
             left / 100.0, "${left.toInt()}%", leftColor(left.toInt(), colors),
-            tail = tail, alpha = alpha, labelColor = colors.success, labelWidth = PANEL_LABEL_W,
+            tail = tail, alpha = alpha, labelColor = colors.success, labelWidth = PANEL_LABEL_W, reserveTail = true, modifier = rowMod(),
             fontSize = PANEL_BAR_SP, textSize = PANEL_TEXT_SP)
     }
 }
 
-/** Cao xấp xỉ một hàng BlockBar (chữ 11sp + đệm 2dp). */
+/** Chiều cao MỖI hàng, khoá cứng qua [rowMod] — không còn "xấp xỉ" (13/9). */
 // Chữ 13sp / bar 11sp / hàng 22dp — to hơn bản đầu ~20% (user chốt 3/9).
 private const val ROW_HEIGHT_DP = 22
+/** Đệm dọc của mỗi trang (trên + dưới), cộng vào chiều cao pager. */
+private const val PAGE_PAD_DP = 6
+/** Cột số + đuôi của BlockBar, tính cả hai khoảng đệm: 6 + 46 + 4 + 92. */
+private const val PANEL_RIGHT_W = 6 + 46 + 4 + 92
+
+private fun rowMod(): Modifier = Modifier.height(ROW_HEIGHT_DP.dp)
 private const val PANEL_TEXT_SP = 13
 private const val PANEL_BAR_SP = 11
 /** Đủ cho nhãn dài nhất "cl·week" (7 ô monospace ở 13sp). */
