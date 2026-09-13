@@ -55,14 +55,14 @@ class SettingsRepository(context: Context) {
     /**
      * Trả về URL dbtop hiệu dụng:
      * 1. Nếu dbtopUrl được set thủ công -> dùng dbtopUrl.
-     * 2. Ngược lại tự động dẫn xuất từ webPortalUrl + "/debank/state.json".
+     * 2. Ngược lại tự động dẫn xuất từ webPortalUrl + "/chuchu/debank/state.json".
      */
     val resolvedDbtopUrl: String
         get() {
             val custom = _dbtopUrl.value.trim()
             if (custom.isNotEmpty()) return custom
             val portal = _webPortalUrl.value.trim().trimEnd('/')
-            return if (portal.isNotEmpty()) "$portal/debank/state.json" else DEFAULT_DBTOP_URL
+            return if (portal.isNotEmpty()) "$portal/chuchu/debank/state.json" else DEFAULT_DBTOP_URL
         }
 
     /** spending.json do spending-scan tren Legion sinh, phuc vu cung goc dufs voi state.json. */
@@ -316,7 +316,7 @@ class SettingsRepository(context: Context) {
         private const val KEY_WEB_PORTAL_URL = "web_portal_url"
         private const val KEY_DBTOP_URL = "dbtop_url"
         private const val KEY_DBTOP_MONEY = "dbtop_money_display"
-        private const val DEFAULT_DBTOP_URL = "https://the-real-witch.tail26a258.ts.net/home/debank/state.json"
+        private const val DEFAULT_DBTOP_URL = "https://the-real-witch.tail26a258.ts.net/home/chuchu/debank/state.json"
         // dufs khong con serve o goc: 20/8 thu pham vi ve /home/a/chuchu va
         // gan vao `tailscale serve --set-path /chuchu` (goc phoi ca $HOME ra
         // tailnet, ke ca ~/.ssh). Duong cu gio khong co gi ánh xa -> 404.

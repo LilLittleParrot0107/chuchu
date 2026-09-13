@@ -124,7 +124,7 @@ class DbtopClient(
 
                     HttpURLConnection.HTTP_UNAUTHORIZED -> {
                         FetchResult.Failed(
-                            "The dbtop route requires authentication (401) — check the /home/debank/state.json URL",
+                            "The dbtop route requires authentication (401) — check the /home/chuchu/debank/state.json URL",
                             needsAuth = true,
                         )
                     }
