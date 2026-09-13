@@ -5,6 +5,7 @@ import com.jossephus.chuchu.data.model.dbtop.DappRow
 import com.jossephus.chuchu.data.model.dbtop.DataFreshness
 import com.jossephus.chuchu.data.model.dbtop.DbtopState
 import com.jossephus.chuchu.data.model.dbtop.OptionDetail
+import com.jossephus.chuchu.data.model.dbtop.TokenPosition
 import com.jossephus.chuchu.data.model.dbtop.WalletToken
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
@@ -97,5 +98,93 @@ class DbtopUiStateTest {
         assertEquals(77000.0, watchlist[0].price, 0.01)
         assertEquals(0.0, watchlist[0].totalUsd, 0.01)
         assertEquals("ETH", watchlist[1].symbol)
+    }
+
+    @Test
+    fun `buildWatchlist subtracts borrowed tokens from totalUsd`() {
+        val testState = DbtopState(
+            px = mapOf("BTC" to 70000.0),
+            rows = listOf(
+                DappRow(
+                    proto = "Lending",
+                    detail = DappDetail(
+                        supply = listOf(TokenPosition(sym = "BTC", amt = 2.0, px = 70000.0, usd = 140000.0)),
+                        borrow = listOf(TokenPosition(sym = "BTC", amt = 0.5, px = 70000.0, usd = 35000.0)),
+                    ),
+                ),
+            ),
+        )
+        val watchlist = testState.buildWatchlist()
+        assertEquals(1, watchlist.size)
+        assertEquals("BTC", watchlist[0].symbol)
+        assertEquals(105000.0, watchlist[0].totalUsd, 0.01)
+    }
+
+    @Test
+    fun `buildWatchlist respects dynamic benchmarks from state`() {
+        val testState = DbtopState(
+            benchmarks = listOf("SOL"),
+            px = mapOf("SOL" to 150.0, "BTC" to 70000.0),
+        )
+        val watchlist = testState.buildWatchlist()
+        assertEquals(1, watchlist.size)
+        assertEquals("SOL", watchlist[0].symbol)
+    }
+
+    @Test
+    fun `buildWatchlist normalizes FBTC to BTC and aggregates`() {
+        val testState = DbtopState(
+            px = mapOf("BTC" to 70000.0),
+            walletTokens = listOf(
+                WalletToken(sym = "FBTC", amt = 0.1, px = 70000.0, usd = 7000.0),
+            ),
+        )
+        val watchlist = testState.buildWatchlist()
+        assertEquals(1, watchlist.size)
+        assertEquals("BTC", watchlist[0].symbol)
+        assertEquals(7000.0, watchlist[0].totalUsd, 0.01)
+    }
+
+    @Test
+    fun `buildWatchlist retains net debt positions exceeding 100 USD threshold`() {
+        val testState = DbtopState(
+            benchmarks = listOf("BTC"),
+            px = mapOf("BTC" to 70000.0, "ETH" to 2500.0),
+            rows = listOf(
+                DappRow(
+                    proto = "Aave",
+                    detail = DappDetail(
+                        borrow = listOf(TokenPosition(sym = "ETH", amt = 2.0, px = 2500.0, usd = 5000.0)),
+                    ),
+                ),
+            ),
+        )
+        val watchlist = testState.buildWatchlist()
+        assertEquals(2, watchlist.size)
+        assertEquals("BTC", watchlist[0].symbol)
+        assertEquals("ETH", watchlist[1].symbol)
+        assertEquals(-5000.0, watchlist[1].totalUsd, 0.01)
+    }
+
+    @Test
+    fun `buildWatchlist resolves mixed-case aliases in px24 such as cbBTC`() {
+        val testState = DbtopState(
+            benchmarks = listOf("BTC"),
+            px = mapOf("BTC" to 70000.0),
+        )
+        val watchlist = testState.buildWatchlist(px24 = mapOf("cbBTC" to 68000.0))
+        assertEquals(1, watchlist.size)
+        assertEquals("BTC", watchlist[0].symbol)
+        assertEquals(2.94, watchlist[0].changePct24h!!, 0.01)
+    }
+
+    @Test
+    fun `buildWatchlist filters out NaN or non-finite prices`() {
+        val testState = DbtopState(
+            benchmarks = listOf("BTC"),
+            px = mapOf("BTC" to Double.NaN),
+        )
+        val watchlist = testState.buildWatchlist()
+        assertEquals(0, watchlist.size)
     }
 }

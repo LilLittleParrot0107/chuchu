@@ -28,6 +28,7 @@ val DbtopJson = Json {
     isLenient = true
     coerceInputValues = true
     explicitNulls = false
+    allowSpecialFloatingPointValues = true
 }
 
 // ============================================================================
@@ -63,6 +64,7 @@ data class DbtopState(
     val quoteAge: Long? = null,
     val daily: List<DailyYield> = emptyList(),
     val mtd: MtdStats? = null,
+    val benchmarks: List<String> = emptyList(),
 ) {
     /** Độ tuổi của dữ liệu tính theo giây */
     fun ageSeconds(nowSec: Long = System.currentTimeMillis() / 1000): Long =

@@ -39,7 +39,7 @@ fun normalizeBaseToken(sym: String): String {
     return when {
         s in listOf("SMON", "SHMON", "GMON", "WMON", "MON") -> "MON"
         s in listOf("WHYPE", "SHYPE", "HYPE") -> "HYPE"
-        s in listOf("UBTC", "WBTC", "CBBTC", "TBTC", "BTC") -> "BTC"
+        s in listOf("UBTC", "WBTC", "CBBTC", "TBTC", "FBTC", "BTC") -> "BTC"
         s in listOf("WETH", "STETH", "WSTETH", "RETH", "UETH", "ETH") -> "ETH"
         s in listOf("WS", "S") -> "S"
         s in listOf("WMATIC", "MATIC", "POL") -> "POL"
@@ -92,7 +92,7 @@ fun DbtopState.buildWatchlist(px24: Map<String, Double> = emptyMap()): List<Watc
         val d = row.detail
         d?.collateral?.forEach { add(it.sym, it.amt, it.usd, it.px, row.proto) }
         d?.supply?.forEach { add(it.sym, it.amt, it.usd, it.px, row.proto) }
-        d?.borrow?.forEach { add(it.sym, it.amt, it.usd, it.px, row.proto) }
+        d?.borrow?.forEach { add(it.sym, -it.amt, -it.usd, it.px, row.proto) }
         d?.reward?.forEach { add(it.sym, it.amt, it.usd, it.px, row.proto) }
         d?.option?.underlying?.let { add(it.sym, it.amt, it.amt * it.px, it.px, row.proto) }
     }
@@ -101,18 +101,24 @@ fun DbtopState.buildWatchlist(px24: Map<String, Double> = emptyMap()): List<Watc
         add(wt.sym, wt.amt, wt.usd, wt.px, "Wallet")
     }
 
-    for ((sym, p) in px) {
-        val base = normalizeBaseToken(sym)
-        if (isUsdStablecoin(base)) continue
-        if (!map.containsKey(base)) {
-            map[base] = mutableListOf()
+    val activeBenchmarks = (if (benchmarks.isNotEmpty()) benchmarks else listOf("BTC"))
+        .map { normalizeBaseToken(it) }
+        .toSet()
+
+    for (bm in activeBenchmarks) {
+        if (!map.containsKey(bm)) {
+            map[bm] = mutableListOf()
         }
     }
 
+    val px24Upper = px24.mapKeys { it.key.uppercase() }
+
     return map.mapNotNull { (baseSym, holdings) ->
         val totalUsd = holdings.sumOf { it.usd }
-        // Luật dbtop: chỉ show những token có vị thế trong danh mục >= 100 USD (trừ tài sản mốc thị trường như BTC)
-        if (totalUsd < 100.0 && baseSym != "BTC") return@mapNotNull null
+        val grossUsd = holdings.sumOf { kotlin.math.abs(it.usd) }
+        val isBenchmark = baseSym in activeBenchmarks
+        // Luật dbtop: chỉ show token có vị thế trong danh mục >= 100 USD (trừ tài sản benchmark cấu hình từ server)
+        if (grossUsd < 100.0 && !isBenchmark) return@mapNotNull null
 
         // Giá của token gốc (LST -> giá token gốc: MON, HYPE, BTC, ETH...)
         val currentPx = px[baseSym]
@@ -121,21 +127,27 @@ fun DbtopState.buildWatchlist(px24: Map<String, Double> = emptyMap()): List<Watc
             ?: holdings.firstOrNull { it.price > 0.0 }?.price
             ?: 0.0
 
-        if (currentPx <= 0.0) return@mapNotNull null
+        if (currentPx <= 0.0 || !currentPx.isFinite()) return@mapNotNull null
 
-        // px24 co the mang ky hieu wrap (UBTC, WMON) thay vi symbol chuan —
-        // thu exact roi W-/U- prefix (cung gia voi goc); KHONG lay s*/sh*
-        // (LST gia khac han).
-        val prev = px24[baseSym] ?: px24["W" + baseSym] ?: px24["U" + baseSym]
+        // px24 có thể mang ký hiệu wrap (UBTC, WMON) hoặc alias (cbBTC, TBTC, FBTC) thay vì symbol chuẩn
+        val prev = px24Upper[baseSym]
+            ?: px24Upper["W$baseSym"]
+            ?: px24Upper["U$baseSym"]
+            ?: (if (baseSym == "BTC") px24Upper["CBBTC"] ?: px24Upper["TBTC"] ?: px24Upper["FBTC"] else null)
+
+        val changePct = prev?.takeIf { it > 0.0 && it.isFinite() }?.let {
+            ((currentPx - it) / it * 100.0).takeIf { pct -> pct.isFinite() }
+        }
+
         WatchlistTokenItem(
             symbol = baseSym,
             price = currentPx,
             totalUsd = totalUsd,
-            changePct24h = prev?.takeIf { it > 0 }?.let { (currentPx - it) / it * 100.0 },
+            changePct24h = changePct,
         )
     }.sortedWith(
-        compareBy<WatchlistTokenItem> { if (it.symbol == "BTC") 0 else 1 }
-            .thenByDescending { it.totalUsd }
+        compareBy<WatchlistTokenItem> { if (it.symbol in activeBenchmarks) 0 else 1 }
+            .thenByDescending { kotlin.math.abs(it.totalUsd) }
             .thenByDescending { it.price }
             .thenBy { it.symbol }
     )

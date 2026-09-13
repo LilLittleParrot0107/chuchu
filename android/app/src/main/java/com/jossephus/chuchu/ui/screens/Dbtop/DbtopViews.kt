@@ -104,8 +104,11 @@ private fun WatchlistTokenRow(
             // Cot % 24h (user 27/8) — so voi px24 tu snapshot debank ~24h
             // truoc, KHONG phai pxPrev (gia lan quet truoc, 30 phut).
             val pct = token.changePct24h
+            val isZero = pct == null || kotlin.math.abs(pct) < 0.05
             ChuText(
-                text = pct?.let { String.format(Locale.US, "%+.1f%%", it) } ?: "—",
+                text = pct?.let {
+                    if (kotlin.math.abs(it) < 0.05) "0.0%" else String.format(Locale.US, "%+.1f%%", it)
+                } ?: "—",
                 style = type.labelSmall.copy(
                     fontFamily = FontFamily.Monospace,
                     fontFeatureSettings = "tnum",
@@ -113,8 +116,8 @@ private fun WatchlistTokenRow(
                     textAlign = TextAlign.End,
                 ),
                 color = when {
-                    pct == null -> colors.textMuted
-                    pct >= 0 -> colors.success
+                    isZero -> colors.textMuted
+                    pct >= 0.05 -> colors.success
                     else -> colors.error
                 },
                 maxLines = 1,
