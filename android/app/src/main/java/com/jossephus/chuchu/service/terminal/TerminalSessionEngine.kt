@@ -514,33 +514,33 @@ class TerminalSessionEngine(
     }
 
     suspend fun sftpListDirectory(path: String): List<String> =
-        withContext(dispatcher) { nativeSsh.sftpListDirectory(path) }
+        onSession { nativeSsh.sftpListDirectory(path) }
 
     suspend fun sftpRealpath(path: String): String =
-        withContext(dispatcher) { nativeSsh.sftpRealpath(path) }
+        onSession { nativeSsh.sftpRealpath(path) }
 
     suspend fun sftpOpenWrite(path: String) =
-        withContext(dispatcher) { nativeSsh.sftpOpenWrite(path) }
+        onSession { nativeSsh.sftpOpenWrite(path) }
 
     suspend fun sftpWriteChunk(data: ByteArray): Int =
-        withContext(dispatcher) { nativeSsh.sftpWriteChunk(data) }
+        onSession { nativeSsh.sftpWriteChunk(data) }
 
     suspend fun sftpCloseWrite() =
-        withContext(dispatcher) { nativeSsh.sftpCloseWrite() }
+        onSession { nativeSsh.sftpCloseWrite() }
 
     suspend fun sftpReadFile(path: String, maxBytes: Int): ByteArray =
-        withContext(dispatcher) { nativeSsh.sftpReadFile(path, maxBytes) }
+        onSession { nativeSsh.sftpReadFile(path, maxBytes) }
 
     suspend fun sftpMkdir(path: String): Boolean =
-        withContext(dispatcher) { nativeSsh.sftpMkdir(path) }
+        onSession { nativeSsh.sftpMkdir(path) }
 
     suspend fun sftpDelete(path: String, isDirectory: Boolean) =
-        withContext(dispatcher) {
+        onSession {
             if (isDirectory) nativeSsh.sftpDeleteDirectory(path) else nativeSsh.sftpDeleteFile(path)
         }
 
     suspend fun checkMultiplexerAvailability(spec: TabSpec): MultiplexerAvailability =
-        withContext(dispatcher) { checkMultiplexerAvailability(spec.toConnectionParams()) }
+        onSession { checkMultiplexerAvailability(spec.toConnectionParams()) }
 
     private suspend fun checkMultiplexerAvailability(params: ConnectionParams): MultiplexerAvailability {
         val type = params.multiplexer ?: return MultiplexerAvailability.Available
@@ -578,7 +578,7 @@ class TerminalSessionEngine(
     }
 
     suspend fun listMultiplexerSessions(spec: TabSpec): List<RemoteMultiplexerSession> =
-        withContext(dispatcher) {
+        onSession {
             val type = spec.multiplexer ?: throw IllegalStateException("No multiplexer selected")
             val multiplexer = MultiplexerRegistry.forType(type)
                 ?: throw IllegalStateException("${type.label} is not supported yet")
@@ -596,7 +596,7 @@ class TerminalSessionEngine(
         spec: TabSpec,
         localSessionNames: Collection<String>,
         reuseDetachedChuchuSession: Boolean = false,
-    ): String = withContext(dispatcher) {
+    ): String = onSession {
         val type = spec.multiplexer ?: MultiplexerRegistry.defaultType
         val multiplexer = MultiplexerRegistry.forType(type)
             ?: throw IllegalStateException("${type.label} is not supported yet")
@@ -609,16 +609,16 @@ class TerminalSessionEngine(
         // cho moi lan mo tab — new tab tung mat 3 handshake thay vi 2.
         val remoteSessions = listMultiplexerSessions(spec.copy(multiplexer = type))
         val existingName = spec.multiplexerSessionName?.takeIf { it.isNotBlank() }
-        if (existingName != null && spec.multiplexerCreateIfMissing) return@withContext existingName
+        if (existingName != null && spec.multiplexerCreateIfMissing) return@onSession existingName
         if (existingName != null) {
-            if (remoteSessions.any { it.name == existingName }) return@withContext existingName
+            if (remoteSessions.any { it.name == existingName }) return@onSession existingName
             throw IllegalStateException("${type.label} session \"$existingName\" is no longer available")
         }
         if (reuseDetachedChuchuSession) {
             MultiplexerSessionAllocator.reusableDetachedChuchuSessionName(
                 remoteSessions = remoteSessions,
                 localSessionNames = localSessionNames,
-            )?.let { return@withContext it }
+            )?.let { return@onSession it }
         }
         multiplexer.defaultSessionName(remoteSessions, localSessionNames)
     }
@@ -814,6 +814,21 @@ class TerminalSessionEngine(
      * MỌI việc xếp lên dispatcher của session đi qua đây: đánh thức read-loop đang chặn
      * trong poll() trước, không thì việc nằm chờ tới hết timeout (tối đa 30s ở nền).
      */
+    /**
+     * Chạy [block] trên luồng session và ĐÁNH THỨC vòng đọc trước (14/9, user báo ⊕ upload
+     * chậm, lúc được lúc không). `withContext(dispatcher)` chỉ xếp hàng; vòng đọc đang ngủ
+     * trong poll() tới 1 s ở foreground / 30 s ở nền (vá pin 7/9), nên MỖI chunk SFTP 64 KB
+     * phải đợi poll hết giờ mới tới lượt: ~64 KB/s khi đang nhìn màn hình, còn rời app giữa
+     * chừng thì mỗi chunk chờ 30 s → native báo "SFTP write stalled". launchSession đã wake
+     * từ 7/9, đường withContext (SFTP, preflight multiplexer) thì chưa — đây là chỗ hụt.
+     */
+    private suspend fun <T> onSession(block: suspend CoroutineScope.() -> T): T {
+        nativeSsh.wake()
+        localShellService.wake()
+        readWake.trySend(Unit)
+        return withContext(dispatcher, block)
+    }
+
     private fun launchSession(block: suspend CoroutineScope.() -> Unit): Job {
         // Đánh thức CẢ BA, không chọn theo transport: disconnect() xoá
         // lastConnectionParams TRƯỚC khi xếp việc, chọn theo nó là local shell không
