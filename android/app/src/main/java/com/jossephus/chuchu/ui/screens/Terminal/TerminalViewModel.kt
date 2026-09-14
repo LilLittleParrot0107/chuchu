@@ -134,6 +134,8 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
     private val _fileBrowserStateByTab =
         MutableStateFlow<Map<String, FileBrowserUiState>>(emptyMap())
     private val fileHomeByTab = ConcurrentHashMap<String, String>()
+    /** Thư mục của pane herdr đang focus mà tab Files đã tự nhảy tới lần cuối — theo tab. */
+    private val filesFocusCwdByTab = ConcurrentHashMap<String, String>()
     // One in-flight job per tab for each operation; launching a new one cancels
     // the previous, so stale responses can never overwrite newer state.
     private val fileBrowserRefreshJobs = ConcurrentHashMap<String, Job>()
@@ -467,6 +469,7 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
         _connectionTabByTab.value = _connectionTabByTab.value - id
         _fileBrowserStateByTab.value = _fileBrowserStateByTab.value - id
         fileHomeByTab.remove(id)
+        filesFocusCwdByTab.remove(id)
         fileBrowserResolverJobs.remove(id)?.cancel()
         fileBrowserRefreshJobs.remove(id)?.cancel()
         sessionRepository.closeTab(id)
@@ -489,6 +492,8 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
             val state = _fileBrowserStateByTab.value[id]
             if (state == null || state.entries.isEmpty()) {
                 resolveInitialFilePathAndRefresh(id)
+            } else {
+                followFocusedSession(id)
             }
         }
     }
@@ -522,32 +527,56 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
             null
         }
 
+    /**
+     * Thư mục của phiên đang chat = pane herdr đang được nhìn, hỏi qsrv `/focus` (user chốt
+     * 15/9: "vào Files là vào thẳng folder của session đang chat, không thì ít nhất home").
+     * null khi: tab là local shell, chưa cấu hình Queue, qsrv không trả lời trong ~2 s, hoặc
+     * đường dẫn không có trên host SFTP (tab đang nối máy khác) — realpath là phép kiểm cuối.
+     */
+    private suspend fun focusedSessionCwd(tabId: String): String? {
+        val spec = sessionRepository.tabs.value.firstOrNull { it.id == tabId }?.spec ?: return null
+        if (spec.transport == Transport.LocalShell) return null
+        val url = settingsRepository.queueUrl.value
+        if (url.isBlank()) return null
+        val client = QueueClient(url, settingsRepository.queueToken.value, connectTimeoutMs = 1_500, readTimeoutMs = 2_000)
+        val cwd = (client.focus() as? QueueClient.FocusFetch.Ok)?.cwd ?: return null
+        return pickRemoteHome(resolveRealpath(tabId, cwd))
+    }
+
+    /**
+     * Vào LẠI tab Files: đã chuyển sang chat với pane khác thì nhảy tới thư mục của pane đó;
+     * vẫn pane cũ thì giữ nguyên chỗ đang duyệt — đừng kéo người ta về đầu mỗi lần bật tab.
+     */
+    private fun followFocusedSession(tabId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val focus = focusedSessionCwd(tabId) ?: return@launch
+            if (!isActive || !tabExists(tabId) || activeTabId.value != tabId) return@launch
+            if (filesFocusCwdByTab.put(tabId, focus) == focus) return@launch
+            updateFileBrowserState(tabId) { it.copy(currentPath = focus) }
+            refreshFileBrowser(tabId)
+        }
+    }
+
     private fun resolveInitialFilePathAndRefresh(tabId: String) {
         if (!tabExists(tabId)) return
-        val pwd = currentSessionPwd(tabId)
-        if (pwd != null) {
-            updateFileBrowserState(tabId) { it.copy(currentPath = pwd, resolvedHomePath = pwd) }
-            refreshFileBrowser(tabId)
-            return
-        }
-        val cachedHome = fileHomeByTab[tabId]
-        if (cachedHome != null) {
-            updateFileBrowserState(tabId) { it.copy(currentPath = cachedHome) }
-            refreshFileBrowser(tabId)
-            return
-        }
         fileBrowserResolverJobs.remove(tabId)?.cancel()
         val resolverJob =
             viewModelScope.launch(Dispatchers.IO) {
+                // Thứ tự: thư mục phiên đang chat → pwd của tab (OSC 7) → home. Home lấy từ
+                // cache của tab, không có thì realpath("."); KHÔNG hỏi "~" (sshd 9.x trả
+                // "/home/a/~") và KHÔNG BAO GIỜ nhận "/" (pickRemoteHome, bug 3/9) — "/" chỉ
+                // còn là đường cùng khi SFTP chưa lên.
+                val focus = focusedSessionCwd(tabId)
                 val tabState = sessionRepository.tabs.value.firstOrNull { it.id == tabId }
-                val fallback = tabState?.engine?.state?.value?.pwd?.takeIf { it.isNotBlank() } ?: "/"
-                val resolved = resolveRealpath(tabId, ".") ?: resolveRealpath(tabId, "~")
+                val enginePwd = tabState?.engine?.state?.value?.pwd?.takeIf { it.isNotBlank() }
+                val home = pickRemoteHome(fileHomeByTab[tabId])
+                    ?: pickRemoteHome(resolveRealpath(tabId, "."), enginePwd)
                 if (!isActive || !tabExists(tabId)) return@launch
-                val home = resolved ?: fallback
-                val initial = currentSessionPwd(tabId) ?: home
-                fileHomeByTab[tabId] = home
+                if (home != null) fileHomeByTab[tabId] = home
+                if (focus != null) filesFocusCwdByTab[tabId] = focus
+                val initial = focus ?: currentSessionPwd(tabId) ?: home ?: "/"
                 updateFileBrowserState(tabId) {
-                    it.copy(currentPath = initial, resolvedHomePath = initial)
+                    it.copy(currentPath = initial, resolvedHomePath = home ?: initial)
                 }
                 refreshFileBrowser(tabId)
             }

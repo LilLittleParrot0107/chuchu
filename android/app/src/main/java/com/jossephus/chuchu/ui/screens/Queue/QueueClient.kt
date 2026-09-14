@@ -63,6 +63,33 @@ class QueueClient(
         data class Failed(val message: String) : FetchResponse
     }
 
+    sealed interface FocusFetch {
+        /** Pane herdr đang được nhìn: tên agent + thư mục làm việc (null nếu herdr không biết). */
+        data class Ok(val name: String, val cwd: String?) : FocusFetch
+        /** Không pane nào focus, hoặc qsrv cũ chưa có route (404). */
+        data object None : FocusFetch
+        data class Failed(val message: String) : FocusFetch
+    }
+
+    /**
+     * `/focus` — pane herdr đang được nhìn (15/9): tab Files mở thẳng vào thư mục của phiên
+     * đang chat thay vì home. Đọc từ cache agent 3 s của qsrv, không fork gì thêm.
+     */
+    fun focus(): FocusFetch = try {
+        val (code, body) = request("/focus", null)
+        when (code) {
+            HttpURLConnection.HTTP_OK -> {
+                val f = JSONObject(body).optJSONObject("focus")
+                if (f == null) FocusFetch.None
+                else FocusFetch.Ok(f.optString("name"), f.optString("cwd").takeIf { it.isNotBlank() })
+            }
+            HttpURLConnection.HTTP_NOT_FOUND -> FocusFetch.None
+            else -> FocusFetch.Failed("qsrv /focus $code")
+        }
+    } catch (e: Exception) {
+        FocusFetch.Failed(e.javaClass.simpleName)
+    }
+
     /**
      * [waitSec] > 0 (và có [sinceRev]) = LONG-POLL: server giữ request tới khi rev đổi hoặc
      * hết [waitSec] rồi mới trả (200 mới / 304 không đổi). Tab Queue mở từng bắn 30 request
