@@ -216,7 +216,11 @@ private fun MachineStripPages(
         // Chấm trang nằm ĐÚNG giữa, nút làm mới ép sát mép phải. Trước đây cả
         // hai xếp chung một hàng canh giữa nên nút lơ lửng giữa chừng, và mỗi
         // lần đổi trang nó xuất hiện/biến mất là chấm bị kéo lệch theo.
-        Box(Modifier.fillMaxWidth().padding(bottom = 5.dp)) {
+        // Chân trang KHOÁ CỨNG chiều cao (15/9, user chê "hai bảng lệch nhau"):
+        // trước đây Box ôm nội dung — trang MACHINE chỉ có chấm 5dp, trang USAGE
+        // có thêm chữ "42m ⟳" 16dp — nên cả dải cao thêm 15dp khi lướt sang USAGE,
+        // khối chi tiết phía trên bị co lại và chấm trang nhảy lên 7dp.
+        Box(Modifier.fillMaxWidth().height(FOOTER_HEIGHT_DP.dp)) {
             Row(Modifier.align(Alignment.Center)) {
                 repeat(2) { i ->
                     Box(
@@ -339,6 +343,8 @@ private fun UsagePage(readout: MachineReadout, alpha: Float) {
 private const val ROW_HEIGHT_DP = 22
 /** Đệm dọc của mỗi trang (trên + dưới), cộng vào chiều cao pager. */
 private const val PAGE_PAD_DP = 6
+/** Chân trang (chấm + nút làm mới): labelSmall lineHeight 16 + đệm dọc 2×2, cả hai trang như nhau. */
+private const val FOOTER_HEIGHT_DP = 20
 /** Cột số + đuôi của BlockBar, tính cả hai khoảng đệm: 6 + 46 + 4 + 92. */
 private const val PANEL_RIGHT_W = 6 + 46 + 4 + 92
 
