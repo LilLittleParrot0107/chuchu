@@ -123,6 +123,9 @@ fun FileBrowserScreen(
                     singleLine = true,
                     showLabel = false,
                     autoFocus = false,
+                    // body 14sp/lineHeight 20 + 2×8 = 36dp, bằng minHeight của hai nút
+                    // [ FILE ] / MACHINE bên cạnh (user chốt 15/9: "cùng kích thước 2 thằng kia").
+                    verticalPadding = 8.dp,
                     modifier = Modifier.weight(1f),
                 )
             } else {

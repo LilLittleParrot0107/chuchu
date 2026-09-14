@@ -28,6 +28,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.jossephus.chuchu.ui.theme.ChuColors
@@ -125,6 +126,10 @@ fun ChuTextField(
                         BasicText(
                             text = placeholder,
                             style = typography.body.copy(color = colors.textMuted),
+                            // Ô một dòng thì gợi ý cũng MỘT dòng: ô filter hẹp của tab Files
+                            // từng bẻ "filter..." thành hai dòng → ô cao gấp đôi hai nút bên cạnh (15/9).
+                            maxLines = if (singleLine) 1 else Int.MAX_VALUE,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
                     innerTextField()
