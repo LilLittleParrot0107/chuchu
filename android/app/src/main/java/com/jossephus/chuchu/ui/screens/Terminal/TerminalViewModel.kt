@@ -676,8 +676,11 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
         val spec = sessionRepository.activeTab.value?.spec ?: return null
         if (spec.transport == Transport.LocalShell) return null
         val user = spec.username.trim().ifBlank { return null }
-        // dufs phuc vu /home/<user> duoi tien to /home (xem dufs.service): /home/inbox <-> /home/<user>/inbox
-        return "$portal/home/inbox" to "/home/$user/inbox"
+        // dufs phuc vu /home/<user> duoi tien to /home (xem dufs.service): /home/inbox <-> /home/<user>/inbox.
+        // Portal URL trong Settings DA ket thuc bang /home (goc dufs) — 1.60.3 ghep them /home nua
+        // thanh /home/home/inbox -> 401 -> lan nao cung roi ve SFTP (log dufs 14/9). Bo duoi truoc.
+        val root = portal.removeSuffix("/home")
+        return "$root/home/inbox" to "/home/$user/inbox"
     }
 
     suspend fun ensureInboxDir(): String? {
