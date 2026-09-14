@@ -664,6 +664,22 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
      * (user chot 2/9). Tab Files van upload vao dung cho dang duyet — o do nguoi
      * dung da tu chon roi.
      */
+    /**
+     * Dich upload ⊕ qua dufs (14/9): (URL goc cua /inbox tren portal, duong dan tren host de
+     * dan vao pane). Khong can nguoi dung nhap gi — portal URL da co san, username lay tu tab.
+     * null khi khong co portal hoac tab la local shell (dan duong dan Legion vao shell dien
+     * thoai la sai) -> nut ⊕ roi ve SFTP nhu truoc.
+     */
+    fun inboxHttpTarget(): Pair<String, String>? {
+        val portal = settingsRepository.webPortalUrl.value.trim().trimEnd('/')
+        if (portal.isBlank()) return null
+        val spec = sessionRepository.activeTab.value?.spec ?: return null
+        if (spec.transport == Transport.LocalShell) return null
+        val user = spec.username.trim().ifBlank { return null }
+        // dufs phuc vu /home/<user> duoi tien to /home (xem dufs.service): /home/inbox <-> /home/<user>/inbox
+        return "$portal/home/inbox" to "/home/$user/inbox"
+    }
+
     suspend fun ensureInboxDir(): String? {
         val tabId = activeTabId.value ?: return null
         // Thu muc home cua phien SFTP. Ba nguon, va CHI nhan cai nao that su la

@@ -97,6 +97,7 @@ import com.jossephus.chuchu.ui.screens.Files.FileBrowserScreen
 import com.jossephus.chuchu.ui.screens.Files.FilesSegment
 import com.jossephus.chuchu.ui.screens.Queue.MachineStrip
 import com.jossephus.chuchu.ui.screens.Files.UploadProgress
+import com.jossephus.chuchu.data.network.InboxUploader
 import com.jossephus.chuchu.ui.screens.Files.formatFileSize
 import com.jossephus.chuchu.ui.screens.Files.pickRemoteHome
 import com.jossephus.chuchu.ui.screens.Files.shellQuotePath
@@ -1025,12 +1026,27 @@ fun TerminalScreen(
                                 var failed = 0
                                 var lastError: String? = null
                                 val total = uris.size
+                                // Nut ⊕ (inbox): di duong dufs HTTP PUT tren tailnet (14/9) — mot
+                                // luong TCP, khong hoi dap tung goi nhu SFTP, khong can tab SSH dang
+                                // noi va khong chen vao vong doc terminal. SFTP giu lam du phong
+                                // khi PUT khong thanh; nut import trong tab Files van SFTP nhu cu.
+                                val inboxHttp = if (toInbox) vm.inboxHttpTarget() else null
+                                val uploader = inboxHttp?.let { InboxUploader(it.first) }
                                 // Khong bao gio de dich upload roi ve "/": mo file o goc
                                 // chac chan bi tu choi, va thong bao loi thi mu mit.
-                                val remoteDir = pickRemoteHome(
-                                    if (toInbox) vm.ensureInboxDir() else vm.ensureUploadDir(),
-                                    fileBrowserState.currentPath,
-                                )
+                                // Do LUOI: chi hoi SFTP (realpath/list/mkdir) khi that su can.
+                                var remoteDir: String? = null
+                                var remoteDirResolved = false
+                                suspend fun remoteDirFor(): String? {
+                                    if (!remoteDirResolved) {
+                                        remoteDirResolved = true
+                                        remoteDir = pickRemoteHome(
+                                            if (toInbox) vm.ensureInboxDir() else vm.ensureUploadDir(),
+                                            fileBrowserState.currentPath,
+                                        )
+                                    }
+                                    return remoteDir
+                                }
                                 val uploadedPaths = mutableListOf<String>()
                                 uris.forEachIndexed { index, uri ->
                                     val fileName =
@@ -1056,12 +1072,38 @@ fun TerminalScreen(
                                                 else 0L
                                             } ?: 0L
                                     try {
-                                        if (remoteDir == null) {
-                                            throw IllegalStateException(
+                                        if (uploader != null && inboxHttp != null) {
+                                            val r = context.contentResolver.openInputStream(uri)?.use { input ->
+                                                vm.setUploadProgress(
+                                                    UploadProgress(
+                                                        fileName = fileName, bytesWritten = 0,
+                                                        totalBytes = fileSize, fileIndex = index, totalFiles = total,
+                                                    )
+                                                )
+                                                uploader.put(fileName, input, fileSize) { done ->
+                                                    vm.setUploadProgress(
+                                                        UploadProgress(
+                                                            fileName = fileName, bytesWritten = done,
+                                                            totalBytes = fileSize, fileIndex = index, totalFiles = total,
+                                                        )
+                                                    )
+                                                }
+                                            } ?: InboxUploader.Result.Failed("Cannot open file")
+                                            if (r is InboxUploader.Result.Ok) {
+                                                uploadedPaths += "${inboxHttp.second}/$fileName"
+                                                success++
+                                                return@forEachIndexed
+                                            }
+                                            android.util.Log.w(
+                                                "Upload",
+                                                "dufs PUT failed, falling back to SFTP: ${(r as InboxUploader.Result.Failed).message}",
+                                            )
+                                        }
+                                        val remoteDir = remoteDirFor()
+                                            ?: throw IllegalStateException(
                                                 "Could not work out where to put the file on the host — " +
                                                     "open the Files tab once, then try again"
                                             )
-                                        }
                                         val stream =
                                             context.contentResolver.openInputStream(uri)
                                                 ?: throw IllegalStateException("Cannot open file")
