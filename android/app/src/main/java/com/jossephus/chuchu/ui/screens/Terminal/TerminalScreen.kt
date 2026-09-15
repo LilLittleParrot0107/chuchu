@@ -3,6 +3,7 @@ package com.jossephus.chuchu.ui.screens.Terminal
 import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
 import android.provider.OpenableColumns
@@ -103,6 +104,7 @@ import com.jossephus.chuchu.ui.screens.Files.pickRemoteHome
 import com.jossephus.chuchu.ui.screens.Files.shellQuotePath
 import com.jossephus.chuchu.ui.screens.Terminal.TerminalTabMode
 import com.jossephus.chuchu.ui.terminal.AccessoryAction
+import com.jossephus.chuchu.ui.terminal.urlOfSelection
 import com.jossephus.chuchu.ui.terminal.BuiltinCommand
 import com.jossephus.chuchu.ui.terminal.ChuchuKeyBindings
 import com.jossephus.chuchu.ui.terminal.CustomActionModifier
@@ -1701,6 +1703,39 @@ fun TerminalScreen(
                                                         color = colors.textMuted,
                                                     )
                                                 }
+                                            }
+                                        }
+                                        // [mở] — vùng chọn là ĐÚNG một URL (giữ-thả trúng link, hoặc tự
+                                        // chọn rồi nối dòng như "copy 1 dòng") thì mở thẳng bằng trình
+                                        // duyệt/app nhận link, khỏi copy rồi chuyển app dán (user chốt
+                                        // 15/9 sau khi dùng 1.60.6: "copy link ổn, thêm nút mở là được").
+                                        val selUrl = urlOfSelection(selState.text, selState.cols)
+                                        if (selUrl != null) {
+                                            ChuButton(
+                                                onClick = {
+                                                    val target = if (selUrl.startsWith("www.")) "https://$selUrl" else selUrl
+                                                    try {
+                                                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(target)))
+                                                        selection = null
+                                                        selectionState = null
+                                                    } catch (e: ActivityNotFoundException) {
+                                                        Toast.makeText(context, "Không có app nào mở được link này", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                },
+                                                variant = ChuButtonVariant.Ghost,
+                                                bracketed = true,
+                                                borderColor = colors.textMuted,
+                                                contentPadding =
+                                                    PaddingValues(
+                                                        horizontal = 12.dp,
+                                                        vertical = 6.dp,
+                                                    ),
+                                            ) {
+                                                ChuText(
+                                                    "mở",
+                                                    style = typography.label,
+                                                    color = colors.textMuted,
+                                                )
                                             }
                                         }
                                         if (hasClipboardText) {
