@@ -22,7 +22,22 @@ import kotlin.math.roundToInt
 data class TerminalSelection(
     val anchorIndex: Int,
     val focusIndex: Int,
+    /**
+     * Có khi vùng chọn là MỘT LINK (giữ-thả trúng link, 15/9): chỉ tô và copy đúng các ô của
+     * link ([TerminalLink.segments]), không phải dải ô liên tục từ đầu tới cuối — dải đó ôm cả
+     * chữ của sidebar/pane bên cạnh nằm đầu hàng dưới (user chỉ ra 15/9). Kéo tay cầm là
+     * thành vùng chọn thường, link bị bỏ.
+     */
+    val link: TerminalLink? = null,
 ) {
+    /** Ô [cellIndex] có được tô/copy không — link thì theo từng khoảng, còn lại theo dải liên tục. */
+    fun contains(cellIndex: Int, cellCount: Int): Boolean {
+        val l = link
+        if (l != null) return l.contains(cellIndex)
+        val r = normalized(cellCount) ?: return false
+        return cellIndex in r
+    }
+
     fun normalized(cellCount: Int): IntRange? {
         if (cellCount <= 0) return null
         val start = minOf(anchorIndex, focusIndex).coerceIn(0, cellCount - 1)
@@ -31,12 +46,16 @@ data class TerminalSelection(
     }
 
     fun withStart(newStartCell: Int, updateAnchor: Boolean): TerminalSelection =
-        if (updateAnchor) copy(anchorIndex = newStartCell)
-        else copy(focusIndex = newStartCell)
+        if (updateAnchor) copy(anchorIndex = newStartCell, link = null)
+        else copy(focusIndex = newStartCell, link = null)
 
     fun withEnd(newEndCell: Int, updateAnchor: Boolean): TerminalSelection =
-        if (updateAnchor) copy(anchorIndex = newEndCell)
-        else copy(focusIndex = newEndCell)
+        if (updateAnchor) copy(anchorIndex = newEndCell, link = null)
+        else copy(focusIndex = newEndCell, link = null)
+
+    /** Dời cả vùng chọn [deltaCells] ô (viewport cuộn). */
+    fun shifted(deltaCells: Int): TerminalSelection =
+        copy(anchorIndex = anchorIndex + deltaCells, focusIndex = focusIndex + deltaCells, link = link?.shifted(deltaCells))
 }
 
 data class TerminalSelectionState(
@@ -148,7 +167,10 @@ internal fun buildSelectionState(
         .coerceAtLeast(0)
     val screenEnd = (maxOf(selection.anchorIndex, selection.focusIndex) + screenOffset)
         .coerceAtLeast(screenStart)
-    val text = if (terminalHandle != 0L && snapshot.cols > 0) {
+    // Link: chữ copy là chính URL đã ghép (không lấy dải ô, dải đó dính chữ sidebar hàng dưới).
+    val text = if (selection.link != null) {
+        selection.link.url
+    } else if (terminalHandle != 0L && snapshot.cols > 0) {
         val screenText = ghosttyBridge.nativeFormatSelectionScreenRange(terminalHandle, screenStart, screenEnd)
         screenText
             ?: ghosttyBridge.nativeFormatSelectionRange(terminalHandle, visibleRange.first, visibleRange.last)

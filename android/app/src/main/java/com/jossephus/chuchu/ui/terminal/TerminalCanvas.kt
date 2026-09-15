@@ -839,6 +839,9 @@ fun TerminalCanvas(
         val selStart = sel?.first ?: -1
         val selEnd = sel?.last ?: -1
         val hasSel = sel != null
+        // Vùng chọn là link thì chỉ tô đúng các ô của link (từng khoảng theo hàng), không tô
+        // dải liên tục — dải đó phủ cả sidebar/pane bên cạnh ở đầu hàng dưới.
+        val selLink = selection?.link
 
         drawRect(color = Color(snapshot.defaultBgArgb))
 
@@ -861,7 +864,7 @@ fun TerminalCanvas(
                 var i = rowStart
                 val rowEnd = rowStart + cols
                 while (i < rowEnd) {
-                    val iSelected = hasSel && i in selStart..selEnd
+                    val iSelected = hasSel && cellSelected(i, selStart, selEnd, selLink)
                     val iInverse = !iSelected &&
                         (snapshot.flags[i].toInt() and TerminalSnapshot.CELL_FLAG_INVERSE) != 0
                     val bg = when {
@@ -871,7 +874,7 @@ fun TerminalCanvas(
                     }
                     var j = i + 1
                     while (j < rowEnd) {
-                        val jSelected = hasSel && j in selStart..selEnd
+                        val jSelected = hasSel && cellSelected(j, selStart, selEnd, selLink)
                         val jInverse = !jSelected &&
                             (snapshot.flags[j].toInt() and TerminalSnapshot.CELL_FLAG_INVERSE) != 0
                         val nextBg = when {
@@ -910,7 +913,7 @@ fun TerminalCanvas(
                     }
 
                     val firstFlags = snapshot.flags[i].toInt()
-                    val firstSelected = hasSel && i in selStart..selEnd
+                    val firstSelected = hasSel && cellSelected(i, selStart, selEnd, selLink)
                     val firstInverse = !firstSelected &&
                         (firstFlags and TerminalSnapshot.CELL_FLAG_INVERSE) != 0
                     val fg = when {
@@ -955,7 +958,7 @@ fun TerminalCanvas(
                         if (j + 1 < rowEnd && snapshot.isSpacerContinuation(j + 1)) break
 
                         val jFlags = snapshot.flags[j].toInt()
-                        val jSelected = hasSel && j in selStart..selEnd
+                        val jSelected = hasSel && cellSelected(j, selStart, selEnd, selLink)
                         val jInverse = !jSelected &&
                             (jFlags and TerminalSnapshot.CELL_FLAG_INVERSE) != 0
                         val nextFg = when {
@@ -1173,7 +1176,17 @@ private fun startSelection(
     onSelectionChange: (TerminalSelection?) -> Unit,
 ): Boolean {
     val selectedCell = snapshot.cellAt(downPos.x, downPos.y, cellWidth, cellHeight)
-    onSelectionChange(selectedCell?.let { TerminalSelection(it, it) })
+    // Giữ-thả rơi vào link thì ôm trọn link, kể cả phần bẻ sang hàng dưới (15/9, user chốt
+    // "cách 1"): trước đây chỉ chọn MỘT ô rồi phải kéo hai tay cầm qua chỗ bẻ dòng, với
+    // URL ~45 cột thì gần như bất khả. Ngoài link vẫn một ô như cũ.
+    val link = selectedCell?.let { snapshot.linkAt(it) }
+    onSelectionChange(
+        when {
+            link != null -> TerminalSelection(link.startCell, link.endCell, link)
+            selectedCell != null -> TerminalSelection(selectedCell, selectedCell)
+            else -> null
+        },
+    )
     return selectedCell != null
 }
 
@@ -1190,10 +1203,12 @@ private fun remapSelectionForViewportScroll(
     if (startBaseline == cur) return
     val deltaCells = (startBaseline - cur) * max(snapshot.cols, 1)
     onBaselineChange(cur)
-    onSelectionChange(
-        sel.copy(anchorIndex = sel.anchorIndex + deltaCells, focusIndex = sel.focusIndex + deltaCells),
-    )
+    onSelectionChange(sel.shifted(deltaCells))
 }
+
+/** Ô thuộc vùng chọn: link thì theo từng khoảng của link, còn lại theo dải liên tục [selStart, selEnd]. */
+private fun cellSelected(cell: Int, selStart: Int, selEnd: Int, link: TerminalLink?): Boolean =
+    if (link != null) link.contains(cell) else cell in selStart..selEnd
 
 private fun TerminalSnapshot.cellAt(x: Float, y: Float, cellWidth: Float, cellHeight: Float): Int? {
     if (cols <= 0 || rows <= 0 || cellWidth <= 0f || cellHeight <= 0f) return null
