@@ -315,7 +315,9 @@ fun QueueScreen(
                         minHeight = 24.dp,
                     ) {
                         ChuText(
-                            "TASKS",
+                            // Sleek terminal (user 17/9): mang luôn số việc trong
+                            // ngoặc — nhìn band biết ngay hàng đợi còn bao nhiêu.
+                            "[TASKS ${visibleTasks.size}]",
                             style = ChuTypography.current.labelSmall,
                             color = if (tasksOpen) colors.accent else colors.textPrimary,
                         )
@@ -327,10 +329,10 @@ fun QueueScreen(
                 // chip 26dp keo band 26dp len 36dp dung luc co viec xong, trong
                 // khi qq giu band muc thuan thong tin mot dong.
                 if (!chatOpen && doneCount > 0) {
-                    // Label co dinh "CLR DONE" ca khi dang chay: doi sang "CLR…"
-                    // lam rong band nhay dong; trang thai busy da bao qua enabled.
+                    // "CLR" thay "CLR DONE" (sleek terminal, user 17/9): band mot
+                    // dong da co ngu canh, chu ngan giu band khong phinh.
                     KohiCompactAction(
-                        label = "CLR DONE",
+                        label = "CLR",
                         enabled = !isClearingDone,
                         danger = true,
                         onClick = { onClearDone(null) },
@@ -383,6 +385,7 @@ fun QueueScreen(
 
             QueueModeSwitch(
                 mode = mode,
+                threadsCount = agents.size,
                 // Đổi chế độ thì đóng bảng VIỆC: hai thứ cùng chiếm thân màn.
                 onSelect = { picked -> tasksOpen = false; mode = picked },
             )

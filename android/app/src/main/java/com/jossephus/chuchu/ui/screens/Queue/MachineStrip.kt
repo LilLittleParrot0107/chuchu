@@ -27,6 +27,8 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
@@ -35,6 +37,7 @@ import androidx.compose.ui.unit.sp
 import com.jossephus.chuchu.data.model.machine.MachineReadout
 import com.jossephus.chuchu.ui.components.ChuText
 import com.jossephus.chuchu.ui.screens.Files.MachineUiState
+import com.jossephus.chuchu.ui.theme.CHU_HAIRLINE_ALPHA
 import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTypography
 import java.util.Locale
@@ -112,7 +115,19 @@ internal fun MachineStrip(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(colors.surfaceVariant)
+                // Sleek terminal (user 17/9): bỏ dải nền tối cộm — số vẫn nguyên,
+                // phân tách bằng hairline trên như mock; vạch màu trái giữ vì nó
+                // là tín hiệu liếc mắt, không phải trang trí.
+                .background(colors.background)
+                .drawBehind {
+                    val stroke = 1.dp.toPx()
+                    drawLine(
+                        colors.border.copy(alpha = CHU_HAIRLINE_ALPHA),
+                        Offset(0f, stroke / 2),
+                        Offset(size.width, stroke / 2),
+                        stroke,
+                    )
+                }
                 .then(if (preview) Modifier else Modifier.clickable { expanded = !expanded })
                 .defaultMinSize(minHeight = 30.dp)
                 .padding(horizontal = 4.dp),
@@ -146,7 +161,16 @@ internal fun MachineStrip(
 private fun PreviewPlaceholder(modifier: Modifier) {
     val colors = ChuColors.current
     Row(
-        modifier = modifier.fillMaxWidth().background(colors.surfaceVariant)
+        modifier = modifier.fillMaxWidth().background(colors.background)
+            .drawBehind {
+                val stroke = 1.dp.toPx()
+                drawLine(
+                    colors.border.copy(alpha = CHU_HAIRLINE_ALPHA),
+                    Offset(0f, stroke / 2),
+                    Offset(size.width, stroke / 2),
+                    stroke,
+                )
+            }
             .defaultMinSize(minHeight = 30.dp).padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

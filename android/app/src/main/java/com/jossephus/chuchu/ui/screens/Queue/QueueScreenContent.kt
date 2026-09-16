@@ -39,18 +39,21 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.jossephus.chuchu.ui.components.ChuButton
 import com.jossephus.chuchu.ui.components.ChuButtonVariant
-import com.jossephus.chuchu.ui.components.ChuSegmentedControl
 import com.jossephus.chuchu.ui.components.ChuText
 import com.jossephus.chuchu.ui.components.KohiCompactAction
 import com.jossephus.chuchu.ui.components.KohiSectionBand
@@ -58,12 +61,21 @@ import com.jossephus.chuchu.ui.components.KohiSelectableRow
 import com.jossephus.chuchu.ui.components.LinkifiedText
 import com.jossephus.chuchu.ui.components.MiniMarkdownText
 import com.jossephus.chuchu.ui.theme.AgentKind
+import com.jossephus.chuchu.ui.theme.CHU_HAIRLINE_ALPHA
 import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTypography
 import com.jossephus.chuchu.ui.theme.chatTone
 import com.jossephus.chuchu.ui.theme.rosterColor
 
 internal const val ALL_AGENTS = "ALL"
+
+/**
+ * Preview HỘI THOẠI là một dòng chữ trơn: lột `**` và backtick cho đọc trôi (học
+ * từ prototype sleek terminal, user 17/9). Bản đầy đủ có markdown đã nằm trong
+ * thread khi mở — hàng danh sách chỉ cần nội dung, không cần cú pháp.
+ */
+internal fun stripPreviewMarkdown(text: String): String =
+    text.replace("**", "").replace("`", "").replace('\n', ' ').trim()
 
 /**
  * Dot chi the hien RUNTIME STATUS cua agent — tuyet doi khong dung de bieu thi
@@ -83,19 +95,80 @@ internal enum class QueueMode { Timeline, Threads }
 @Composable
 internal fun QueueModeSwitch(
     mode: QueueMode,
+    threadsCount: Int,
     onSelect: (QueueMode) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    ChuSegmentedControl(
-        options = listOf(QueueMode.Timeline, QueueMode.Threads),
-        labels = mapOf(
-            QueueMode.Timeline to "TIMELINE",
-            QueueMode.Threads to "CONVERSATIONS",
-        ),
-        selected = mode,
-        onSelect = onSelect,
-        modifier = modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-    )
+    val colors = ChuColors.current
+    val type = ChuTypography.current
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            // Hairline chân hàng tab như prototype: phân tách bằng nét mảnh,
+            // không dựng lại hộp viền kín.
+            .drawBehind {
+                val stroke = 1.dp.toPx()
+                drawLine(
+                    colors.border.copy(alpha = CHU_HAIRLINE_ALPHA),
+                    Offset(0f, size.height - stroke / 2),
+                    Offset(size.width, size.height - stroke / 2),
+                    stroke,
+                )
+            }
+            .padding(horizontal = 14.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(18.dp),
+    ) {
+        QueueModeTab(
+            label = "TIMELINE",
+            meta = null,
+            active = mode == QueueMode.Timeline,
+            onClick = { onSelect(QueueMode.Timeline) },
+        )
+        QueueModeTab(
+            label = "CONVERSATIONS",
+            meta = threadsCount.toString(),
+            active = mode == QueueMode.Threads,
+            onClick = { onSelect(QueueMode.Threads) },
+        )
+    }
+}
+
+/**
+ * Tab kiểu con trỏ CLI (học từ prototype queue-sleek-terminal, user 17/9): không
+ * hộp viền kín, tab đang mở đánh dấu bằng '›' + accent + đậm. Tab kia vẫn giữ
+ * đúng một ô cho '›' (vẽ trong suốt) để đổi chế độ không nhảy ngang chữ.
+ */
+@Composable
+private fun QueueModeTab(
+    label: String,
+    meta: String?,
+    active: Boolean,
+    onClick: () -> Unit,
+) {
+    val colors = ChuColors.current
+    val type = ChuTypography.current
+    Row(
+        modifier = Modifier.clickable(onClick = onClick),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        ChuText("›", style = type.labelSmall, color = if (active) colors.accent else Color.Transparent)
+        Spacer(Modifier.width(4.dp))
+        ChuText(
+            label,
+            style = type.labelSmall.copy(fontWeight = if (active) FontWeight.Bold else FontWeight.Medium),
+            color = if (active) colors.accent else colors.textMuted,
+            letterSpacing = 0.6.sp,
+        )
+        if (meta != null) {
+            Spacer(Modifier.width(5.dp))
+            ChuText(
+                meta,
+                style = type.labelSmall,
+                color = if (active) colors.accent else colors.textMuted.copy(alpha = 0.6f),
+            )
+        }
+    }
 }
 
 /** Session đang chạy (theo label) — dùng cho chấm trạng thái, không phải selection. */
@@ -283,44 +356,67 @@ internal fun QueueConversationList(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .height(IntrinsicSize.Min)
                     .background(if (selected) colors.accent.copy(alpha = 0.10f) else Color.Transparent)
                     // Có transcript thì chạm là mở thread; chưa có thì chỉ chọn (ô gõ nhắm vào nó).
-                    .clickable { if (agent.chatRev != null) onOpenChat(agent.pane) else onSelect(agent.pane) }
-                    .padding(horizontal = 10.dp, vertical = 7.dp),
+                    .clickable { if (agent.chatRev != null) onOpenChat(agent.pane) else onSelect(agent.pane) },
                 verticalAlignment = Alignment.Top,
             ) {
-                ChuText("●", style = type.labelSmall, color = sessionStatusColor(agent), modifier = Modifier.padding(top = 2.dp))
-                Spacer(Modifier.width(8.dp))
-                Column(Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                // Rail 2dp mép trái cho hàng đang chọn (học từ prototype sleek terminal):
+                // mỏng như con trỏ terminal, thay cho viền hộp.
+                Box(
+                    Modifier
+                        .width(2.dp)
+                        .fillMaxHeight()
+                        .background(if (selected) colors.accent else Color.Transparent),
+                )
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(start = 10.dp, end = 10.dp, top = 8.dp, bottom = 8.dp),
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    // MỘT glyph duy nhất cho trạng thái: ● chạy · ○ rảnh · ▲ kẹt
+                    // (hình dạng mang nghĩa, màu lấy từ tone như chấm cũ).
+                    ChuText(
+                        runtimeDot(agent),
+                        style = type.labelSmall,
+                        color = sessionStatusColor(agent),
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.width(10.dp).padding(top = 2.dp),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Column(Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            ChuText(
+                                agent.name,
+                                style = type.label.copy(fontWeight = FontWeight.Bold),
+                                color = if (selected) colors.accent else AgentKind.of(agent.agent).rosterColor(),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false),
+                            )
+                            Spacer(Modifier.weight(1f))
+                            // Chưa đọc = một chấm nhỏ cạnh giờ, thay tag chữ "new" (user 17/9).
+                            if (hasNew) {
+                                ChuText("●", style = type.labelSmall.copy(fontSize = 8.sp), color = colors.accent)
+                                Spacer(Modifier.width(5.dp))
+                            }
+                            chatWhen(agent.previewTs).takeIf { it.isNotEmpty() }?.let {
+                                ChuText(it, style = type.labelSmall, color = colors.textMuted)
+                            }
+                        }
+                        val preview = agent.preview.ifBlank {
+                            if (agent.chatRev != null) "no messages yet" else "no transcript"
+                        }
                         ChuText(
-                            agent.name,
-                            style = type.label.copy(fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal),
-                            color = AgentKind.of(agent.agent).rosterColor(),
+                            stripPreviewMarkdown(preview),
+                            style = type.bodySmall,
+                            color = colors.textSecondary,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f, fill = false),
                         )
-                        Spacer(Modifier.weight(1f))
-                        // Chưa đọc = một chấm nhỏ cạnh giờ, thay tag chữ "new" (user 17/9).
-                        if (hasNew) {
-                            ChuText("●", style = type.labelSmall, color = colors.accent)
-                            Spacer(Modifier.width(6.dp))
-                        }
-                        chatWhen(agent.previewTs).takeIf { it.isNotEmpty() }?.let {
-                            ChuText(it, style = type.labelSmall, color = colors.textMuted)
-                        }
                     }
-                    val preview = agent.preview.ifBlank {
-                        if (agent.chatRev != null) "no messages yet" else "no transcript"
-                    }
-                    ChuText(
-                        preview,
-                        style = type.bodySmall,
-                        color = colors.textSecondary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
                 }
             }
         }
@@ -488,7 +584,19 @@ internal fun QueueComposer(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(colors.surface)
+            // Học từ prototype sleek terminal: composer là MỘT lớp — nền theme +
+            // hairline, chỉ còn đúng một khung nhập có viền; bỏ dải surface đậm
+            // từng làm "hộp trong hộp".
+            .background(colors.background)
+            .drawBehind {
+                val stroke = 1.dp.toPx()
+                drawLine(
+                    colors.border.copy(alpha = CHU_HAIRLINE_ALPHA),
+                    Offset(0f, stroke / 2),
+                    Offset(size.width, stroke / 2),
+                    stroke,
+                )
+            }
             .padding(horizontal = 10.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
