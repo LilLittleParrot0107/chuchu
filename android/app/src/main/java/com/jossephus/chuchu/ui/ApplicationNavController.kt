@@ -524,6 +524,7 @@ private fun QueueDestination(
         onLoadOlderChat = sharedQueueVm::loadOlderChat,
         onSendChat = sharedQueueVm::sendChat,
         onUploadToInbox = sharedQueueVm::uploadToInbox,
+        chatFontSizeSp = sharedQueueVm.terminalFontSize.collectAsStateWithLifecycle().value,
         onBack = onBack,
     )
 }

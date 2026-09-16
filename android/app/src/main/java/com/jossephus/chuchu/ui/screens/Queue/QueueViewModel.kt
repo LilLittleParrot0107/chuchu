@@ -569,6 +569,8 @@ class QueueViewModel(
         }
     }
 
+    /** Cỡ chữ terminal (Settings, sp) — màn CHAT dùng đúng cỡ này cho tin (user 16/9). */
+    val terminalFontSize: StateFlow<Float> = settings.terminalFontSize
     val queueUrl: StateFlow<String> = settings.queueUrl
     val queueToken: StateFlow<String> = settings.queueToken
 

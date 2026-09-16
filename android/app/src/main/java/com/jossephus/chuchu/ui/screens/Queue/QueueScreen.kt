@@ -97,6 +97,8 @@ fun QueueScreen(
     onSendChat: (String) -> Unit = {},
     /** ⊕ trong chat: tải file lên ~/inbox trên host, trả đường dẫn để dán vào tin (null = hỏng). */
     onUploadToInbox: suspend (name: String, length: Long, open: () -> java.io.InputStream?) -> String? = { _, _, _ -> null },
+    /** Cỡ chữ terminal (sp) để tin trong chat cùng cỡ với terminal. */
+    chatFontSizeSp: Float = 0f,
     modifier: Modifier = Modifier,
 ) {
     val colors = ChuColors.current
@@ -310,6 +312,7 @@ fun QueueScreen(
                     chat = chat,
                     onLoadOlder = onLoadOlderChat,
                     pendingTasks = ui.state.tasks.filter { it.target == chat.pane && !it.isCompleted && !it.isFailed },
+                    fontSizeSp = chatFontSizeSp,
                     listState = chatListState,
                     modifier = Modifier.fillMaxWidth().weight(1f),
                 )

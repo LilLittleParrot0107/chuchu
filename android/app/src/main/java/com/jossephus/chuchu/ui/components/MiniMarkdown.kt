@@ -1,5 +1,6 @@
 package com.jossephus.chuchu.ui.components
 
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.LinkAnnotation
@@ -143,10 +144,17 @@ private fun rememberMdStyles(): MdStyles {
 }
 
 @Composable
-fun MiniMarkdownText(markdown: String) {
+fun MiniMarkdownText(markdown: String, fontSize: TextUnit = TextUnit.Unspecified) {
     val colors = ChuColors.current
     val type = ChuTypography.current
     val styles = rememberMdStyles()
+    // Cỡ chữ theo caller (màn CHAT truyền cỡ chữ terminal trong Settings); dãn dòng để TỰ NHIÊN
+    // của font (ascent+descent) — đúng cách terminal vẽ, user 16/9: 1,6 "thưa quá", terminal "đạt".
+    val textStyle = type.body.copy(
+        color = colors.textPrimary,
+        fontSize = if (fontSize != TextUnit.Unspecified) fontSize else type.body.fontSize,
+        lineHeight = TextUnit.Unspecified,
+    )
 
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         val blocks = remember(markdown) { splitBlocks(markdown) }
@@ -160,11 +168,8 @@ fun MiniMarkdownText(markdown: String) {
                     // mot dong rong.
                     val annotated = if (built.endsWith("\n")) built.subSequence(0, built.length - 1) else built
                     // type.body mang fontFamily của Settings (trước đây TextStyle trần nên rơi về
-                    // font hệ thống, khác hẳn phần còn lại); dãn dòng 1,6 cho dễ đọc (user 16/9).
-                    BasicText(
-                        text = annotated,
-                        style = type.body.copy(color = colors.textPrimary, lineHeight = type.body.fontSize * MD_LINE_HEIGHT),
-                    )
+                    // font hệ thống, khác hẳn phần còn lại).
+                    BasicText(text = annotated, style = textStyle)
                 }
             }
         }
@@ -342,9 +347,6 @@ private fun AnnotatedString.Builder.appendPlainLinkified(text: String, s: MdStyl
     }
     if (i < text.length) append(text.substring(i))
 }
-
-/** Dãn dòng cho chữ markdown (tỉ lệ theo cỡ chữ). */
-private const val MD_LINE_HEIGHT = 1.6f
 
 @Composable
 fun LinkifiedText(text: String, style: TextStyle, color: Color, modifier: Modifier = Modifier) {

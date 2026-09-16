@@ -1,5 +1,7 @@
 package com.jossephus.chuchu.ui.screens.Queue
 
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -56,12 +58,17 @@ internal fun QueueChatView(
     onLoadOlder: () -> Unit,
     /** Việc của pane này còn trong hàng đợi taskq (tin gửi lúc agent bận) — hiện ở cuối chat. */
     pendingTasks: List<QueueTask> = emptyList(),
+    /** Cỡ chữ (sp) cho tin của anh và của agent; ≤ 0 = cỡ body của theme. */
+    fontSizeSp: Float = 0f,
     listState: LazyListState = rememberLazyListState(),
     modifier: Modifier = Modifier,
 ) {
     val colors = ChuColors.current
     val type = ChuTypography.current
     val messages = chat.messages
+    val textSize = if (fontSizeSp > 0f) fontSizeSp.sp else type.body.fontSize
+    // Như terminal: cỡ chữ Settings, dãn dòng tự nhiên của font, không thêm leading.
+    val bodyStyle = type.body.copy(fontSize = textSize, lineHeight = TextUnit.Unspecified)
 
     // Tự trôi xuống đáy: lần tải đầu, và khi có tin mới mà người dùng đang ở đáy.
     var pinnedToBottom by remember { mutableStateOf(true) }
@@ -102,8 +109,8 @@ internal fun QueueChatView(
                 }
                 items(messages, key = ChatMessage::key) { m ->
                     when (m.role) {
-                        "user" -> UserRow(m)
-                        "assistant" -> AssistantRow(m)
+                        "user" -> UserRow(m, bodyStyle)
+                        "assistant" -> AssistantRow(m, textSize)
                         "tool" -> ToolRow(m)
                         else -> ChuText("✻ suy nghĩ", style = type.labelSmall, color = colors.textMuted, modifier = Modifier.padding(start = 10.dp))
                     }
@@ -140,9 +147,8 @@ private fun Center(text: String) {
 }
 
 @Composable
-private fun UserRow(m: ChatMessage) {
+private fun UserRow(m: ChatMessage, bodyStyle: androidx.compose.ui.text.TextStyle) {
     val colors = ChuColors.current
-    val type = ChuTypography.current
     // Cách khối trên 10dp thêm (danh sách chỉ 6dp): tin của anh mở một lượt mới, không dính
     // vào tool/markdown ngay trên (user 16/9 "díu quá").
     // Plan A (user chọn 16/9): nền vàng 14% + vạch 3dp, chữ giữ màu, đệm 6/10dp.
@@ -158,8 +164,8 @@ private fun UserRow(m: ChatMessage) {
         Spacer(Modifier.width(8.dp))
         Column(Modifier.weight(1f).padding(top = 6.dp, bottom = 6.dp, end = 10.dp)) {
             Row(verticalAlignment = Alignment.Top) {
-                ChuText("❯ ", style = type.body, color = colors.accent)
-                LinkifiedText(m.text, style = type.body, color = colors.textPrimary, modifier = Modifier.weight(1f))
+                ChuText("❯ ", style = bodyStyle, color = colors.accent)
+                LinkifiedText(m.text, style = bodyStyle, color = colors.textPrimary, modifier = Modifier.weight(1f))
                 TimeStamp(m.ts)
             }
         }
@@ -167,13 +173,13 @@ private fun UserRow(m: ChatMessage) {
 }
 
 @Composable
-private fun AssistantRow(m: ChatMessage) {
+private fun AssistantRow(m: ChatMessage, textSize: TextUnit) {
     Column(Modifier.fillMaxWidth().padding(start = 10.dp)) {
         Row(Modifier.fillMaxWidth()) {
             Spacer(Modifier.weight(1f))
             TimeStamp(m.ts)
         }
-        MiniMarkdownText(m.text)
+        MiniMarkdownText(m.text, fontSize = textSize)
     }
 }
 
