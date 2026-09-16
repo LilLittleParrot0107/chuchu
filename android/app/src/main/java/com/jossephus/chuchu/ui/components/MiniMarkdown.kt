@@ -26,7 +26,6 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.ParagraphStyle
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -316,9 +315,7 @@ private fun MdTextBlock(
                     text = remember(unit.text, styles) { inlineAnnotated(unit.text, styles) },
                     // Thut dong dau 2ch: thay cho dong trong ngan cach doan —
                     // doc ra cho ngat doan ma khong phi ca mot dong.
-                    style = textStyle.copy(
-                        paragraphStyle = ParagraphStyle(textIndent = TextIndent(firstLine = indent2)),
-                    ),
+                    style = textStyle.copy(textIndent = TextIndent(firstLine = indent2)),
                     modifier = Modifier.padding(bottom = 8.dp),
                 )
 
