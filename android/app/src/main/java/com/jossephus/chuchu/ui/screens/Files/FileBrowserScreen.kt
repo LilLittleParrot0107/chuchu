@@ -90,14 +90,8 @@ fun FileBrowserScreen(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            ChuButton(
-                onClick = onBackToTerminal,
-                variant = ChuButtonVariant.Ghost,
-                bracketed = false,
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
-            ) {
-                TerminalIcon(color = colors.success, modifier = Modifier.size(20.dp))
-            }
+            // Nút về terminal đã bỏ (user chốt 16/9: app hiện đại không có nút back):
+            // back hệ thống đi lên thư mục cha rồi về terminal (BackHandler ở trên).
             FilesSegment.entries.forEach { seg ->
                 val on = seg == segment
                 ChuButton(

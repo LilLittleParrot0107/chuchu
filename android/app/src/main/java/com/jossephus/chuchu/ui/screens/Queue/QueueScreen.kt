@@ -215,7 +215,8 @@ fun QueueScreen(
                 title = if (chatOpen) chat.name.uppercase().take(16) else "QUEUE",
                 status = if (chatOpen) "· CHAT" else status,
                 statusColor = if (chatOpen) colors.textSecondary else statusColor,
-                onBack = if (chatOpen) onCloseChat else onBack,
+                // Không có nút back trong app (user chốt 16/9): back hệ thống đóng chat (BackHandler) hoặc rời màn.
+                onBack = null,
                 // Toi mau nen theme: status bar + band + content + rail (man
                 // rong) la MOT ton, khong con khoi surface sac bep o tren.
                 containerColor = colors.background,

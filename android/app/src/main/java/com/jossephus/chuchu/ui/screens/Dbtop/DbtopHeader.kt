@@ -56,7 +56,8 @@ internal fun DbtopTopBar(
         title = "DASHBOARD",
         status = ageText,
         statusColor = tone,
-        onBack = onClose,
+        // Không có nút back trong app (user chốt 16/9): phím/cử chỉ back hệ thống đã lo (BackHandler ở DbtopScreen).
+        onBack = null,
         // Tan vao nen theme de khop mau voi vung status bar phia tren —
         // truoc day band xam surface con thanh noti mau background, lo seam.
         containerColor = colors.background,
