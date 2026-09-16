@@ -1,5 +1,6 @@
 package com.jossephus.chuchu.ui.screens.Queue
 
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.runtime.mutableLongStateOf
 import com.jossephus.chuchu.ui.components.ChuButtonVariant
 import com.jossephus.chuchu.ui.components.ChuButton
@@ -448,19 +449,20 @@ fun QueueScreen(
                 onFocusChanged = { composerFocused = it },
                 placeholder = if (chatOpen) "Trả lời ${chat.name}…" else null,
                 sendLabel = if (chatOpen) "[GỬI ↵]" else "[SEND]",
-                leading = if (!chatOpen) null else {
+                // ⊕ giữa ô gõ và [GỬI], cùng màu với nút gửi lúc rảnh (user 16/9: "màu đồng nhất").
+                trailing = if (!chatOpen) null else {
                     {
                         ChuButton(
                             onClick = { if (!chat.uploading) attachLauncher.launch("*/*") },
                             enabled = !chat.uploading,
                             variant = ChuButtonVariant.Ghost,
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 5.dp),
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 5.dp),
                             minHeight = 34.dp,
                         ) {
                             ChuText(
                                 if (chat.uploading) "…" else "⊕",
-                                style = ChuTypography.current.headline,
-                                color = if (chat.uploading) colors.textMuted else colors.accent,
+                                style = ChuTypography.current.label.copy(fontWeight = FontWeight.Bold),
+                                color = if (chat.uploading) colors.disabledText else colors.textMuted,
                             )
                         }
                     }

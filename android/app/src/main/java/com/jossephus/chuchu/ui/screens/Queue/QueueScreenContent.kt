@@ -342,8 +342,8 @@ internal fun QueueComposer(
     /** Màn CHAT truyền "Trả lời <agent>…"; null = "Describe the task…" như cũ. */
     placeholder: String? = null,
     sendLabel: String = "[SEND]",
-    /** Nút đứng trước ô gõ (màn CHAT: ⊕ đính file). null = không có. */
-    leading: (@Composable () -> Unit)? = null,
+    /** Nút đứng GIỮA ô gõ và nút gửi (màn CHAT: ⊕ đính file). null = không có. */
+    trailing: (@Composable () -> Unit)? = null,
 ) {
     val colors = ChuColors.current
     val type = ChuTypography.current
@@ -361,10 +361,6 @@ internal fun QueueComposer(
             .padding(horizontal = 10.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (leading != null) {
-            leading()
-            Spacer(Modifier.width(6.dp))
-        }
         Row(
             modifier = Modifier
                 .weight(1f)
@@ -423,6 +419,10 @@ internal fun QueueComposer(
             )
         }
         Spacer(Modifier.width(6.dp))
+        if (trailing != null) {
+            trailing()
+            Spacer(Modifier.width(2.dp))
+        }
         // Send la hanh dong van ban trong terminal, KHONG phai block rieng;
         // disabled thi moi mo di chu khong bien thanh nut "co ve bi liet".
         ChuButton(

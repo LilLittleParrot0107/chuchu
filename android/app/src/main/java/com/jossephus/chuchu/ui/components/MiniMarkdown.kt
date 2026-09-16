@@ -159,9 +159,11 @@ fun MiniMarkdownText(markdown: String) {
                     // Moi block deu append newline ke ca block cuoi -> thua
                     // mot dong rong.
                     val annotated = if (built.endsWith("\n")) built.subSequence(0, built.length - 1) else built
+                    // type.body mang fontFamily của Settings (trước đây TextStyle trần nên rơi về
+                    // font hệ thống, khác hẳn phần còn lại); dãn dòng 1,6 cho dễ đọc (user 16/9).
                     BasicText(
                         text = annotated,
-                        style = TextStyle(color = colors.textPrimary, fontSize = type.body.fontSize),
+                        style = type.body.copy(color = colors.textPrimary, lineHeight = type.body.fontSize * MD_LINE_HEIGHT),
                     )
                 }
             }
@@ -340,6 +342,9 @@ private fun AnnotatedString.Builder.appendPlainLinkified(text: String, s: MdStyl
     }
     if (i < text.length) append(text.substring(i))
 }
+
+/** Dãn dòng cho chữ markdown (tỉ lệ theo cỡ chữ). */
+private const val MD_LINE_HEIGHT = 1.6f
 
 @Composable
 fun LinkifiedText(text: String, style: TextStyle, color: Color, modifier: Modifier = Modifier) {
