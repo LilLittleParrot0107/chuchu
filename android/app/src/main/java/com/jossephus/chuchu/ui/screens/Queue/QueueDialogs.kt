@@ -1,5 +1,6 @@
 package com.jossephus.chuchu.ui.screens.Queue
 
+import com.jossephus.chuchu.ui.components.LinkifiedText
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -122,7 +123,8 @@ internal fun TaskDetailDialog(
                 // Prompt cua user -10% (27/8: giam 20% xong user keu nho qua,
                 // nang lai 10) — response agent giu nguyen. Scale ca lineHeight,
                 // khong lap lai bug chu de nhau ben dashboard.
-                ChuText(
+                // Link trong prompt cũng bấm được (16/9, user: "link bên Queue phải bấm vào được").
+                LinkifiedText(
                     text = task.text,
                     style = type.body.copy(
                         fontSize = type.body.fontSize * 0.9f,
