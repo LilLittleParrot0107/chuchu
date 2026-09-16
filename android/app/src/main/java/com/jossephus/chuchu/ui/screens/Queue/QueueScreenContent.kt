@@ -156,9 +156,11 @@ private fun QueueModeTab(
         Spacer(Modifier.width(4.dp))
         ChuText(
             label,
-            style = type.labelSmall.copy(fontWeight = if (active) FontWeight.Bold else FontWeight.Medium),
+            style = type.labelSmall.copy(
+                fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
+                letterSpacing = 0.6.sp,
+            ),
             color = if (active) colors.accent else colors.textMuted,
-            letterSpacing = 0.6.sp,
         )
         if (meta != null) {
             Spacer(Modifier.width(5.dp))
@@ -380,9 +382,8 @@ internal fun QueueConversationList(
                     // (hình dạng mang nghĩa, màu lấy từ tone như chấm cũ).
                     ChuText(
                         runtimeDot(agent),
-                        style = type.labelSmall,
+                        style = type.labelSmall.copy(textAlign = TextAlign.Center),
                         color = sessionStatusColor(agent),
-                        textAlign = TextAlign.Center,
                         modifier = Modifier.width(10.dp).padding(top = 2.dp),
                     )
                     Spacer(Modifier.width(8.dp))
