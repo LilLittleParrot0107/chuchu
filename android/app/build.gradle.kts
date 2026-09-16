@@ -36,7 +36,9 @@ android {
         // lower code over an existing build.
         val releaseBase = major * 10_000 + minor * 100 + patch
         versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: (releaseBase * 1_000)
-        versionName = System.getenv("VERSION_NAME") ?: "$major.$minor.$patch"
+        // VERSION_NAME rỗng (input CI bỏ trống) phải rơi về tên tự tính — getenv trả ""
+        // chứ không phải null nên phải lọc isNotBlank, không thì versionName thành rỗng.
+        versionName = System.getenv("VERSION_NAME")?.takeIf { it.isNotBlank() } ?: "$major.$minor.$patch"
 
         System.getenv("ANDROID_ABI_FILTERS")
             ?.split(',')

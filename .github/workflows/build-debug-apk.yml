@@ -13,6 +13,14 @@ on:
         description: 'VERSION_PATCH'
         required: false
         default: '0'
+      name:
+        description: 'VERSION_NAME ghi đè (vd 1.61.8-test cho bản test cùng versionCode); bỏ trống = <major>.<minor>.<patch>'
+        required: false
+        default: ''
+      code:
+        description: 'VERSION_CODE ghi đè (phải khớp bản stable nếu muốn cài qua lại không gỡ app)'
+        required: false
+        default: ''
       abi:
         description: 'arm64-v8a (dien thoai that) hoac x86_64 (emulator test)'
         required: false
@@ -113,6 +121,9 @@ jobs:
           VERSION_MAJOR: '1'
           VERSION_MINOR: ${{ inputs.minor || '50' }}
           VERSION_PATCH: ${{ inputs.patch || '0' }}
+          # Rỗng = để build.gradle tự tính (đã lọc isNotBlank).
+          VERSION_NAME: ${{ inputs.name }}
+          VERSION_CODE: ${{ inputs.code }}
         run: |
           nix develop -c bash -c '
             set -e
