@@ -2,6 +2,7 @@ package com.jossephus.chuchu.ui.screens.Queue
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -20,18 +21,22 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -41,16 +46,22 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import com.jossephus.chuchu.ui.components.ChuButton
 import com.jossephus.chuchu.ui.components.ChuButtonVariant
+import com.jossephus.chuchu.ui.components.ChuSegmentedControl
 import com.jossephus.chuchu.ui.components.ChuText
 import com.jossephus.chuchu.ui.components.KohiCompactAction
 import com.jossephus.chuchu.ui.components.KohiSectionBand
 import com.jossephus.chuchu.ui.components.KohiSelectableRow
+import com.jossephus.chuchu.ui.components.LinkifiedText
+import com.jossephus.chuchu.ui.components.MiniMarkdownText
+import com.jossephus.chuchu.ui.components.TuiBadge
 import com.jossephus.chuchu.ui.theme.AgentKind
 import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTypography
+import com.jossephus.chuchu.ui.theme.chatTone
 import com.jossephus.chuchu.ui.theme.rosterColor
 
 internal const val ALL_AGENTS = "ALL"
@@ -67,143 +78,316 @@ private fun runtimeDot(agent: QueueAgent): String = when (agent.label.lowercase(
     else -> agent.glyph.ifBlank { "?" }   // blocked '▲', unsure '?' giữ nguyên
 }
 
+/** Hai chế độ của màn Queue (user chốt G1, 16/9): đọc dòng thời gian ↔ quản hội thoại. */
+internal enum class QueueMode { Timeline, Threads }
+
 @Composable
-internal fun QueueAgentRoster(
-    agents: List<QueueAgent>,
-    tasks: List<QueueTask>,
-    selectedPane: String,
-    onSelect: (String) -> Unit,
-    /** Trần chiều cao danh sách — caller tính từ chỗ CÒN TRỐNG, xem QueueScreen. */
-    maxHeight: Dp = 280.dp,
+internal fun QueueModeSwitch(
+    mode: QueueMode,
+    onSelect: (QueueMode) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    ChuSegmentedControl(
+        options = listOf(QueueMode.Timeline, QueueMode.Threads),
+        labels = mapOf(
+            QueueMode.Timeline to "DÒNG THỜI GIAN",
+            QueueMode.Threads to "HỘI THOẠI",
+        ),
+        selected = mode,
+        onSelect = onSelect,
+        modifier = modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+    )
+}
+
+/**
+ * Đốm màu của một session: đỏ/vàng khi CẦN ANH (warn/error) để việc gấp nổi lên, còn lại
+ * theo LOẠI agent (claude/opencode/agy) — cùng quy ước với hàng HỘI THOẠI.
+ */
+@Composable
+private fun sessionDotColor(agent: QueueAgent): Color {
+    return if (agent.tone == QueueTone.Warn || agent.tone == QueueTone.Error) agent.tone.color()
+    else AgentKind.of(agent.agent).rosterColor()
+}
+
+/** Ký hiệu trạng thái cạnh tên trên chip: ▶ đang chạy · ✓ vừa xong · ? cần anh · "" rảnh. */
+private fun sessionMark(agent: QueueAgent): String = when (agent.label.trim().lowercase()) {
+    "working", "busy", "sending", "running" -> "▶"
+    "done" -> "✓"
+    "needs approval", "blocked", "unknown" -> "?"
+    else -> ""
+}
+
+private fun sessionWorking(agent: QueueAgent): Boolean =
+    agent.label.trim().lowercase() in setOf("working", "busy", "sending", "running")
+
+@Composable
+private fun SessionChip(
+    selected: Boolean,
+    onClick: () -> Unit,
+    dotColor: Color,
+    dot: String,
+    label: String,
+    mark: String,
+    markColor: Color,
 ) {
     val colors = ChuColors.current
     val type = ChuTypography.current
-
-    // FOCUS nho agent vua roi khoi: user tap ALL de nhin tong quan thi quay lai
-    // FOCUS phai ve dung cho do, khong nhay ve agent dau tien trong danh sach.
-    var lastFocused by rememberSaveable { mutableStateOf<String?>(null) }
-    SideEffect {
-        if (selectedPane != ALL_AGENTS) lastFocused = selectedPane
-    }
-
-    val activeTaskCounts = remember(tasks) {
-        tasks.filter { !it.isCompleted }.groupingBy { it.target }.eachCount()
-    }
-
-    Column(modifier = Modifier.fillMaxWidth()) {
-        KohiSectionBand(label = "AGENTS", meta = "${agents.size} LIVE") {
-            val spreadMode = selectedPane == ALL_AGENTS
-            ChuButton(
-                onClick = {
-                    if (spreadMode) {
-                        val target = lastFocused ?: agents.firstOrNull()?.pane
-                        if (target != null) onSelect(target)
-                    } else {
-                        onSelect(ALL_AGENTS)
-                    }
-                },
-                enabled = agents.isNotEmpty(),
-                variant = ChuButtonVariant.Ghost,
-                bracketed = false,
-                borderColor = if (spreadMode) colors.accent else colors.border,
-                // 24dp + pad (8,2): can chieu voi KohiCompactAction o command
-                // band — truoc day bracketed+26dp lam chip to hon nut khac.
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                minHeight = 24.dp,
-            ) {
-                // Ten nut noi ra HANH DONG se lam (focus mot agent / tra ve all),
-                // mau accent khi dang o che do lan tay de che do nay khong bi lan
-                // voi trang thai binh thuong.
-                ChuText(
-                    if (spreadMode) "FOCUS" else "ALL",
-                    style = type.labelSmall,
-                    color = when {
-                        agents.isEmpty() -> colors.textMuted
-                        spreadMode -> colors.accent
-                        else -> colors.textSecondary
-                    },
-                )
-            }
+    Row(
+        modifier = Modifier
+            .background(if (selected) colors.accent.copy(alpha = 0.12f) else colors.surface)
+            .border(1.dp, if (selected) colors.accent else colors.border)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (dot.isNotEmpty()) {
+            ChuText(dot, style = type.labelSmall, color = dotColor)
+            Spacer(Modifier.width(4.dp))
         }
-        if (agents.isEmpty()) {
-            ChuText(
-                "  NO AGENTS FOUND · CHECK HERDR/QSRV",
-                style = type.bodySmall,
-                color = colors.textMuted,
-                modifier = Modifier.padding(vertical = 8.dp),
+        ChuText(
+            label,
+            style = type.label,
+            color = if (selected) colors.textPrimary else colors.textSecondary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (mark.isNotEmpty()) {
+            Spacer(Modifier.width(4.dp))
+            ChuText(mark, style = type.labelSmall, color = markColor)
+        }
+    }
+}
+
+/**
+ * Hàng chip session dùng chung cho cả hai chế độ (G1): chọn chip = lọc dòng thời gian,
+ * hoặc chọn đích cho ô gõ ở HỘI THOẠI; chip đang chọn GIỮ NGUYÊN khi gạt chế độ.
+ */
+@Composable
+internal fun QueueSessionRail(
+    agents: List<QueueAgent>,
+    selectedPane: String,
+    onSelect: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = ChuColors.current
+    LazyRow(
+        modifier = modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        item(key = ALL_AGENTS) {
+            SessionChip(
+                selected = selectedPane == ALL_AGENTS,
+                onClick = { onSelect(ALL_AGENTS) },
+                dotColor = colors.textMuted,
+                dot = "",
+                label = "TẤT CẢ",
+                mark = "",
+                markColor = colors.textMuted,
             )
-        } else {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = maxHeight),
-                verticalArrangement = Arrangement.spacedBy(3.dp),
+        }
+        items(agents, key = QueueAgent::pane) { agent ->
+            SessionChip(
+                selected = selectedPane == agent.pane,
+                onClick = { onSelect(agent.pane) },
+                dotColor = sessionDotColor(agent),
+                dot = "●",
+                label = agent.name,
+                mark = sessionMark(agent),
+                markColor = if (agent.tone == QueueTone.Dim) colors.textMuted else agent.tone.color(),
+            )
+        }
+    }
+}
+
+/**
+ * DÒNG THỜI GIAN (G1): tin cuối các session đang động, gộp theo giờ, tin mới ở dưới.
+ * Màn ĐỌC thuần — không ô nhập (user chốt 16/9); chạm tin để sang HỘI THOẠI trả lời.
+ */
+@Composable
+internal fun QueueFeedView(
+    feed: FeedUiState,
+    onOpen: (FeedMessage) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = ChuColors.current
+    val type = ChuTypography.current
+    val listState = rememberLazyListState()
+    var pinned by remember { mutableStateOf(true) }
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.layoutInfo }.collect { info ->
+            val last = info.visibleItemsInfo.lastOrNull()?.index ?: -1
+            pinned = info.totalItemsCount == 0 || last >= info.totalItemsCount - 2
+        }
+    }
+    LaunchedEffect(feed.messages.lastOrNull()?.key, feed.messages.size, feed.pane) {
+        if (feed.messages.isNotEmpty() && pinned) listState.scrollToItem(feed.messages.size)
+    }
+    Box(modifier = modifier.fillMaxSize()) {
+        when {
+            feed.messages.isEmpty() && feed.loading -> CenterNote("ĐANG TẢI DÒNG THỜI GIAN…")
+            feed.messages.isEmpty() && feed.error != null -> CenterNote("▌ ${feed.error}")
+            feed.messages.isEmpty() -> CenterNote("chưa có tin nào — chuồng đang nghỉ · gạt sang HỘI THOẠI để mở một phiên")
+            else -> LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                items(agents, key = QueueAgent::pane) { agent ->
-                    val selected = selectedPane == agent.pane
-                    val taskCount = activeTaskCounts[agent.pane] ?: 0
-                    // Dot tinh 1 lan moi row: truoc day runtimeDot() bi goi 3 lan
-                    // (check working, glyph, dieu kien label dac biet).
-                    val dot = runtimeDot(agent)
-                    val working = dot == "●"
-                    KohiSelectableRow(
-                        selected = selected,
-                        tone = colors.accent,      // rail + border theo ACCENT, khong theo tone
-                        onClick = { onSelect(agent.pane) },
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
-                        // Roster sắp theo ưu tiên nên agent đổi trạng thái là đổi
-                        // chỗ; trượt tới vị trí mới thay vì nhảy, để mắt theo kịp.
-                        modifier = Modifier.animateItem(),
-                    ) {
-                        // Slot con tro '>' co dinh: selection nhan mat ngay ca khi
-                        // qua mau sac khong doc duoc.
-                        ChuText(
-                            if (selected) ">" else "",
-                            style = type.label.copy(fontWeight = FontWeight.Bold),
-                            color = colors.accent,
-                            modifier = Modifier.width(12.dp),
-                        )
-                        ChuText(
-                            dot,
-                            style = type.label,
-                            color = if (working) colors.success else agent.tone.color(),
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        ChuText(
-                            agent.name,
-                            style = type.label.copy(fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal),
-                            // Màu tên theo LOẠI agent (user chốt 16/9, phương án 1B): claude/opencode/agy
-                            // mỗi loại một sắc, loại lạ giữ textPrimary như cũ.
-                            color = AgentKind.of(agent.agent).rosterColor(),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f),
-                        )
-                        // Dot ●○ da noi ro trang thai — tu trang thai dac biet
-                        // (▲ blocked, ? unknown) moi can chu di kem.
-                        if (dot !in listOf("●", "○")) {
-                            ChuText(
-                                agent.label.uppercase(),
-                                style = type.labelSmall,
-                                color = colors.textMuted,
-                                maxLines = 1,
-                            )
-                            Spacer(Modifier.width(6.dp))
-                        }
-                        // Chi dem task KHI co viec; khong thay bang dau '.' de ruot
-                        // phai khong con dau trang tri du thua.
-                        ChuText(
-                            if (taskCount > 0) taskCount.toString() else "",
-                            style = type.label,
-                            color = colors.accent,
-                            // 20dp thay vi 16dp: so 3 chu so (100+) bi clip
-                            // thanh 2 chu so o be rong cu.
-                            modifier = Modifier.width(20.dp),
-                        )
-                    }
+                items(feed.messages, key = FeedMessage::key) { m ->
+                    FeedRow(m, onOpen = onOpen, bodySize = type.body.fontSize)
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun FeedRow(m: FeedMessage, onOpen: (FeedMessage) -> Unit, bodySize: TextUnit) {
+    val colors = ChuColors.current
+    val type = ChuTypography.current
+    val kind = AgentKind.of(m.agent)
+    val tone = remember(kind) { kind.chatTone() }
+    when (m.role) {
+        "user" -> Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onOpen(m) }
+                .height(IntrinsicSize.Min)
+                .background(colors.accent.copy(alpha = 0.10f)),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Box(Modifier.width(3.dp).fillMaxHeight().background(colors.accent.copy(alpha = 0.7f)))
+            Spacer(Modifier.width(8.dp))
+            Column(Modifier.weight(1f).padding(vertical = 5.dp, horizontal = 0.dp)) {
+                ChuText(
+                    "anh → ${m.name} · ${chatClock(m.ts)}",
+                    style = type.labelSmall,
+                    color = colors.textMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                LinkifiedText(m.text, style = type.body, color = colors.textPrimary, modifier = Modifier.fillMaxWidth())
+            }
+        }
+        else -> Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onOpen(m) }
+                .padding(top = 4.dp, end = 2.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                ChuText(
+                    m.name,
+                    style = type.labelSmall.copy(fontWeight = FontWeight.Bold),
+                    color = kind.rosterColor(),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                Spacer(Modifier.width(6.dp))
+                if (m.label.isNotBlank()) {
+                    ChuText(m.label.lowercase(), style = type.labelSmall, color = m.tone.color())
+                    Spacer(Modifier.width(6.dp))
+                }
+                ChuText(chatClock(m.ts), style = type.labelSmall, color = colors.textMuted)
+            }
+            MiniMarkdownText(m.text, fontSize = bodySize, tone = tone)
+        }
+    }
+}
+
+/**
+ * HỘI THOẠI (G1): danh sách session y như hàng đợi thật — việc cần anh lên đầu (thứ tự
+ * đã sắp từ /state), mỗi dòng có xem trước tin cuối + badge; chạm dòng = mở thread.
+ */
+@Composable
+internal fun QueueConversationList(
+    agents: List<QueueAgent>,
+    tasks: List<QueueTask>,
+    selectedPane: String,
+    chatSeen: Map<String, String>,
+    onOpenChat: (String) -> Unit,
+    onSelect: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = ChuColors.current
+    val type = ChuTypography.current
+    val pending = remember(tasks) {
+        tasks.filter { !it.isCompleted }.groupingBy { it.target }.eachCount()
+    }
+    if (agents.isEmpty()) {
+        Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            ChuText("NO AGENTS FOUND · CHECK HERDR/QSRV", style = type.labelSmall, color = colors.textMuted)
+        }
+        return
+    }
+    LazyColumn(
+        modifier = modifier.fillMaxSize(),
+        contentPadding = PaddingValues(vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        items(agents, key = QueueAgent::pane) { agent ->
+            val selected = selectedPane == agent.pane
+            val active = pending[agent.pane] ?: 0
+            val hasNew = agent.chatRev != null && agent.chatRev != chatSeen[agent.pane]
+            val badge = when {
+                agent.tone == QueueTone.Warn -> "?" to agent.tone.color()
+                agent.tone == QueueTone.Error -> "!" to agent.tone.color()
+                active > 0 -> "$active chờ" to colors.accent
+                hasNew -> "mới" to colors.success
+                else -> null
+            }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(if (selected) colors.accent.copy(alpha = 0.10f) else Color.Transparent)
+                    // Có transcript thì chạm là mở thread; chưa có thì chỉ chọn (ô gõ nhắm vào nó).
+                    .clickable { if (agent.chatRev != null) onOpenChat(agent.pane) else onSelect(agent.pane) }
+                    .padding(horizontal = 10.dp, vertical = 7.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                ChuText("●", style = type.labelSmall, color = sessionDotColor(agent), modifier = Modifier.padding(top = 2.dp))
+                Spacer(Modifier.width(8.dp))
+                Column(Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        ChuText(
+                            agent.name,
+                            style = type.label.copy(fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal),
+                            color = AgentKind.of(agent.agent).rosterColor(),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false),
+                        )
+                        badge?.let { (text, color) ->
+                            Spacer(Modifier.width(6.dp))
+                            TuiBadge(text, color)
+                        }
+                        Spacer(Modifier.weight(1f))
+                        chatWhen(agent.previewTs).takeIf { it.isNotEmpty() }?.let {
+                            ChuText(it, style = type.labelSmall, color = colors.textMuted)
+                        }
+                    }
+                    val preview = agent.preview.ifBlank {
+                        if (agent.chatRev != null) "chưa có tin" else "không có transcript"
+                    }
+                    ChuText(
+                        (if (sessionWorking(agent)) "▶ " else "") + preview,
+                        style = type.bodySmall,
+                        color = if (sessionWorking(agent)) colors.textPrimary else colors.textSecondary,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CenterNote(text: String) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        ChuText(text, style = ChuTypography.current.labelSmall, color = ChuColors.current.textMuted)
     }
 }
 

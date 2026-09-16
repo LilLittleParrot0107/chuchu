@@ -70,6 +70,50 @@ class QueueClient(
         data class Failed(val message: String, val needsAuth: Boolean = false) : ChatFetch
     }
 
+    sealed interface FeedFetch {
+        data class Fresh(val page: FeedPage) : FeedFetch
+        data object Unchanged : FeedFetch
+        data class Failed(val message: String, val needsAuth: Boolean = false) : FeedFetch
+    }
+
+    /**
+     * `GET /feed` (UI G1, 16/9): tin cuối các session đang động gộp theo giờ. [pane] null =
+     * tất cả (server tự lọc session "động"); [pane] cụ thể xem được cả session đang rảnh.
+     * [sinceRev] + [waitSec] = long-poll như /chat; rev của /feed gồm chat_rev nên tin mới
+     * đánh thức được (rev_now của /state thì không).
+     */
+    fun feed(pane: String?, limit: Int = 40, sinceRev: String? = null, waitSec: Int = 0): FeedFetch {
+        val wait = if (sinceRev.isNullOrEmpty()) 0 else waitSec.coerceIn(0, 25)
+        val q = StringBuilder("/feed?limit=").append(limit)
+        if (!pane.isNullOrEmpty()) q.append("&pane=").append(URLEncoder.encode(pane, "UTF-8"))
+        if (!sinceRev.isNullOrEmpty()) {
+            q.append("&since=").append(URLEncoder.encode(sinceRev, "UTF-8"))
+            if (wait > 0) q.append("&wait=").append(wait)
+        }
+        return try {
+            val (code, body) = request(q.toString(), null, readTimeoutMs + wait * 1000)
+            when (code) {
+                HttpURLConnection.HTTP_NOT_MODIFIED -> FeedFetch.Unchanged
+                HttpURLConnection.HTTP_OK -> FeedFetch.Fresh(FeedPage.parse(body))
+                HttpURLConnection.HTTP_NOT_FOUND -> FeedFetch.Failed(
+                    runCatching { JSONObject(body).optString("error") }.getOrNull()?.takeIf { it.isNotBlank() }
+                        ?: "This qsrv has no /feed yet — update qsrv on the host",
+                )
+                HttpURLConnection.HTTP_UNAUTHORIZED -> FeedFetch.Failed("The token is invalid or has changed", needsAuth = true)
+                HttpURLConnection.HTTP_FORBIDDEN -> FeedFetch.Failed("Access denied (403) — open Tailscale and verify the account", needsAuth = true)
+                else -> FeedFetch.Failed("Feed server error ($code)")
+            }
+        } catch (e: SocketTimeoutException) {
+            FeedFetch.Failed("Feed read timed out — check Tailscale")
+        } catch (e: UnknownHostException) {
+            FeedFetch.Failed("Host not found — check Tailscale VPN/DNS")
+        } catch (e: IOException) {
+            FeedFetch.Failed(offlineMessage(e))
+        } catch (e: Exception) {
+            FeedFetch.Failed("Could not read the feed (${e.javaClass.simpleName})")
+        }
+    }
+
     /**
      * `GET /chat` (16/9): [limit] tin cuối của transcript agent [pane]; [before] = cursor
      * trang trước để lấy tin cũ hơn; [sinceRev] + [waitSec] = long-poll như /state, server

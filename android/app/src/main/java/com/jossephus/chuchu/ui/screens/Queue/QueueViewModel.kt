@@ -57,6 +57,20 @@ data class QueueUiState(
     val feedback: QueueFeedback? = null,
 )
 
+/**
+ * Dòng thời gian (UI G1): tin cuối các session đang động, mới nhất ở cuối. [pane] null =
+ * tất cả. Server trả trọn trang mỗi lần (không phân trang) — tin cũ trôi khỏi tầm mắt,
+ * muốn đọc đủ thì mở hội thoại.
+ */
+data class FeedUiState(
+    val messages: List<FeedMessage> = emptyList(),
+    val rev: String = "",
+    val loading: Boolean = false,
+    val error: String? = null,
+    val pane: String? = null,
+    val updatedAt: Long = 0L,
+)
+
 class QueueViewModel(
     private val settings: SettingsRepository,
 ) : ViewModel() {
@@ -71,6 +85,12 @@ class QueueViewModel(
     private val _chatSeen = MutableStateFlow<Map<String, String>>(settings.allChatSeenRevs())
     val chatSeen: StateFlow<Map<String, String>> = _chatSeen.asStateFlow()
     private var chatJob: Job? = null
+
+    // ── Dòng thời gian (UI G1): chỉ chạy khi chế độ DÒNG THỜI GIAN đang hiện ──────
+    private val _feed = MutableStateFlow(FeedUiState())
+    val feed: StateFlow<FeedUiState> = _feed.asStateFlow()
+    private var feedJob: Job? = null
+    private var feedWanted = false
 
     private val _ambientSummary = MutableStateFlow(QueueAmbientSummary.Empty)
 
@@ -220,6 +240,59 @@ class QueueViewModel(
         }
     }
 
+    /** Bật khi công tắc đang ở DÒNG THỜI GIAN; tắt khi sang HỘI THOẠI (đỡ tốn radio). */
+    fun setFeedVisible(wanted: Boolean) {
+        if (wanted == feedWanted) return
+        feedWanted = wanted
+        syncFeedPolling()
+    }
+
+    /** Chip session đổi lọc: rev cũ không còn nghĩa → xoá để lần tới lấy trọn trang. */
+    fun setFeedPane(pane: String?) {
+        val normalized = pane?.takeIf { it.isNotBlank() }
+        if (_feed.value.pane == normalized) return
+        _feed.update { it.copy(pane = normalized, rev = "", messages = emptyList(), loading = true, error = null) }
+        syncFeedPolling()
+    }
+
+    private fun syncFeedPolling() {
+        val shouldRun = feedWanted && isAppActive && isQueueVisible
+        if (!shouldRun) { feedJob?.cancel(); feedJob = null; return }
+        if (feedJob?.isActive == true) return
+        feedJob = viewModelScope.launch {
+            var backoff = 0L
+            while (isActive && feedWanted) {
+                val t0 = System.currentTimeMillis()
+                val failed = feedRefreshOnce(waitSec = LONGPOLL_S)
+                backoff = if (failed) minOf(maxOf(backoff * 2, FOREGROUND_POLL_MS), MAX_FOREGROUND_BACKOFF_MS) else 0L
+                val elapsed = System.currentTimeMillis() - t0
+                delay(maxOf(backoff, MIN_GAP_MS - elapsed))
+            }
+        }
+    }
+
+    /** true nếu hỏng (để giãn nhịp). Server trả trọn trang nên áp thẳng, không ghép. */
+    private suspend fun feedRefreshOnce(waitSec: Int): Boolean {
+        val c = client() ?: run { _feed.update { it.copy(loading = false, error = "Queue chưa cấu hình") }; return true }
+        val cur = _feed.value
+        val since = cur.rev.takeIf { it.isNotBlank() }
+        val result = withContext(Dispatchers.IO) { c.feed(cur.pane, sinceRev = since, waitSec = waitSec) }
+        persistAuthRecovery(c)
+        if (_feed.value.pane != cur.pane) return false
+        return when (val r = result) {
+            is QueueClient.FeedFetch.Fresh -> {
+                _feed.update { it.copy(messages = r.page.messages, rev = r.page.rev, loading = false, error = null, updatedAt = System.currentTimeMillis()) }
+                false
+            }
+            QueueClient.FeedFetch.Unchanged -> { _feed.update { it.copy(loading = false, error = null) }; false }
+            is QueueClient.FeedFetch.Failed -> {
+                _feed.update { it.copy(loading = false, error = r.message) }
+                if (r.needsAuth) _ui.update { it.copy(needsSetup = true) }
+                true
+            }
+        }
+    }
+
     /** "tải thêm": trang cũ hơn trước cursor, nối lên đầu. */
     fun loadOlderChat() {
         val cur = _chat.value
@@ -275,21 +348,32 @@ class QueueViewModel(
      * thẳng vào pane — chờ duyệt mà xếp hàng là kẹt cả hai bên.
      */
     fun sendChat(text: String) {
-        val pane = _chat.value.pane ?: return
-        if (text.isBlank() || _chat.value.sending) return
+        sendToPane(_chat.value.pane ?: return, text, fromChat = true)
+    }
+
+    /**
+     * Gửi tới một pane từ hàng HỘI THOẠI (chip đang chọn) — cùng luật với màn chat, chỉ
+     * khác không phụ thuộc màn chat đang mở. Khoá busyOps theo pane để nút GỬI biết chờ.
+     */
+    fun sendToPane(pane: String, text: String, fromChat: Boolean = false) {
+        if (pane.isBlank() || text.isBlank()) return
+        val key = QueueOperationKey.chatSend(pane)
+        if (key in _ui.value.busyOps) return
         val agent = _ui.value.state.agents.firstOrNull { it.pane == pane }
         if (agent != null && agent.label.trim().lowercase() in CHAT_QUEUE_WHEN) {
             addTask(text, pane, null)
             return
         }
-        _chat.update { it.copy(sending = true) }
+        _ui.update { it.copy(busyOps = it.busyOps + key) }
+        if (fromChat) _chat.update { it.copy(sending = true) }
         viewModelScope.launch {
             try {
                 val c = client() ?: return@launch
                 val r = withContext(Dispatchers.IO) { c.chatSend(pane, text.trim()) }
                 persistAuthRecovery(c)
+                val name = agent?.name?.takeIf { it.isNotBlank() } ?: pane
                 when (r) {
-                    is QueueClient.Act.Ok -> postFeedback("", "Đã gửi vào ${_chat.value.name}", QueueFeedbackTone.Success)
+                    is QueueClient.Act.Ok -> postFeedback("", "Đã gửi vào $name", QueueFeedbackTone.Success)
                     is QueueClient.Act.Conflict -> postFeedback("", "Gửi lại", QueueFeedbackTone.Warning)
                     is QueueClient.Act.Failed -> {
                         _ui.update { it.copy(needsSetup = r.needsAuth) }
@@ -297,7 +381,8 @@ class QueueViewModel(
                     }
                 }
             } finally {
-                _chat.update { it.copy(sending = false) }
+                _ui.update { it.copy(busyOps = it.busyOps - key) }
+                if (fromChat) _chat.update { it.copy(sending = false) }
             }
         }
     }
@@ -307,6 +392,7 @@ class QueueViewModel(
         isAppActive = active
         syncPollingMode()
         syncChatPolling()
+        syncFeedPolling()
         // Cả poll /machine lẫn ý muốn làm mới quota đều dừng khi app xuống nền:
         // trang USAGE còn mở trong túi quần không được kéo theo claude 380MB/30s.
         machinePoller.setAppActive(active)
@@ -318,6 +404,7 @@ class QueueViewModel(
         isQueueVisible = visible
         syncPollingMode()
         syncChatPolling()
+        syncFeedPolling()
     }
 
     private fun syncPollingMode() {
@@ -582,6 +669,8 @@ class QueueViewModel(
         // Summary ambient phải reset cùng state: nếu không, pill/FAB vẫn hiển thị
         // số liệu của qsrv CŨ trong khoảng thời gian trước khi refreshNow() kịp về.
         _ambientSummary.value = QueueAmbientSummary.Empty
+        // Feed là dữ liệu của qsrv CŨ — giữ lại là hiện tin của server khác.
+        _feed.value = FeedUiState()
         _ui.update {
             it.copy(
                 state = QueueState.Empty,
@@ -623,6 +712,8 @@ class QueueViewModel(
     override fun onCleared() {
         pollJob?.cancel()
         pollJob = null
+        feedJob?.cancel()
+        feedJob = null
         pollingMode = QueuePollingMode.Stopped
         super.onCleared()
     }

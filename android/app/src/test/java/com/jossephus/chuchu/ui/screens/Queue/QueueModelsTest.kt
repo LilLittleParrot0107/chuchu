@@ -4,6 +4,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.text.SimpleDateFormat
+import java.util.Locale
+import java.util.TimeZone
 
 class QueueModelsTest {
 
@@ -254,5 +257,80 @@ class QueueModelsTest {
         assertEquals("opencode", s.agents[0].agent)
         assertEquals("12.3", s.agents[0].chatRev)
         assertNull(s.agents[1].agent)
+    }
+
+    // ── UI G1 (16/9): preview trên /state + trang /feed ─────────────────────────
+
+    @Test
+    fun `doc duoc preview tin cuoi cua agent`() {
+        val s = QueueState.parse(
+            """{"agents":[{"pane":"w1:p1","name":"OC | build","glyph":"●","tone":"ok",
+                "label":"ranh","preview":"xong rồi anh","preview_ts":"2026-09-16T05:04:31.123Z"}]}"""
+        )
+        val a = s.agents.single()
+        assertEquals("xong rồi anh", a.preview)
+        assertEquals("2026-09-16T05:04:31.123Z", a.previewTs)
+    }
+
+    @Test
+    fun `agent cu khong co preview van doc duoc`() {
+        val a = QueueState.parse("""{"agents":[{"pane":"p1","name":"a"}]}""").agents.single()
+        assertEquals("", a.preview)
+        assertEquals("", a.previewTs)
+    }
+
+    @Test
+    fun `chat send key khoa theo pane`() {
+        assertEquals("chat-send:w1:p1", QueueOperationKey.chatSend("w1:p1"))
+    }
+
+    @Test
+    fun `feed page doc duoc trang that`() {
+        val page = FeedPage.parse(
+            """{"rev":"7-ab12cd34","pane":null,"messages":[
+               {"pane":"w1:p1","name":"OC | build","agent":"opencode","label":"dang chay","tone":"accent",
+                "role":"assistant","ts":"2026-09-16T05:04:31.123Z","text":"đang sửa","uuid":"u1","off":100},
+               {"pane":"w1:p2","name":"claude","agent":"claude","label":"ranh","tone":"dim",
+                "role":"user","ts":"2026-09-16T05:05:00.000Z","text":"gửi việc","uuid":"","off":9}]}"""
+        )
+        assertEquals("7-ab12cd34", page.rev)
+        assertNull(page.pane)
+        assertEquals(2, page.messages.size)
+        assertEquals(QueueTone.Accent, page.messages[0].tone)
+        assertEquals("assistant", page.messages[0].role)
+        assertEquals("opencode", page.messages[0].agent)
+        // uuid một mình không đủ làm key: opencode có nhiều đoạn text cùng uuid, khác off.
+        assertEquals("w1:p1:u1:100", page.messages[0].key)
+        assertEquals("w1:p2:2026-09-16T05:05:00.000Z:9", page.messages[1].key)
+    }
+
+    @Test
+    fun `feed bo qua phan tu rac chu khong vo danh sach`() {
+        val page = FeedPage.parse(
+            """{"rev":"r","messages":["rác",null,{"pane":"p1","text":"that","role":"assistant"}]}"""
+        )
+        assertEquals(1, page.messages.size)
+        assertEquals("that", page.messages.single().text)
+    }
+
+    /** Timeline chỉ kể chuyện người↔agent; tool/think là nhiễu, không phải tin. */
+    @Test
+    fun `feed bo vai tro khong phai tin`() {
+        val page = FeedPage.parse(
+            """{"rev":"r","messages":[
+               {"pane":"p1","role":"tool","text":"x"},
+               {"pane":"p1","role":"think","text":"y"}]}"""
+        )
+        assertTrue(page.messages.isEmpty())
+    }
+
+    @Test
+    fun `chatWhen doi gio iso thanh nhan ngan`() {
+        val base = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US)
+            .apply { timeZone = TimeZone.getTimeZone("UTC") }
+            .parse("2026-09-16T05:04:31")!!.time
+        assertEquals("vừa xong", chatWhen("2026-09-16T05:04:31.123Z", base + 1_000))
+        assertEquals("3′", chatWhen("2026-09-16T05:04:31.123Z", base + 3 * 60_000))
+        assertEquals("", chatWhen("rác", base))
     }
 }

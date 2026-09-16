@@ -44,6 +44,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -97,6 +98,12 @@ fun QueueScreen(
     onCloseChat: () -> Unit = {},
     onLoadOlderChat: () -> Unit = {},
     onSendChat: (String) -> Unit = {},
+    // Hàng HỘI THOẠI gửi tới chip đang chọn mà không cần mở chat (UI G1, 16/9).
+    onSendToPane: (String, String) -> Unit = { _, _ -> },
+    // DÒNG THỜI GIAN (UI G1): dữ liệu /feed + bật/tắt poll + lọc theo chip.
+    feed: FeedUiState = FeedUiState(),
+    onFeedVisible: (Boolean) -> Unit = {},
+    onFeedPane: (String?) -> Unit = {},
     /** ⊕ trong chat: tải file lên ~/inbox trên host, trả đường dẫn để dán vào tin (null = hỏng). */
     onUploadToInbox: suspend (name: String, length: Long, open: () -> java.io.InputStream?) -> String? = { _, _, _ -> null },
     /** Cỡ chữ terminal (sp) để tin trong chat cùng cỡ với terminal. */
@@ -173,11 +180,18 @@ fun QueueScreen(
     var selectedPane by remember(initialPane) { mutableStateOf(initialPane) }
     var lastRosterTapPane by remember { mutableStateOf<String?>(null) }
     var lastRosterTapAt by remember { mutableLongStateOf(0L) }
+    // G1 (user chốt 16/9): mặc định mở ở DÒNG THỜI GIAN; bảng VIỆC là lớp riêng đè lên.
+    var mode by rememberSaveable { mutableStateOf(QueueMode.Timeline) }
+    var tasksOpen by rememberSaveable { mutableStateOf(false) }
+    // Chỉ long-poll /feed khi chế độ dòng thời gian đang hiện (đỡ tốn radio);
+    // mở CHAT (chạm đôi chip từ timeline) cũng tạm ngưng vì tin đã hiện trong chat.
+    LaunchedEffect(mode, chatOpen) { onFeedVisible(mode == QueueMode.Timeline && !chatOpen) }
 
     val agents = ui.state.agents
+    // Mặc định TẤT CẢ (chip đầu rail) — mở Queue là thấy ngay dòng thời gian của cả chuồng;
+    // muốn nhắm một agent thì chạm chip (hoặc deep link initialPane).
     val pane = selectedPane
         ?.takeIf { candidate -> candidate == ALL_AGENTS || agents.any { it.pane == candidate } }
-        ?: agents.firstOrNull()?.pane
         ?: ALL_AGENTS
     val selectedAgent = agents.firstOrNull { it.pane == pane }
     // Agent đang mở CHAT — tô màu tên/tin theo LOẠI agent (user chốt 16/9, 1B + 2B).
@@ -229,13 +243,8 @@ fun QueueScreen(
             .background(colors.background)
             .imePadding(),
     ) {
-        // Roster AGENTS chỉ được ăn tối đa ~1/3 chỗ còn trống. Trần cứng 280dp
-        // trước đây không biết bàn phím vừa lấy mất ~300dp: trên màn 780dp
-        // (1080×2340 mật độ 3x) băng + roster + ô nhập cộng lại vượt phần còn
-        // lại, cột không cuộn nên ô nhập bị đẩy tụt xuống dưới bàn phím — tái
-        // hiện trên emulator ép density 480, [SEND] chỉ còn lộ 9px (4/9).
-        val rosterMax = (maxHeight * 0.35f).coerceAtMost(280.dp)
-
+        // Roster cu (cao toi 35% man) da thay bang dai chip luon cao 36dp, khong
+        // con tranh cho voi ban phim — hang so dpmax cu bo theo.
         // Scrim status bar = surface: khop voi command band ngay duoi, het
         // seam "thanh noti khac mau phan duoi". Mau lay tu palette active.
         Spacer(
@@ -293,6 +302,23 @@ fun QueueScreen(
                 }
                 // Chu cai ngan doc duoc hon icon rieng le (↻/⚙ truoc day khong
                 // ai giai thich duoc ma van giu dung do rong terminal).
+                // [VIỆC] giữ đường vào bảng hàng đợi cũ (UI G1 chỉ còn feed + hội thoại).
+                if (!chatOpen) {
+                    ChuButton(
+                        onClick = { tasksOpen = !tasksOpen },
+                        variant = ChuButtonVariant.Ghost,
+                        bracketed = false,
+                        borderColor = if (tasksOpen) colors.accent else colors.border,
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                        minHeight = 24.dp,
+                    ) {
+                        ChuText(
+                            "VIỆC",
+                            style = ChuTypography.current.labelSmall,
+                            color = if (tasksOpen) colors.accent else colors.textPrimary,
+                        )
+                    }
+                }
                 if (!chatOpen) KohiCompactAction(label = "SYNC", onClick = onRefresh)
                 if (!chatOpen) KohiCompactAction(label = "CFG", onClick = { configOpen = true })
                 // Clear done nam cung hang LOGS/SYNC chu khong o section band:
@@ -353,52 +379,45 @@ fun QueueScreen(
                 )
             }
 
-            QueueAgentRoster(
+            QueueModeSwitch(
+                mode = mode,
+                // Đổi chế độ thì đóng bảng VIỆC: hai thứ cùng chiếm thân màn.
+                onSelect = { picked -> tasksOpen = false; mode = picked },
+            )
+
+            QueueSessionRail(
                 agents = agents,
-                tasks = ui.state.tasks,
                 selectedPane = pane,
                 onSelect = { nextPane ->
-                    // Chạm = chọn (ngay lập tức); chạm lần hai trong 350 ms vào CÙNG agent = mở
-                    // chat (user 16/9). Không dùng detectTapGestures để chạm đơn không phải đợi.
+                    // Chạm = chọn (lọc dòng thời gian / nhắm ô gõ); chạm đôi trong 350 ms
+                    // vào CÙNG agent = mở chat, giữ thói quen của roster cũ (user 16/9).
                     val now = System.currentTimeMillis()
                     val isDouble = nextPane == lastRosterTapPane && now - lastRosterTapAt < ROSTER_DOUBLE_TAP_MS
                     lastRosterTapPane = nextPane
                     lastRosterTapAt = now
-                    selectedPane = nextPane
                     if (isDouble && nextPane != ALL_AGENTS) {
                         val target = agents.firstOrNull { it.pane == nextPane }
-                        if (target?.chatRev != null) onOpenChat(nextPane)
+                        if (target?.chatRev != null) {
+                            onOpenChat(nextPane)
+                            return@QueueSessionRail
+                        }
                     }
+                    selectedPane = nextPane
+                    onFeedPane(nextPane.takeIf { it != ALL_AGENTS })
                 },
-                maxHeight = rosterMax,
             )
 
-            // Header vung content phai tu tra loi "duoi day thuoc ve agent nao":
-            // TEN · STATUS · N TASKS tren mot dong duy nhat.
-            KohiSectionBand(
-                label = selectedAgent?.name ?: "ALL TASKS",
-                meta = buildString {
-                    selectedAgent?.let { append(it.label.uppercase()).append(" · ") }
-                    append("${visibleTasks.size} TASKS")
-                },
-                accent = selectedAgent?.tone?.color() ?: colors.accent,
-            )
-
-            // Hai đoạn dưới band: [TÌNH TRẠNG] là nội dung cũ, [CHAT] mở màn chat của agent.
-            // "· MỚI" khi transcript đổi từ lần xem cuối (qsrv chat_rev vs rev đã xem).
-            if (selectedAgent != null) {
-                val hasNew = selectedAgent.chatRev != null && selectedAgent.chatRev != chatSeen[selectedAgent.pane]
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    KohiCompactAction(label = "TÌNH TRẠNG", onClick = {}, enabled = false)
-                    KohiCompactAction(
-                        label = if (hasNew) "CHAT · MỚI" else "CHAT",
-                        onClick = { onOpenChat(selectedAgent.pane) },
-                        enabled = selectedAgent.chatRev != null,
-                    )
-                }
+            // Bảng VIỆC (lớp cũ): header vung content phai tu tra loi "duoi day thuoc
+            // ve agent nao": TEN · STATUS · N TASKS tren mot dong duy nhat.
+            if (tasksOpen) {
+                KohiSectionBand(
+                    label = selectedAgent?.name ?: "ALL TASKS",
+                    meta = buildString {
+                        selectedAgent?.let { append(it.label.uppercase()).append(" · ") }
+                        append("${visibleTasks.size} TASKS")
+                    },
+                    accent = selectedAgent?.tone?.color() ?: colors.accent,
+                )
             }
 
             Box(
@@ -407,54 +426,79 @@ fun QueueScreen(
                     .weight(1f),
             ) {
                 when {
-                    visibleTasks.isEmpty() && ui.everLoaded -> EmptyQueueInspector(
-                        agent = selectedAgent,
-                        scopeLabel = selectedAgent?.name ?: "ALL AGENTS",
-                        allTasks = ui.state.tasks,
-                        pane = pane,
-                    )
-                    !ui.everLoaded && ui.loading -> Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        ChuText(
-                            "LOADING QUEUE…",
-                            style = ChuTypography.current.label,
-                            color = colors.textMuted,
+                    tasksOpen -> when {
+                        visibleTasks.isEmpty() && ui.everLoaded -> EmptyQueueInspector(
+                            agent = selectedAgent,
+                            scopeLabel = selectedAgent?.name ?: "ALL AGENTS",
+                            allTasks = ui.state.tasks,
+                            pane = pane,
                         )
-                    }
-                    // Lan quet dau chua thanh con + loi mang: day nguoi ve hanh
-                    // dong dung (kiem tra QSRV, pull CFG de retry) chu khong de
-                    // roi vao danh sach gia hay spinner vo han.
-                    !ui.everLoaded && ui.error != null -> Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        ChuText(
-                            "▌ OFFLINE — CHECK QSRV · PULL CFG TO RETRY",
-                            style = ChuTypography.current.labelSmall,
-                            color = colors.textMuted,
-                        )
-                    }
-                    else -> LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(bottom = 6.dp),
-                    ) {
-                        items(visibleTasks, key = QueueTask::id) { task ->
-                            QueueTaskRow(
-                                task = task,
-                                selected = false,
-                                showTarget = pane == ALL_AGENTS,
-                                // Tap = mo thang sheet detail co scrim (user chot
-                                // 27/8, dong bo voi dashboard) — buoc chon-roi-
-                                // INSPECT trung gian da bo.
-                                onClick = { inspectedTaskId = task.id },
+                        !ui.everLoaded && ui.loading -> Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            ChuText(
+                                "LOADING QUEUE…",
+                                style = ChuTypography.current.label,
+                                color = colors.textMuted,
                             )
                         }
+                        // Lan quet dau chua thanh con + loi mang: day nguoi ve hanh
+                        // dong dung (kiem tra QSRV, pull CFG de retry) chu khong de
+                        // roi vao danh sach gia hay spinner vo han.
+                        !ui.everLoaded && ui.error != null -> Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            ChuText(
+                                "▌ OFFLINE — CHECK QSRV · PULL CFG TO RETRY",
+                                style = ChuTypography.current.labelSmall,
+                                color = colors.textMuted,
+                            )
+                        }
+                        else -> LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(bottom = 6.dp),
+                        ) {
+                            items(visibleTasks, key = QueueTask::id) { task ->
+                                QueueTaskRow(
+                                    task = task,
+                                    selected = false,
+                                    showTarget = pane == ALL_AGENTS,
+                                    // Tap = mo thang sheet detail co scrim (user chot
+                                    // 27/8, dong bo voi dashboard) — buoc chon-roi-
+                                    // INSPECT trung gian da bo.
+                                    onClick = { inspectedTaskId = task.id },
+                                )
+                            }
+                        }
                     }
+                    mode == QueueMode.Timeline -> QueueFeedView(
+                        feed = feed,
+                        onOpen = { m ->
+                            // Chạm tin = sang HỘI THOẠI với đúng phiên đó (user chốt G1):
+                            // muốn gõ thì gõ ngay ở ô dưới, không nhảy thẳng vào thread.
+                            selectedPane = m.pane
+                            onFeedPane(m.pane)
+                            mode = QueueMode.Threads
+                        },
+                    )
+                    else -> QueueConversationList(
+                        agents = agents,
+                        tasks = ui.state.tasks,
+                        selectedPane = pane,
+                        chatSeen = chatSeen,
+                        onOpenChat = onOpenChat,
+                        onSelect = { p -> selectedPane = p; onFeedPane(p) },
+                    )
                 }
             }
+            }
 
+            // Dải máy + ô nhập chỉ có chỗ để gõ: CHAT · bảng VIỆC · HỘI THOẠI.
+            // DÒNG THỜI GIAN là màn đọc thuần (user chốt 16/9: bỏ dải dưới timeline) —
+            // không dải máy, không ô nhập, tin cuối nằm ngay trên mép dưới.
+            if (chatOpen || tasksOpen || mode == QueueMode.Threads) {
             // Dải máy ghim ngay trên ô nhập: lúc gõ việc mới là lúc cần biết
             // máy còn tải nổi không và còn quota không (user chốt P2, 3/9).
             // Thu panel theo BÀN PHÍM, KHÔNG theo focus. Android không bỏ focus
@@ -464,18 +508,27 @@ fun QueueScreen(
             val imeUp = WindowInsets.ime.getBottom(LocalDensity.current) > 0
             MachineStrip(machine, onUsageVisible = onUsageVisible, onRefreshUsage = onRefreshUsage,
                 collapse = imeUp)
-            }
 
-            // Một ô nhập cho cả hai chế độ: Queue thì xếp việc vào hàng đợi, CHAT thì gõ thẳng vào pane.
+            // Một ô nhập cho cả ba ngữ cảnh: VIỆC (xếp hàng đợi) · HỘI THOẠI (gửi
+            // tới chip đang chọn, agent bận thì xếp — sendToPane) · CHAT (gõ thẳng
+            // vào pane). DÒNG THỜI GIAN là màn đọc thuần: không ô nhập (user chốt 16/9).
             val chatAgentForComposer = if (chatOpen) agents.firstOrNull { it.pane == chat.pane } else selectedAgent
             QueueComposer(
                 modifier = Modifier.onSizeChanged { composerHeightPx = it.height },
                 value = prompt,
                 onValueChange = { prompt = it },
                 agent = chatAgentForComposer,
-                sending = if (chatOpen) chat.sending else isAdding,
+                sending = when {
+                    chatOpen -> chat.sending
+                    tasksOpen -> isAdding
+                    else -> pane != ALL_AGENTS && QueueOperationKey.chatSend(pane) in ui.busyOps
+                },
                 onFocusChanged = { composerFocused = it },
-                placeholder = if (chatOpen) "Trả lời ${chat.name}…" else null,
+                placeholder = when {
+                    chatOpen -> "Trả lời ${chat.name}…"
+                    !tasksOpen && selectedAgent != null -> "Gửi việc / trả lời ${selectedAgent.name}…"
+                    else -> null
+                },
                 sendLabel = if (chatOpen) "[GỬI ↵]" else "[SEND]",
                 // ⊕ giữa ô gõ và [GỬI], cùng màu với nút gửi lúc rảnh (user 16/9: "màu đồng nhất").
                 trailing = if (!chatOpen) null else {
@@ -498,15 +551,25 @@ fun QueueScreen(
                 onSend = {
                     val text = prompt.trim()
                     if (text.isEmpty()) return@QueueComposer
-                    if (chatOpen) {
-                        onSendChat(text)
-                        prompt = ""
-                    } else if (selectedAgent != null) {
-                        onAdd(text, selectedAgent.pane, null)
-                        prompt = ""
+                    when {
+                        chatOpen -> {
+                            onSendChat(text)
+                            prompt = ""
+                        }
+                        // Bảng VIỆC: xếp task như cũ, nhắm agent đang chọn.
+                        tasksOpen -> selectedAgent?.let {
+                            onAdd(text, it.pane, null)
+                            prompt = ""
+                        }
+                        // HỘI THOẠI: gửi tới chip đang chọn (agent bận → hàng đợi).
+                        pane != ALL_AGENTS -> {
+                            onSendToPane(pane, text)
+                            prompt = ""
+                        }
                     }
                 },
             )
+            }
         }
 
         inspectedTask?.let { task ->

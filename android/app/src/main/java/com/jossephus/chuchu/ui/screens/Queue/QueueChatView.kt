@@ -276,3 +276,25 @@ internal fun chatAge(updatedAt: Long, now: Long = System.currentTimeMillis()): S
         else -> "cập nhật ${s / 3600} giờ trước"
     }
 }
+
+/**
+ * Giờ ngắn cho hàng HỘI THOẠI (UI G1): "vừa xong" · "12′" · "20:59" (hôm nay) · "3d" ·
+ * "16/9". Cùng nguồn ISO UTC với chatClock; chuỗi lạ thì rỗng (không đoán).
+ */
+internal fun chatWhen(ts: String, now: Long = System.currentTimeMillis()): String {
+    if (ts.length < 19) return ""
+    return try {
+        val parser = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
+        val date = parser.parse(ts.substring(0, 19)) ?: return ""
+        val age = now - date.time
+        when {
+            age < 60_000L -> "vừa xong"
+            age < 3_600_000L -> "${age / 60_000L}′"
+            age < 86_400_000L -> SimpleDateFormat("HH:mm", Locale.US).format(date)
+            age < 7 * 86_400_000L -> "${age / 86_400_000L}d"
+            else -> SimpleDateFormat("d/M", Locale.US).format(date)
+        }
+    } catch (e: Exception) {
+        ""
+    }
+}

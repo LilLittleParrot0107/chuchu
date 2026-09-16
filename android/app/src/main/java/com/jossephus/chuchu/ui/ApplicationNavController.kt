@@ -523,6 +523,12 @@ private fun QueueDestination(
         onCloseChat = sharedQueueVm::closeChat,
         onLoadOlderChat = sharedQueueVm::loadOlderChat,
         onSendChat = sharedQueueVm::sendChat,
+        // UI G1 (16/9): hàng HỘI THOẠI gửi tới chip đang chọn; DÒNG THỜI GIAN
+        // đọc /feed (chỉ long-poll khi màn đó hiện) + lọc theo chip.
+        onSendToPane = { pane, text -> sharedQueueVm.sendToPane(pane, text) },
+        feed = sharedQueueVm.feed.collectAsStateWithLifecycle().value,
+        onFeedVisible = sharedQueueVm::setFeedVisible,
+        onFeedPane = sharedQueueVm::setFeedPane,
         onUploadToInbox = sharedQueueVm::uploadToInbox,
         chatFontSizeSp = sharedQueueVm.terminalFontSize.collectAsStateWithLifecycle().value,
         onBack = onBack,

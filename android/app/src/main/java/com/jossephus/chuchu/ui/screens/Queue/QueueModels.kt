@@ -69,9 +69,13 @@ internal fun QueueAction.operationKey(taskId: Int?): String = "$op:${taskId ?: "
 internal object QueueOperationKey {
     const val ADD = "add"
     private const val CLEAR_DONE_PREFIX = "clear-done:"
+    private const val CHAT_SEND_PREFIX = "chat-send:"
 
     fun clearDone(targetPane: String?): String = "$CLEAR_DONE_PREFIX${targetPane ?: "*"}"
     fun isClearDone(key: String): Boolean = key.startsWith(CLEAR_DONE_PREFIX)
+
+    /** Gửi thẳng vào pane từ hàng HỘI THOẠI (chip đang chọn) — khoá theo pane. */
+    fun chatSend(targetPane: String): String = "$CHAT_SEND_PREFIX$targetPane"
 }
 
 data class QueueAgent(
@@ -89,6 +93,10 @@ data class QueueAgent(
     val chatRev: String? = null,
     /** Loại agent herdr báo ("claude"/"opencode"/"agy") — tô màu tên theo loại (user chốt 16/9). */
     val agent: String? = null,
+    /** Tin cuối của transcript, dồn 1 dòng ≤160 ký tự — hàng HỘI THOẠI (UI G1) đọc nhanh. */
+    val preview: String = "",
+    /** Giờ ISO UTC của tin cuối (qsrv /state preview_ts); "" = không có. */
+    val previewTs: String = "",
 ) {
     /**
      * Thứ tự trên roster — số nhỏ lên trên (user chốt 4/9): thứ cần TAY người
@@ -257,6 +265,8 @@ data class QueueState(
             word = englishQueueLabel(o.optString("word")),
             chatRev = o.optString("chat_rev").takeIf { it.isNotBlank() && it != "null" },
             agent = o.optString("agent").takeIf { it.isNotBlank() && it != "null" },
+            preview = o.optString("preview"),
+            previewTs = o.optString("preview_ts"),
         )
 
         private fun parseTask(o: JSONObject) = QueueTask(
@@ -372,5 +382,66 @@ data class ChatPage(
         }
 
         private val CHAT_ROLES = setOf("user", "assistant", "tool", "think")
+    }
+}
+
+/**
+ * Một tin trên DÒNG THỜI GIAN (qsrv `GET /feed`, UI G1 16/9): tin cuối của các session
+ * đang động, gộp theo giờ. [role] chỉ có `user` (anh gõ) và `assistant` — tool/think bị
+ * server lọc bỏ để dòng thời gian đọc như tin nhắn.
+ */
+data class FeedMessage(
+    val pane: String,
+    val name: String,
+    val agent: String?,
+    val label: String,
+    val tone: QueueTone,
+    val role: String,
+    val ts: String,
+    val text: String,
+    val uuid: String = "",
+    /** Vị trí bản ghi trong transcript — ổn định, dùng làm key danh sách. */
+    val offset: Long = 0L,
+) {
+    // uuid một mình không đủ: một bản ghi assistant có thể có nhiều đoạn text. offset
+    // của opencode là rowid message nên hai đoạn cùng offset nhưng khác uuid.
+    val key: String get() = "$pane:${uuid.ifBlank { ts }}:$offset"
+}
+
+data class FeedPage(
+    val rev: String,
+    val pane: String?,
+    val messages: List<FeedMessage>,
+) {
+    companion object {
+        fun parse(json: String): FeedPage {
+            val o = JSONObject(json)
+            val arr = o.optJSONArray("messages")
+            val out = ArrayList<FeedMessage>(arr?.length() ?: 0)
+            if (arr != null) for (i in 0 until arr.length()) {
+                val m = arr.optJSONObject(i) ?: continue
+                val role = m.optString("role")
+                if (role !in FEED_ROLES) continue
+                out += FeedMessage(
+                    pane = m.optString("pane"),
+                    name = m.optString("name"),
+                    agent = m.optString("agent").takeIf { it.isNotBlank() && it != "null" },
+                    label = englishQueueLabel(m.optString("label")),
+                    tone = QueueTone.from(m.optString("tone")),
+                    role = role,
+                    ts = m.optString("ts"),
+                    text = m.optString("text"),
+                    uuid = m.optString("uuid"),
+                    offset = m.optLong("off", 0L),
+                )
+            }
+            return FeedPage(
+                rev = o.optString("rev"),
+                pane = o.optString("pane").takeIf { it.isNotBlank() && it != "null" },
+                messages = out,
+            )
+        }
+
+        private val FEED_ROLES = setOf("user", "assistant")
     }
 }
