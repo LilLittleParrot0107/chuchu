@@ -342,6 +342,8 @@ internal fun QueueComposer(
     /** Màn CHAT truyền "Trả lời <agent>…"; null = "Describe the task…" như cũ. */
     placeholder: String? = null,
     sendLabel: String = "[SEND]",
+    /** Nút đứng trước ô gõ (màn CHAT: ⊕ đính file). null = không có. */
+    leading: (@Composable () -> Unit)? = null,
 ) {
     val colors = ChuColors.current
     val type = ChuTypography.current
@@ -359,6 +361,10 @@ internal fun QueueComposer(
             .padding(horizontal = 10.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (leading != null) {
+            leading()
+            Spacer(Modifier.width(6.dp))
+        }
         Row(
             modifier = Modifier
                 .weight(1f)

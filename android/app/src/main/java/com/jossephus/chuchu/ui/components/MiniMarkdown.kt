@@ -1,5 +1,8 @@
 package com.jossephus.chuchu.ui.components
 
+import androidx.compose.ui.text.withLink
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -297,11 +300,59 @@ private fun buildMiniMarkdown(md: String, s: MdStyles): AnnotatedString = buildA
     }
 }
 
+/**
+ * Link BẤM ĐƯỢC (16/9, user: "link bên Queue phải bấm vào được"): `[nhãn](url)` và URL trần
+ * đều thành [LinkAnnotation.Url] — BasicText của Compose 1.7 tự mở qua LocalUriHandler, không
+ * cần ClickableText. Dùng cho markdown lẫn chữ thường ([LinkifiedText]).
+ */
+private val BARE_URL = Regex("""(?:https?://|www\.)[^\s<>"'`]+""")
+
+private fun trimUrlTail(u: String): String {
+    var s = u
+    while (s.isNotEmpty()) {
+        val c = s.last()
+        val drop = when (c) {
+            '.', ',', ';', ':', '!', '?', '\'', '"' -> true
+            ')' -> s.count { it == '(' } < s.count { it == ')' }
+            ']' -> s.count { it == '[' } < s.count { it == ']' }
+            else -> false
+        }
+        if (!drop) break
+        s = s.dropLast(1)
+    }
+    return s
+}
+
+private fun AnnotatedString.Builder.appendLinked(label: String, url: String, s: MdStyles) {
+    val target = if (url.startsWith("www.")) "https://$url" else url
+    withLink(LinkAnnotation.Url(target, TextLinkStyles(style = s.link))) { append(label) }
+}
+
+/** Chữ thường: chỉ bắt URL trần, không parse markdown. */
+private fun AnnotatedString.Builder.appendPlainLinkified(text: String, s: MdStyles) {
+    var i = 0
+    for (m in BARE_URL.findAll(text)) {
+        val url = trimUrlTail(m.value)
+        if (url.length < 8) continue
+        if (m.range.first > i) append(text.substring(i, m.range.first))
+        appendLinked(url, url, s)
+        i = m.range.first + url.length
+    }
+    if (i < text.length) append(text.substring(i))
+}
+
+@Composable
+fun LinkifiedText(text: String, style: TextStyle, color: Color, modifier: Modifier = Modifier) {
+    val styles = rememberMdStyles()
+    val built = remember(text, styles) { buildAnnotatedString { appendPlainLinkified(text, styles) } }
+    BasicText(text = built, style = style.copy(color = color), modifier = modifier)
+}
+
 /** Xu ly inline trong MOT dong: code > bold-italic > bold > italic > link. */
 private fun AnnotatedString.Builder.appendInline(text: String, s: MdStyles) {
     var i = 0
     for (m in INLINE_MD.findAll(text)) {
-        if (m.range.first > i) append(text.substring(i, m.range.first))
+        if (m.range.first > i) appendPlainLinkified(text.substring(i, m.range.first), s)
         val tok = m.value
         when {
             tok.startsWith("`") -> withStyle(s.code) { append(tok.trim('`')) }
@@ -312,10 +363,11 @@ private fun AnnotatedString.Builder.appendInline(text: String, s: MdStyles) {
             tok.startsWith("*") -> withStyle(s.italic) { append(tok.removeSurrounding("*")) }
             tok.startsWith("[") -> {
                 val label = tok.substringAfter('[').substringBefore(']')
-                withStyle(s.link) { append(label) }
+                val url = tok.substringAfter("](", "").substringBeforeLast(')').trim()
+                if (url.isNotBlank()) appendLinked(label, url, s) else withStyle(s.link) { append(label) }
             }
         }
         i = m.range.last + 1
     }
-    if (i < text.length) append(text.substring(i))
+    if (i < text.length) appendPlainLinkified(text.substring(i), s)
 }

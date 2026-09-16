@@ -1,5 +1,10 @@
 package com.jossephus.chuchu.ui.screens.Queue
 
+import com.jossephus.chuchu.ui.components.ChuButtonVariant
+import com.jossephus.chuchu.ui.components.ChuButton
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.rememberLauncherForActivityResult
+import android.provider.OpenableColumns
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -88,6 +93,8 @@ fun QueueScreen(
     onCloseChat: () -> Unit = {},
     onLoadOlderChat: () -> Unit = {},
     onSendChat: (String) -> Unit = {},
+    /** ⊕ trong chat: tải file lên ~/inbox trên host, trả đường dẫn để dán vào tin (null = hỏng). */
+    onUploadToInbox: suspend (name: String, length: Long, open: () -> java.io.InputStream?) -> String? = { _, _, _ -> null },
     modifier: Modifier = Modifier,
 ) {
     val colors = ChuColors.current
@@ -97,6 +104,24 @@ fun QueueScreen(
     val chatScope = rememberCoroutineScope()
     // Back khi đang mở chat = về Queue, không thoát màn.
     BackHandler(enabled = chatOpen) { onCloseChat() }
+    var prompt by remember { mutableStateOf("") }
+    // ⊕ trong chat: chọn file → tải lên ~/inbox qua dufs → dán đường dẫn vào ô gõ (user 16/9).
+    val attachLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        var name = "file"
+        var size = -1L
+        context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)?.use { c ->
+            if (c.moveToFirst()) {
+                c.getColumnIndex(OpenableColumns.DISPLAY_NAME).takeIf { it >= 0 }?.let { i -> c.getString(i)?.let { name = it } }
+                c.getColumnIndex(OpenableColumns.SIZE).takeIf { it >= 0 }?.let { i -> if (!c.isNull(i)) size = c.getLong(i) }
+            }
+        }
+        val safeName = name.replace(Regex("[/\\\\\u0000]"), "_")
+        chatScope.launch {
+            val path = onUploadToInbox(safeName, size) { context.contentResolver.openInputStream(uri) }
+            if (path != null) prompt = if (prompt.isBlank()) path else prompt.trimEnd() + " " + path
+        }
+    }
 
     // Chỉ hỏi khi màn Queue còn hiện; rời màn là dừng poll.
     DisposableEffect(Unit) {
@@ -122,7 +147,6 @@ fun QueueScreen(
         if (inspectedTaskId != null) focusManager.clearFocus()
     }
     var selectedPane by remember(initialPane) { mutableStateOf(initialPane) }
-    var prompt by remember { mutableStateOf("") }
 
     val agents = ui.state.agents
     val pane = selectedPane
@@ -411,6 +435,23 @@ fun QueueScreen(
                 onFocusChanged = { composerFocused = it },
                 placeholder = if (chatOpen) "Trả lời ${chat.name}…" else null,
                 sendLabel = if (chatOpen) "[GỬI ↵]" else "[SEND]",
+                leading = if (!chatOpen) null else {
+                    {
+                        ChuButton(
+                            onClick = { if (!chat.uploading) attachLauncher.launch("*/*") },
+                            enabled = !chat.uploading,
+                            variant = ChuButtonVariant.Ghost,
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 5.dp),
+                            minHeight = 34.dp,
+                        ) {
+                            ChuText(
+                                if (chat.uploading) "…" else "⊕",
+                                style = ChuTypography.current.headline,
+                                color = if (chat.uploading) colors.textMuted else colors.accent,
+                            )
+                        }
+                    }
+                },
                 onSend = {
                     val text = prompt.trim()
                     if (text.isEmpty()) return@QueueComposer

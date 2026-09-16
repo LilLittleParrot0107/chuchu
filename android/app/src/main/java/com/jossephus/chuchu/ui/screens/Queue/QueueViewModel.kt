@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.jossephus.chuchu.data.repository.SettingsRepository
+import com.jossephus.chuchu.data.network.InboxUploader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -32,6 +33,7 @@ data class ChatUiState(
     val pane: String? = null,
     val name: String = "",
     val cwd: String = "",
+    val home: String = "",
     val size: Long = 0L,
     val rev: String = "",
     val messages: List<ChatMessage> = emptyList(),
@@ -40,6 +42,7 @@ data class ChatUiState(
     val loading: Boolean = false,
     val loadingOlder: Boolean = false,
     val sending: Boolean = false,
+    val uploading: Boolean = false,
     val error: String? = null,
     val updatedAt: Long = 0L,
 )
@@ -201,7 +204,7 @@ class QueueViewModel(
                     val kept = cur.messages.filter { it.offset < firstNew }
                     val hasMore = if (kept.isEmpty()) page.hasMore else cur.hasMore
                     val cursor = if (kept.isEmpty()) page.cursor else cur.cursor
-                    cur.copy(name = page.name.ifBlank { cur.name }, cwd = page.cwd, size = page.size, rev = page.rev,
+                    cur.copy(name = page.name.ifBlank { cur.name }, cwd = page.cwd, home = page.home.ifBlank { cur.home }, size = page.size, rev = page.rev,
                              messages = kept + page.messages, hasMore = hasMore, cursor = cursor,
                              loading = false, error = null, updatedAt = System.currentTimeMillis())
                 }
@@ -237,6 +240,32 @@ class QueueViewModel(
                     else -> st.copy(loadingOlder = false, error = (result as? QueueClient.ChatFetch.Failed)?.message ?: st.error)
                 }
             }
+        }
+    }
+
+    /**
+     * ⊕ trong màn chat (16/9): tải file lên `~/inbox` trên host qua dufs (cùng đường với ⊕ của
+     * terminal, không cần tài khoản) rồi trả về đường dẫn để dán vào tin. null nếu hỏng (đã báo).
+     */
+    suspend fun uploadToInbox(name: String, length: Long, open: () -> java.io.InputStream?): String? {
+        val portal = settings.webPortalUrl.value.trim().trimEnd('/')
+        if (portal.isBlank()) { postFeedback("", "Chưa có Web portal URL trong Settings", QueueFeedbackTone.Error); return null }
+        val home = _chat.value.home.ifBlank { "/home/a" }
+        _chat.update { it.copy(uploading = true) }
+        try {
+            val result = withContext(Dispatchers.IO) {
+                val input = open() ?: return@withContext InboxUploader.Result.Failed("Không mở được file")
+                input.use { InboxUploader("${portal.removeSuffix("/home")}/home/inbox").put(name, it, length) }
+            }
+            return when (result) {
+                InboxUploader.Result.Ok -> {
+                    postFeedback("", "Đã tải lên $name", QueueFeedbackTone.Success)
+                    "$home/inbox/$name"
+                }
+                is InboxUploader.Result.Failed -> { postFeedback(result.message, "Không tải lên được", QueueFeedbackTone.Error); null }
+            }
+        } finally {
+            _chat.update { it.copy(uploading = false) }
         }
     }
 

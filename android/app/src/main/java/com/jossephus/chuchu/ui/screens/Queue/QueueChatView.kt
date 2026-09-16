@@ -34,6 +34,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.jossephus.chuchu.ui.components.ChuText
 import com.jossephus.chuchu.ui.components.MiniMarkdownText
+import com.jossephus.chuchu.ui.components.LinkifiedText
 import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTypography
 import java.text.SimpleDateFormat
@@ -122,16 +123,23 @@ private fun Center(text: String) {
 private fun UserRow(m: ChatMessage) {
     val colors = ChuColors.current
     val type = ChuTypography.current
+    // Cách khối trên 10dp thêm (danh sách chỉ 6dp): tin của anh mở một lượt mới, không dính
+    // vào tool/markdown ngay trên (user 16/9 "díu quá").
+    // Plan A (user chọn 16/9): nền vàng 14% + vạch 3dp, chữ giữ màu, đệm 6/10dp.
     Row(
-        modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 10.dp)
+            .height(IntrinsicSize.Min)
+            .background(colors.accent.copy(alpha = 0.14f)),
         verticalAlignment = Alignment.Top,
     ) {
-        Box(Modifier.width(2.dp).fillMaxHeight().background(colors.accent))
+        Box(Modifier.width(3.dp).fillMaxHeight().background(colors.accent))
         Spacer(Modifier.width(8.dp))
-        Column(Modifier.weight(1f)) {
+        Column(Modifier.weight(1f).padding(top = 6.dp, bottom = 6.dp, end = 10.dp)) {
             Row(verticalAlignment = Alignment.Top) {
                 ChuText("❯ ", style = type.body, color = colors.accent)
-                ChuText(m.text, style = type.body, color = colors.textPrimary, modifier = Modifier.weight(1f))
+                LinkifiedText(m.text, style = type.body, color = colors.textPrimary, modifier = Modifier.weight(1f))
                 TimeStamp(m.ts)
             }
         }

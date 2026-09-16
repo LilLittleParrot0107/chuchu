@@ -313,6 +313,8 @@ data class ChatPage(
     val pane: String,
     val name: String,
     val cwd: String,
+    /** Home của user trên host (qsrv), để ghép đường dẫn file ⊕ tải lên: `<home>/inbox/<tên>`. */
+    val home: String,
     val file: String,
     val size: Long,
     val rev: String,
@@ -354,6 +356,7 @@ data class ChatPage(
                 pane = o.optString("pane"),
                 name = o.optString("name"),
                 cwd = o.optString("cwd"),
+                home = o.optString("home"),
                 file = o.optString("file"),
                 size = o.optLong("size", 0L),
                 rev = o.optString("rev"),

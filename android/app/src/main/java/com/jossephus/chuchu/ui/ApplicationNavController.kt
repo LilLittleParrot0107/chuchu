@@ -523,6 +523,7 @@ private fun QueueDestination(
         onCloseChat = sharedQueueVm::closeChat,
         onLoadOlderChat = sharedQueueVm::loadOlderChat,
         onSendChat = sharedQueueVm::sendChat,
+        onUploadToInbox = sharedQueueVm::uploadToInbox,
         onBack = onBack,
     )
 }
