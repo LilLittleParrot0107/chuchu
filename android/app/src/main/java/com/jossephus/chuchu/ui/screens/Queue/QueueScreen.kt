@@ -309,6 +309,7 @@ fun QueueScreen(
                 QueueChatView(
                     chat = chat,
                     onLoadOlder = onLoadOlderChat,
+                    pendingTasks = ui.state.tasks.filter { it.target == chat.pane && !it.isCompleted && !it.isFailed },
                     listState = chatListState,
                     modifier = Modifier.fillMaxWidth().weight(1f),
                 )

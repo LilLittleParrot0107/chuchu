@@ -54,6 +54,8 @@ import java.util.TimeZone
 internal fun QueueChatView(
     chat: ChatUiState,
     onLoadOlder: () -> Unit,
+    /** Việc của pane này còn trong hàng đợi taskq (tin gửi lúc agent bận) — hiện ở cuối chat. */
+    pendingTasks: List<QueueTask> = emptyList(),
     listState: LazyListState = rememberLazyListState(),
     modifier: Modifier = Modifier,
 ) {
@@ -69,8 +71,8 @@ internal fun QueueChatView(
             pinnedToBottom = info.totalItemsCount == 0 || last >= info.totalItemsCount - 2
         }
     }
-    LaunchedEffect(messages.lastOrNull()?.key, messages.size) {
-        if (messages.isNotEmpty() && pinnedToBottom) listState.scrollToItem(messages.size)
+    LaunchedEffect(messages.lastOrNull()?.key, messages.size, pendingTasks.size) {
+        if (messages.isNotEmpty() && pinnedToBottom) listState.scrollToItem(messages.size + pendingTasks.size)
     }
 
     Box(modifier = modifier.fillMaxSize()) {
@@ -104,6 +106,24 @@ internal fun QueueChatView(
                         "assistant" -> AssistantRow(m)
                         "tool" -> ToolRow(m)
                         else -> ChuText("✻ suy nghĩ", style = type.labelSmall, color = colors.textMuted, modifier = Modifier.padding(start = 10.dp))
+                    }
+                }
+                // Tin xếp hàng chưa vào transcript: hiện ở cuối để khỏi tưởng mất. Xoá thì về Queue.
+                items(pendingTasks, key = { "task:${it.id}" }) { t ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(top = 6.dp).height(IntrinsicSize.Min),
+                        verticalAlignment = Alignment.Top,
+                    ) {
+                        Box(Modifier.width(3.dp).fillMaxHeight().background(colors.border))
+                        Spacer(Modifier.width(8.dp))
+                        Column(Modifier.weight(1f).padding(vertical = 4.dp, horizontal = 0.dp)) {
+                            ChuText(
+                                if (t.isRunning) "▶ đang gửi · #${t.id}" else "⏳ chờ agent rảnh · #${t.id}",
+                                style = type.labelSmall,
+                                color = colors.textMuted,
+                            )
+                            ChuText(t.text, style = type.body, color = colors.textSecondary)
+                        }
                     }
                 }
             }

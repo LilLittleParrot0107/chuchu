@@ -269,10 +269,19 @@ class QueueViewModel(
         }
     }
 
-    /** Gõ thẳng vào pane của agent đang mở chat (không qua hàng đợi). */
+    /**
+     * Gửi từ màn chat (user chốt 16/9): agent ĐANG CHẠY thì xếp vào hàng đợi taskq để qd gõ
+     * khi nó rảnh (không chen giữa việc đang làm); đang chờ duyệt/bị chặn/rảnh/xong thì gõ
+     * thẳng vào pane — chờ duyệt mà xếp hàng là kẹt cả hai bên.
+     */
     fun sendChat(text: String) {
         val pane = _chat.value.pane ?: return
         if (text.isBlank() || _chat.value.sending) return
+        val agent = _ui.value.state.agents.firstOrNull { it.pane == pane }
+        if (agent != null && agent.label.trim().lowercase() in CHAT_QUEUE_WHEN) {
+            addTask(text, pane, null)
+            return
+        }
         _chat.update { it.copy(sending = true) }
         viewModelScope.launch {
             try {
@@ -622,6 +631,8 @@ class QueueViewModel(
         private const val LONGPOLL_S = 25
         /** Số tin mỗi trang màn CHAT. */
         private const val CHAT_PAGE = 50
+        /** Nhãn agent mà tin từ chat đi qua hàng đợi thay vì gõ thẳng. */
+        private val CHAT_QUEUE_WHEN = setOf("working", "busy", "sending", "running")
         private const val MIN_GAP_MS = 1_000L
         private const val AMBIENT_MIN_GAP_MS = 2_000L
         private const val FOREGROUND_POLL_MS = 2_000L
