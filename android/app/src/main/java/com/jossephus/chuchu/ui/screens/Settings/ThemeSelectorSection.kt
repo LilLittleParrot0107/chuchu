@@ -16,10 +16,13 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -160,8 +163,18 @@ private fun SingleThemePicker(
         if (query.isEmpty()) themeByName.keys.toList() else themeByName.keys.filter { it.contains(query, ignoreCase = true) }
     }
     var showPreview by rememberSaveable { mutableStateOf(false) }
+    val pickerListState = rememberLazyListState()
 
     val previewTheme = remember(currentTheme, themeByName) { themeByName[currentTheme] }
+
+    // Mở danh sách là đứng ngay theme ĐANG dùng (user 17/9: "bắt đầu từ theme hiện
+    // tại... để lựa lần lượt cho dễ") — 463 theme xếp A→Z, quay lại tìm rất mỏi.
+    // Chỉ chạy lúc mở; gõ search thì giữ nguyên từ đầu kết quả như cũ.
+    LaunchedEffect(expanded) {
+        if (!expanded) return@LaunchedEffect
+        val index = filteredThemes.indexOf(currentTheme)
+        if (index > 0) pickerListState.scrollToItem(index)
+    }
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(
@@ -194,6 +207,7 @@ private fun SingleThemePicker(
                 currentTheme = currentTheme,
                 onThemeSelected = { onThemeSelected(it); expanded = false },
                 themeByName = themeByName,
+                listState = pickerListState,
             )
         }
     }
@@ -233,6 +247,7 @@ private fun ThemePickerDropdown(
     currentTheme: String,
     onThemeSelected: (String) -> Unit,
     themeByName: Map<String, GhosttyTheme?>,
+    listState: LazyListState,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         ChuTextField(
@@ -245,6 +260,7 @@ private fun ThemePickerDropdown(
         )
 
         LazyColumn(
+            state = listState,
             verticalArrangement = Arrangement.spacedBy(2.dp),
             modifier = Modifier.fillMaxWidth().heightIn(max = 480.dp),
         ) {
