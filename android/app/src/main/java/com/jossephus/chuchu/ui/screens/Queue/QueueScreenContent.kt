@@ -21,8 +21,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.foundation.text.KeyboardActions
@@ -30,6 +30,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -113,6 +114,20 @@ private fun sessionStatusColor(agent: QueueAgent): Color {
 }
 
 /**
+ * Vị trí cuộn khi (quay lại) dòng thời gian — hàm thuần, có test riêng.
+ *
+ * Neo theo KEY tin đầu đang thấy, không theo index: feed cắt tin cũ ở đầu nên index
+ * trôi còn key thì không. Đang ở đáy, chưa có neo, hoặc neo đã rơi khỏi cửa sổ feed
+ * (quá nhiều tin mới trong lúc rời màn) → về điểm mới nhất (user chốt 17/9).
+ * `keys.size` là cuộn quá tin cuối — LazyListState tự kẹp về tin mới nhất.
+ */
+internal fun feedRestoreIndex(keys: List<String>, pinned: Boolean, anchorKey: String?): Int {
+    if (keys.isEmpty() || pinned || anchorKey == null) return keys.size
+    val i = keys.indexOf(anchorKey)
+    return if (i >= 0) i else keys.size
+}
+
+/**
  * DÒNG THỜI GIAN (G1): tin cuối các session đang động, gộp theo giờ, tin mới ở dưới.
  * Chạm một tin = nhắm luôn phiên đó cho ô gõ ngay dưới (user chốt 17/9) — không nhảy
  * sang HỘI THOẠI như bản G1 đầu.
@@ -121,17 +136,39 @@ private fun sessionStatusColor(agent: QueueAgent): Color {
 internal fun QueueFeedView(
     feed: FeedUiState,
     onPick: (FeedMessage) -> Unit,
+    listState: LazyListState,
+    pinned: Boolean,
+    onPinnedChange: (Boolean) -> Unit,
+    anchorKey: String?,
+    onAnchorChange: (String?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = ChuColors.current
     val type = ChuTypography.current
-    val listState = rememberLazyListState()
-    var pinned by remember { mutableStateOf(true) }
+    // Vị trí cuộn do QueueScreen giữ (rememberSaveable) — mode/hội thoại quay lại vẫn y chỗ.
+    val curFeed by rememberUpdatedState(feed)
     LaunchedEffect(listState) {
         snapshotFlow { listState.layoutInfo }.collect { info ->
-            val last = info.visibleItemsInfo.lastOrNull()?.index ?: -1
-            pinned = info.totalItemsCount == 0 || last >= info.totalItemsCount - 2
+            // Bỏ qua layout rỗng: lúc đó LazyColumn chưa compose (đang tải), ghi
+            // pinned=true vào đây sẽ đè mất vị trí đã lưu trước khi kịp khôi phục.
+            if (info.totalItemsCount > 0) {
+                val last = info.visibleItemsInfo.lastOrNull()?.index ?: -1
+                onPinnedChange(last >= info.totalItemsCount - 2)
+                // Neo = KEY tin đầu đang thấy: feed cắt tin ở đầu nên index trôi, key ổn định.
+                val first = info.visibleItemsInfo.firstOrNull()?.index ?: -1
+                if (first >= 0) onAnchorChange(curFeed.messages.getOrNull(first)?.key)
+            }
         }
+    }
+    // Vào lần đầu / quay lại: dừng đúng tin cuối đã thấy; neo rơi khỏi cửa sổ feed
+    // (hoặc đang ở đáy) thì về điểm mới nhất (user chốt 17/9).
+    var restored by remember { mutableStateOf(false) }
+    LaunchedEffect(feed.messages.isNotEmpty(), pinned, anchorKey) {
+        if (restored || feed.messages.isEmpty()) return@LaunchedEffect
+        restored = true
+        listState.scrollToItem(
+            feedRestoreIndex(feed.messages.map(FeedMessage::key), pinned, anchorKey)
+        )
     }
     LaunchedEffect(feed.messages.lastOrNull()?.key, feed.messages.size, feed.pane) {
         if (feed.messages.isNotEmpty() && pinned) listState.scrollToItem(feed.messages.size)

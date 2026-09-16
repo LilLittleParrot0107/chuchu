@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.activity.compose.BackHandler
 import android.content.ClipData
@@ -115,6 +116,12 @@ fun QueueScreen(
     val chatOpen = chat.pane != null
     val chatListState = rememberLazyListState()
     val chatScope = rememberCoroutineScope()
+    // Dòng thời gian: giữ vị trí cuộn qua mỗi lần rời màn (đổi mode, mở chat, sang
+    // màn khác rồi quay lại — user báo 17/9). Neo theo KEY tin đầu đang thấy; về tới
+    // nơi mà neo rơi khỏi cửa sổ feed (tin cũ bị cắt) thì hiện điểm mới nhất.
+    val feedListState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
+    var feedPinned by rememberSaveable { mutableStateOf(true) }
+    var feedAnchorKey by rememberSaveable { mutableStateOf<String?>(null) }
     // Back khi đang mở chat = về Queue, không thoát màn.
     var swallowBackUntil by remember { mutableLongStateOf(0L) }
     // MỘT handler duy nhất, LUÔN bật khi màn Queue hiện — thay cho hai handler
@@ -450,6 +457,11 @@ fun QueueScreen(
                             // ở lại dòng thời gian, gõ request luôn tại chỗ.
                             selectedPane = m.pane
                         },
+                        listState = feedListState,
+                        pinned = feedPinned,
+                        onPinnedChange = { feedPinned = it },
+                        anchorKey = feedAnchorKey,
+                        onAnchorChange = { feedAnchorKey = it },
                     )
                     else -> QueueConversationList(
                         agents = agents,
