@@ -271,7 +271,9 @@ private fun buildMiniMarkdown(md: String, s: MdStyles): AnnotatedString = buildA
             continue
         }
         if (inFence) {
-            withStyle(s.code) { append(line); append('\n') }
+            // Link trong khối code cũng phải bấm được (16/9): các bản trả lời hay đặt URL
+            // trong ``` — trước đây khối này chỉ append chữ thường nên không có link.
+            withStyle(s.code) { appendPlainLinkified(line, s); append('\n') }
             continue
         }
         val t = line.trim()
@@ -362,7 +364,7 @@ private fun AnnotatedString.Builder.appendInline(text: String, s: MdStyles) {
         if (m.range.first > i) appendPlainLinkified(text.substring(i, m.range.first), s)
         val tok = m.value
         when {
-            tok.startsWith("`") -> withStyle(s.code) { append(tok.trim('`')) }
+            tok.startsWith("`") -> withStyle(s.code) { appendPlainLinkified(tok.trim('`'), s) }
             tok.startsWith("***") -> withStyle(s.bold.copy(fontStyle = FontStyle.Italic)) {
                 append(tok.removeSurrounding("***"))
             }

@@ -213,14 +213,7 @@ fun WebPortalScreen(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            ChuButton(
-                onClick = { if (path.isEmpty()) onClose() else goUp() },
-                variant = ChuButtonVariant.Outlined,
-                bracketed = true,
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-            ) {
-                ChuText("←", style = typography.label)
-            }
+            // Nút ← đã bỏ (user chốt 16/9): back hệ thống lên thư mục cha rồi đóng (BackHandler ở trên).
             ChuText(
                 "/" + path,
                 style = typography.label,
