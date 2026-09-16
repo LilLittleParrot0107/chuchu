@@ -6,7 +6,6 @@ import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -19,18 +18,26 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.ParagraphStyle
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextIndent
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.jossephus.chuchu.ui.theme.ChatTone
 import com.jossephus.chuchu.ui.theme.ChuColors
@@ -47,6 +54,12 @@ import com.jossephus.chuchu.ui.theme.ChuTypography
  * tra loi so sanh dang bang). Link bam duoc o moi noi: [nhan](url), URL tran,
  * trong `code`, trong khoi ```, ke ca trong **dam** va *nghieng* (16/9).
  * Nhan nhung gi khong hieu la chu thuong — khong mat chu.
+ *
+ * 16/9 toi (prototype kohi-chat-typography, user chot "duyet roi"): doc theo
+ * KHOI thay vi mot dong chay lien — doan thut dong dau 2ch, muc danh sach thut
+ * le treo (dong thu 2 thang duoi chu), fence co NEN + nhan ngon ngu, quote co
+ * vach mau trai, checkbox ☑/☐ that, tieu de co vach trai, hr la duong ke manh,
+ * link gach chan. Nho vay tin dai nhin ra cau truc thay vi mot nui chu.
  */
 
 /** Tap style gom mot lan o compose, truen cho builder thuan Kotlin ben duoi. */
@@ -140,7 +153,12 @@ private fun rememberMdStyles(tone: ChatTone?): MdStyles {
             ),
             bold = SpanStyle(fontWeight = FontWeight.Bold, color = tone?.bold ?: Color.Unspecified),
             italic = SpanStyle(fontStyle = FontStyle.Italic),
-            link = SpanStyle(color = tone?.link ?: colors.accent),
+            // Gach chan manh: dau hieu "bam duoc" (user chot 16/9, prototype
+            // kohi-chat-typography). Truoc day chi doi mau nen link chim vao cau.
+            link = SpanStyle(
+                color = tone?.link ?: colors.accent,
+                textDecoration = TextDecoration.Underline,
+            ),
             quote = SpanStyle(color = colors.textSecondary, fontStyle = FontStyle.Italic),
             muted = SpanStyle(color = tone?.meta ?: colors.textMuted),
             h1 = SpanStyle(fontWeight = FontWeight.Bold, fontSize = type.body.fontSize * 1.25f),
@@ -160,30 +178,323 @@ fun MiniMarkdownText(
     val colors = ChuColors.current
     val type = ChuTypography.current
     val styles = rememberMdStyles(tone)
+    val resolvedFontSize = if (fontSize != TextUnit.Unspecified) fontSize else type.body.fontSize
     // Cỡ chữ theo caller (màn CHAT truyền cỡ chữ terminal trong Settings); dãn dòng để TỰ NHIÊN
     // của font (ascent+descent) — đúng cách terminal vẽ, user 16/9: 1,6 "thưa quá", terminal "đạt".
     val textStyle = type.body.copy(
         color = tone?.body ?: colors.textPrimary,
-        fontSize = if (fontSize != TextUnit.Unspecified) fontSize else type.body.fontSize,
+        fontSize = resolvedFontSize,
         lineHeight = TextUnit.Unspecified,
     )
+    // Bề rộng 1 ký tự mono ≈ 0,6em (JetBrains Mono/Fira/Geist đều vậy). Thụt lề tính
+    // theo cỡ chữ người dùng chọn trong Settings chứ không phải hằng số dp.
+    val density = LocalDensity.current
+    val chDp = with(density) { (resolvedFontSize * 0.6f).toDp() }
+    val indent2 = with(density) { (chDp * 2).toSp() }
 
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column {
         val blocks = remember(markdown) { splitBlocks(markdown) }
         blocks.forEach { block ->
             when (block) {
                 is MdBlock.Table -> MarkdownTable(block = block, styles = styles)
-                is MdBlock.Text -> {
-                    val md = block.lines.joinToString("\n")
-                    val built = remember(md, styles) { buildMiniMarkdown(md, styles) }
-                    // Moi block deu append newline ke ca block cuoi -> thua
-                    // mot dong rong.
-                    val annotated = if (built.endsWith("\n")) built.subSequence(0, built.length - 1) else built
-                    // type.body mang fontFamily của Settings (trước đây TextStyle trần nên rơi về
-                    // font hệ thống, khác hẳn phần còn lại).
-                    BasicText(text = annotated, style = textStyle)
+                is MdBlock.Text -> MdTextBlock(
+                    lines = block.lines,
+                    styles = styles,
+                    textStyle = textStyle,
+                    chDp = chDp,
+                    indent2 = indent2,
+                )
+            }
+        }
+    }
+}
+
+// ─────────────────────────── units ───────────────────────────
+
+/**
+ * Mot dong markdown da phan loai. Truoc day ca khoi text la MOT AnnotatedString
+ * nen khong the thut le doan, khong the treo le muc danh sach (AnnotatedString
+ * khong co padding/le doan). Tach thanh don vi roi moi ve — parser thuan Kotlin
+ * nen test duoc khong can compose harness.
+ */
+internal sealed class MdUnit {
+    data class Para(val text: String) : MdUnit()
+    data class Heading(val level: Int, val text: String) : MdUnit()
+    /** Gach-ngoang; `checked != null` = muc checkbox `- [ ]` / `- [x]`. */
+    data class Bullet(val text: String, val depth: Int, val checked: Boolean? = null) : MdUnit()
+    /** Danh sách số; marker giữ nguyên như agent ghi ("1.", "2)"). */
+    data class Numbered(val marker: String, val text: String, val depth: Int) : MdUnit()
+    data class Quote(val text: String) : MdUnit()
+    data class Fence(val lang: String, val lines: List<String>) : MdUnit()
+    object Rule : MdUnit()
+}
+
+private val CHECKBOX_RE = Regex("^([-*])\\s+\\[([ xX])\\]\\s*(.*)$")
+private val BULLET_RE = Regex("^([-*])\\s+(.*)$")
+private val NUMBERED_RE = Regex("^(\\d+[.)])\\s+(.*)$")
+
+/** Sâu hơn 3 cấp thì trên điện thoại vừa thụt vừa hẹp, không còn đọc được. */
+private const val MD_MAX_DEPTH = 3
+
+/**
+ * Tach dong thanh don vi. Fence giu NGUYEN van tung dong (thut le code la
+ * nghia) va khong cho dong ben trong bi hieu nham la list/bang. Fence khong
+ * dong van hien — agent doi khi cat cut giua chung.
+ */
+internal fun parseMdUnits(lines: List<String>): List<MdUnit> {
+    val units = mutableListOf<MdUnit>()
+    var fenceLines: MutableList<String>? = null
+    var fenceLang = ""
+
+    for (raw in lines) {
+        val line = raw.trimEnd()
+        val t = line.trim()
+        if (fenceLines != null) {
+            if (t.startsWith("```")) {
+                units += MdUnit.Fence(fenceLang, fenceLines!!.toList())
+                fenceLines = null
+            } else {
+                fenceLines!!.add(line)
+            }
+            continue
+        }
+        if (t.startsWith("```")) {
+            fenceLines = mutableListOf()
+            fenceLang = t.removePrefix("```").trim()
+            continue
+        }
+        if (t.isEmpty()) continue
+        val depth = ((line.length - line.trimStart().length) / 2).coerceIn(0, MD_MAX_DEPTH)
+        when {
+            t.startsWith("#") && !t.dropWhile { it == '#' }.isBlank() -> units += MdUnit.Heading(
+                level = t.takeWhile { it == '#' }.length.coerceAtMost(3),
+                text = t.dropWhile { it == '#' || it == ' ' },
+            )
+            t.startsWith(">") -> units += MdUnit.Quote(t.removePrefix(">").trim())
+            t.matches(HR_RE) -> units += MdUnit.Rule
+            else -> {
+                val checkbox = CHECKBOX_RE.find(t)
+                val bullet = BULLET_RE.find(t)
+                val numbered = NUMBERED_RE.find(t)
+                when {
+                    checkbox != null -> units += MdUnit.Bullet(
+                        text = checkbox.groupValues[3],
+                        depth = depth,
+                        checked = checkbox.groupValues[2].equals("x", ignoreCase = true),
+                    )
+                    bullet != null -> units += MdUnit.Bullet(text = bullet.groupValues[2], depth = depth)
+                    numbered != null -> units += MdUnit.Numbered(
+                        marker = numbered.groupValues[1],
+                        text = numbered.groupValues[2],
+                        depth = depth,
+                    )
+                    else -> units += MdUnit.Para(t)
                 }
             }
+        }
+    }
+    if (fenceLines != null) units += MdUnit.Fence(fenceLang, fenceLines!!.toList())
+    return units
+}
+
+// ─────────────────────────── unit renderer ───────────────────────────
+
+@Composable
+private fun MdTextBlock(
+    lines: List<String>,
+    styles: MdStyles,
+    textStyle: TextStyle,
+    chDp: Dp,
+    indent2: TextUnit,
+) {
+    val colors = ChuColors.current
+    val units = remember(lines) { parseMdUnits(lines) }
+    Column {
+        units.forEach { unit ->
+            when (unit) {
+                is MdUnit.Para -> BasicText(
+                    text = remember(unit.text, styles) { inlineAnnotated(unit.text, styles) },
+                    // Thut dong dau 2ch: thay cho dong trong ngan cach doan —
+                    // doc ra cho ngat doan ma khong phi ca mot dong.
+                    style = textStyle.copy(
+                        paragraphStyle = ParagraphStyle(textIndent = TextIndent(firstLine = indent2)),
+                    ),
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+
+                is MdUnit.Heading -> {
+                    val span = when (unit.level) {
+                        1 -> styles.h1
+                        2 -> styles.h2
+                        else -> styles.h3
+                    }
+                    val annotated = remember(unit.text, styles, span) {
+                        buildAnnotatedString { withStyle(span) { appendInline(unit.text, styles) } }
+                    }
+                    val barW = 3.dp
+                    val withBar = unit.level <= 2
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = if (withBar) 10.dp else 8.dp, bottom = if (withBar) 6.dp else 4.dp)
+                            .then(
+                                if (withBar) {
+                                    Modifier.drawBehind {
+                                        drawRect(
+                                            color = colors.accentSecondary,
+                                            size = Size(barW.toPx(), size.height.toFloat()),
+                                        )
+                                    }
+                                } else {
+                                    Modifier
+                                },
+                            )
+                            .padding(start = if (withBar) 11.dp else 0.dp),
+                    ) {
+                        BasicText(text = annotated, style = textStyle)
+                    }
+                }
+
+                is MdUnit.Bullet -> MdListItem(
+                    marker = when (unit.checked) {
+                        null -> "−"
+                        true -> "☑"
+                        false -> "☐"
+                    },
+                    markerColor = when (unit.checked) {
+                        null -> colors.accent
+                        true -> colors.success
+                        false -> colors.textMuted
+                    },
+                    contentColor = if (unit.checked == true) colors.textSecondary else textStyle.color,
+                    text = unit.text,
+                    depth = unit.depth,
+                    styles = styles,
+                    textStyle = textStyle,
+                    chDp = chDp,
+                )
+
+                is MdUnit.Numbered -> MdListItem(
+                    marker = unit.marker,
+                    markerColor = colors.accent,
+                    contentColor = textStyle.color,
+                    text = unit.text,
+                    depth = unit.depth,
+                    styles = styles,
+                    textStyle = textStyle,
+                    chDp = chDp,
+                )
+
+                is MdUnit.Quote -> {
+                    val barW = 3.dp
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 6.dp)
+                            .drawBehind {
+                                drawRect(
+                                    color = colors.accentSecondary.copy(alpha = 0.7f),
+                                    size = Size(barW.toPx(), size.height.toFloat()),
+                                )
+                            }
+                            .padding(start = 10.dp),
+                    ) {
+                        BasicText(
+                            text = remember(unit.text, styles) {
+                                buildAnnotatedString { withStyle(styles.quote) { appendInline(unit.text, styles) } }
+                            },
+                            style = textStyle,
+                        )
+                    }
+                }
+
+                is MdUnit.Fence -> MdFence(fence = unit, styles = styles, textStyle = textStyle)
+
+                MdUnit.Rule -> Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 10.dp)
+                        .height(1.dp)
+                        .background(colors.border),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Muc danh sach: marker o cot rieng, chu thut le treo — dong thu 2 (khi xuong
+ * dong) thang duoi chu dong 1 chu khong dinh le trai nhu truoc.
+ */
+@Composable
+private fun MdListItem(
+    marker: String,
+    markerColor: Color,
+    contentColor: Color,
+    text: String,
+    depth: Int,
+    styles: MdStyles,
+    textStyle: TextStyle,
+    chDp: Dp,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = chDp * (2 * depth), bottom = 4.dp),
+    ) {
+        BasicText(
+            text = marker,
+            style = textStyle.copy(color = markerColor),
+            maxLines = 1,
+            modifier = Modifier.width(chDp * 2.6f),
+        )
+        BasicText(
+            text = remember(text, styles) { inlineAnnotated(text, styles) },
+            style = textStyle.copy(color = contentColor),
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+/**
+ * Khoi ``` thanh mot panel co nen + vien + nhan ngon ngu — truoc day chi la
+ * tung dong chu to mau nen, lan vao chu thuong khong phan biet duoc.
+ */
+@Composable
+private fun MdFence(fence: MdUnit.Fence, styles: MdStyles, textStyle: TextStyle) {
+    val colors = ChuColors.current
+    val bg = styles.code.background
+    val codeOnly = SpanStyle(fontFamily = styles.code.fontFamily, color = styles.code.color ?: textStyle.color)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(bg)
+            .border(1.dp, colors.border.copy(alpha = 0.5f), RoundedCornerShape(6.dp))
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+    ) {
+        Column {
+            if (fence.lang.isNotBlank()) {
+                BasicText(
+                    text = fence.lang,
+                    style = textStyle.copy(color = colors.textMuted, fontSize = textStyle.fontSize * 0.85f),
+                    maxLines = 1,
+                    modifier = Modifier.align(Alignment.End),
+                )
+            }
+            // Link trong khoi code van bam duoc (16/9) — khong duoc ha xuong.
+            BasicText(
+                text = remember(fence.lines, styles) {
+                    buildAnnotatedString {
+                        fence.lines.forEachIndexed { i, line ->
+                            if (i > 0) append('\n')
+                            withStyle(codeOnly) { appendPlainLinkified(line, styles) }
+                        }
+                    }
+                },
+                style = textStyle,
+            )
         }
     }
 }
