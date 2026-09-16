@@ -30,7 +30,7 @@ class AgentKindTest {
         assertEquals(Color(0xFF999999), AgentKind.CLAUDE.chatTone().meta)
 
         assertEquals(Color(0xFFEFC11A), AgentKind.OPENCODE.chatTone().bold)
-        assertEquals(Color(0xFF9EFF6E), AgentKind.OPENCODE.chatTone().code)
+        assertEquals(Color(0xFF97D67E), AgentKind.OPENCODE.chatTone().code)
         assertEquals(Color(0xFF4E7CBF), AgentKind.OPENCODE.chatTone().link)
 
         assertEquals(Color(0xFFEEE8D5), AgentKind.AGY.chatTone().body)

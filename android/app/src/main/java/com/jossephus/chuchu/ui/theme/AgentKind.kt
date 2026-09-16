@@ -46,7 +46,9 @@ fun AgentKind.rosterColor(): Color = when (this) {
  * TOOL tự phát trong terminal, đo bằng `herdr pane read <pane> --ansi` ngày 16/9
  * (SGR 38;2;R;G;B), không phỏng đoán:
  *  - Claude Code: chữ = fg theme, `code` #B1B9F9, meta/tool/suy nghĩ #999999.
- *  - opencode: chữ = fg theme, **đậm** #EFC11A, `code` #9EFF6E, link/nhãn
+ *  - opencode: chữ = fg theme, **đậm** #EFC11A, `code` #97D67E (user chốt
+ *    16/9 tối: hạ bão hòa từ #9EFF6E đo được vì neon quá rực trên nền app),
+ *    link/nhãn
  *    #4E7CBF, meta #CBB9A6, nền khối code #2E2A61.
  *  - agy (Solarized): chữ #EEE8D5, suy nghĩ/meta #93A1A1, `code` #B58900,
  *    link #268BD2.
@@ -74,7 +76,7 @@ fun AgentKind.chatTone(): ChatTone = when (this) {
 
     AgentKind.OPENCODE -> ChatTone(
         bold = Color(0xFFEFC11A),
-        code = Color(0xFF9EFF6E),
+        code = Color(0xFF97D67E),
         codeBg = Color(0xFF2E2A61),
         link = Color(0xFF4E7CBF),
         meta = Color(0xFFCBB9A6),
