@@ -42,13 +42,14 @@ import com.jossephus.chuchu.ui.theme.ChuTypography
  *
  * Phu dung phan markdown agent thuong tra loi: heading #..####, **bold**,
  * *italic*, `code`, fence ba-dau-nhay (khoi mono), list gach-ngoang hoac so,
- * blockquote >, ngang --- , link [t](u) (hien nhan, khong bat su kien mo link),
- * va BANG | a | b | (25/8 — agent hay tra loi so sanh dang bang).
+ * blockquote >, ngang --- , link [t](u), va BANG | a | b | (25/8 — agent hay
+ * tra loi so sanh dang bang). Link bam duoc o moi noi: [nhan](url), URL tran,
+ * trong `code`, trong khoi ```, ke ca trong **dam** va *nghieng* (16/9).
  * Nhan nhung gi khong hieu la chu thuong — khong mat chu.
  */
 
 /** Tap style gom mot lan o compose, truen cho builder thuan Kotlin ben duoi. */
-private class MdStyles(
+internal class MdStyles(
     val code: SpanStyle,
     val bold: SpanStyle,
     val italic: SpanStyle,
@@ -262,7 +263,7 @@ private val INLINE_MD = Regex(
     + "|\\[[^\\]\\n]+\\]\\([^)\\n]+\\)" // [label](url)
 )
 
-private fun buildMiniMarkdown(md: String, s: MdStyles): AnnotatedString = buildAnnotatedString {
+internal fun buildMiniMarkdown(md: String, s: MdStyles): AnnotatedString = buildAnnotatedString {
     var inFence = false
     for (raw in md.lines()) {
         val line = raw.trimEnd()
@@ -365,11 +366,13 @@ private fun AnnotatedString.Builder.appendInline(text: String, s: MdStyles) {
         val tok = m.value
         when {
             tok.startsWith("`") -> withStyle(s.code) { appendPlainLinkified(tok.trim('`'), s) }
+            // Nội dung trong **đậm**/*nghiêng* vẫn phải linkify: URL hay được agent bọc đậm
+            // (16/9 user: link trong chat opencode không bấm được — URL nằm trong **...**).
             tok.startsWith("***") -> withStyle(s.bold.copy(fontStyle = FontStyle.Italic)) {
-                append(tok.removeSurrounding("***"))
+                appendPlainLinkified(tok.removeSurrounding("***"), s)
             }
-            tok.startsWith("**") -> withStyle(s.bold) { append(tok.removeSurrounding("**")) }
-            tok.startsWith("*") -> withStyle(s.italic) { append(tok.removeSurrounding("*")) }
+            tok.startsWith("**") -> withStyle(s.bold) { appendPlainLinkified(tok.removeSurrounding("**"), s) }
+            tok.startsWith("*") -> withStyle(s.italic) { appendPlainLinkified(tok.removeSurrounding("*"), s) }
             tok.startsWith("[") -> {
                 val label = tok.substringAfter('[').substringBefore(']')
                 val url = tok.substringAfter("](", "").substringBeforeLast(')').trim()
