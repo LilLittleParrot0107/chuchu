@@ -75,9 +75,11 @@ class QueueClient(
      * trang trước để lấy tin cũ hơn; [sinceRev] + [waitSec] = long-poll như /state, server
      * giữ tới khi file đổi rồi trả 200, hết giờ trả 304.
      */
-    fun chat(pane: String, limit: Int = 50, before: Long? = null, sinceRev: String? = null, waitSec: Int = 0): ChatFetch {
+    fun chat(pane: String, limit: Int = 50, before: Long? = null, sinceRev: String? = null, waitSec: Int = 0, tools: Boolean = false): ChatFetch {
         val wait = if (sinceRev.isNullOrEmpty() || before != null) 0 else waitSec.coerceIn(0, 25)
+        // tools=1 mới lấy dòng tool/suy nghĩ; mặc định bỏ (user 16/9) — trang nhẹ hơn nhiều.
         val q = StringBuilder("/chat?pane=").append(URLEncoder.encode(pane, "UTF-8")).append("&limit=").append(limit)
+        if (tools) q.append("&tools=1")
         if (before != null) q.append("&before=").append(before)
         if (!sinceRev.isNullOrEmpty() && before == null) {
             q.append("&since=").append(URLEncoder.encode(sinceRev, "UTF-8"))

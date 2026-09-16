@@ -199,9 +199,11 @@ class QueueModelsTest {
             {"pane":"p4","name":"d","tone":"warn","label":"unknown"},
             {"pane":"p5","name":"e","tone":"accent","label":"busy"},
             {"pane":"p6","name":"f","tone":"error","label":"gone"},
-            {"pane":"p7","name":"g","tone":"dim","label":"idle"}
+            {"pane":"p7","name":"g","tone":"dim","label":"idle"},
+            {"pane":"p8","name":"h","tone":"ok","label":"done"}
         ],"tasks":[]}""")
-        assertEquals(listOf("p3", "p2", "p5", "p4", "p1", "p7", "p6"), s.agents.map { it.pane })
+        // 16/9 user chốt: vừa xong (done) đứng NGAY DƯỚI đang chạy, trên idle; unknown sau idle.
+        assertEquals(listOf("p3", "p2", "p5", "p8", "p1", "p7", "p4", "p6"), s.agents.map { it.pane })
         // Nhan tieng Viet cua qsrv cu cung xep dung sau khi dich.
         val v = QueueState.parse("""{"rev":1,"agents":[
             {"pane":"x","label":"ranh"},{"pane":"y","label":"cho duyet"}],"tasks":[]}""")

@@ -94,12 +94,14 @@ data class QueueAgent(
      * xuống đáy. Đọc theo NHÃN đã dịch của qsrv (A_VIEW) chứ không theo tone:
      * tone chỉ là màu, hai trạng thái khác nhau có thể cùng màu.
      */
+    // User chốt 16/9: vừa xong (done) kéo xuống NGAY DƯỚI các agent đang chạy, trên idle.
     val priority: Int get() = when (label.trim().lowercase()) {
         "needs approval", "blocked" -> 0
         "working", "busy", "sending", "running" -> 1
-        "unknown" -> 2
-        "idle", "done" -> 3
-        else -> 4                                  // down/gone/nhãn lạ: cuối
+        "done" -> 2
+        "idle" -> 3
+        "unknown" -> 4
+        else -> 5                                  // down/gone/nhãn lạ: cuối
     }
 }
 
