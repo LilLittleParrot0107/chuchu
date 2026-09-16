@@ -329,7 +329,7 @@ class QueueModelsTest {
         val base = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US)
             .apply { timeZone = TimeZone.getTimeZone("UTC") }
             .parse("2026-09-16T05:04:31")!!.time
-        assertEquals("vừa xong", chatWhen("2026-09-16T05:04:31.123Z", base + 1_000))
+        assertEquals("just now", chatWhen("2026-09-16T05:04:31.123Z", base + 1_000))
         assertEquals("3′", chatWhen("2026-09-16T05:04:31.123Z", base + 3 * 60_000))
         assertEquals("", chatWhen("rác", base))
     }

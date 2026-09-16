@@ -211,7 +211,7 @@ class QueueViewModel(
 
     /** true nếu hỏng. Trang mới về thì GHÉP với tin cũ hơn đã tải (offset là vị trí byte, ổn định). */
     private suspend fun chatRefreshOnce(pane: String, waitSec: Int): Boolean {
-        val c = client() ?: run { _chat.update { it.copy(loading = false, error = "Queue chưa cấu hình") }; return true }
+        val c = client() ?: run { _chat.update { it.copy(loading = false, error = "Queue is not configured yet") }; return true }
         val since = _chat.value.rev.takeIf { it.isNotBlank() }
         val result = withContext(Dispatchers.IO) { c.chat(pane, limit = CHAT_PAGE, sinceRev = since, waitSec = waitSec) }
         persistAuthRecovery(c)
@@ -273,7 +273,7 @@ class QueueViewModel(
 
     /** true nếu hỏng (để giãn nhịp). Server trả trọn trang nên áp thẳng, không ghép. */
     private suspend fun feedRefreshOnce(waitSec: Int): Boolean {
-        val c = client() ?: run { _feed.update { it.copy(loading = false, error = "Queue chưa cấu hình") }; return true }
+        val c = client() ?: run { _feed.update { it.copy(loading = false, error = "Queue is not configured yet") }; return true }
         val cur = _feed.value
         val since = cur.rev.takeIf { it.isNotBlank() }
         val result = withContext(Dispatchers.IO) { c.feed(cur.pane, sinceRev = since, waitSec = waitSec) }
@@ -322,20 +322,20 @@ class QueueViewModel(
      */
     suspend fun uploadToInbox(name: String, length: Long, open: () -> java.io.InputStream?): String? {
         val portal = settings.webPortalUrl.value.trim().trimEnd('/')
-        if (portal.isBlank()) { postFeedback("", "Chưa có Web portal URL trong Settings", QueueFeedbackTone.Error); return null }
+        if (portal.isBlank()) { postFeedback("", "No Web portal URL in Settings", QueueFeedbackTone.Error); return null }
         val home = _chat.value.home.ifBlank { "/home/a" }
         _chat.update { it.copy(uploading = true) }
         try {
             val result = withContext(Dispatchers.IO) {
-                val input = open() ?: return@withContext InboxUploader.Result.Failed("Không mở được file")
+                val input = open() ?: return@withContext InboxUploader.Result.Failed("Could not open the file")
                 input.use { InboxUploader("${portal.removeSuffix("/home")}/home/inbox").put(name, it, length) }
             }
             return when (result) {
                 InboxUploader.Result.Ok -> {
-                    postFeedback("", "Đã tải lên $name", QueueFeedbackTone.Success)
+                    postFeedback("", "Uploaded $name", QueueFeedbackTone.Success)
                     "$home/inbox/$name"
                 }
-                is InboxUploader.Result.Failed -> { postFeedback(result.message, "Không tải lên được", QueueFeedbackTone.Error); null }
+                is InboxUploader.Result.Failed -> { postFeedback(result.message, "Upload failed", QueueFeedbackTone.Error); null }
             }
         } finally {
             _chat.update { it.copy(uploading = false) }
@@ -373,11 +373,11 @@ class QueueViewModel(
                 persistAuthRecovery(c)
                 val name = agent?.name?.takeIf { it.isNotBlank() } ?: pane
                 when (r) {
-                    is QueueClient.Act.Ok -> postFeedback("", "Đã gửi vào $name", QueueFeedbackTone.Success)
-                    is QueueClient.Act.Conflict -> postFeedback("", "Gửi lại", QueueFeedbackTone.Warning)
+                    is QueueClient.Act.Ok -> postFeedback("", "Sent to $name", QueueFeedbackTone.Success)
+                    is QueueClient.Act.Conflict -> postFeedback("", "Send again", QueueFeedbackTone.Warning)
                     is QueueClient.Act.Failed -> {
                         _ui.update { it.copy(needsSetup = r.needsAuth) }
-                        postFeedback(r.message, "Không gửi được", QueueFeedbackTone.Error)
+                        postFeedback(r.message, "Send failed", QueueFeedbackTone.Error)
                     }
                 }
             } finally {

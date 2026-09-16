@@ -90,8 +90,8 @@ internal fun QueueModeSwitch(
     ChuSegmentedControl(
         options = listOf(QueueMode.Timeline, QueueMode.Threads),
         labels = mapOf(
-            QueueMode.Timeline to "DÒNG THỜI GIAN",
-            QueueMode.Threads to "HỘI THOẠI",
+            QueueMode.Timeline to "TIMELINE",
+            QueueMode.Threads to "CONVERSATIONS",
         ),
         selected = mode,
         onSelect = onSelect,
@@ -181,7 +181,7 @@ internal fun QueueSessionRail(
                 onClick = { onSelect(ALL_AGENTS) },
                 dotColor = colors.textMuted,
                 dot = "",
-                label = "TẤT CẢ",
+                label = "ALL",
                 mark = "",
                 markColor = colors.textMuted,
             )
@@ -225,9 +225,9 @@ internal fun QueueFeedView(
     }
     Box(modifier = modifier.fillMaxSize()) {
         when {
-            feed.messages.isEmpty() && feed.loading -> CenterNote("ĐANG TẢI DÒNG THỜI GIAN…")
+            feed.messages.isEmpty() && feed.loading -> CenterNote("LOADING TIMELINE…")
             feed.messages.isEmpty() && feed.error != null -> CenterNote("▌ ${feed.error}")
-            feed.messages.isEmpty() -> CenterNote("chưa có tin nào — chuồng đang nghỉ · gạt sang HỘI THOẠI để mở một phiên")
+            feed.messages.isEmpty() -> CenterNote("no messages yet — the house is quiet · switch to CONVERSATIONS to open a session")
             else -> LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize(),
@@ -334,8 +334,8 @@ internal fun QueueConversationList(
             val badge = when {
                 agent.tone == QueueTone.Warn -> "?" to agent.tone.color()
                 agent.tone == QueueTone.Error -> "!" to agent.tone.color()
-                active > 0 -> "$active chờ" to colors.accent
-                hasNew -> "mới" to colors.success
+                active > 0 -> "$active waiting" to colors.accent
+                hasNew -> "new" to colors.success
                 else -> null
             }
             Row(
@@ -369,7 +369,7 @@ internal fun QueueConversationList(
                         }
                     }
                     val preview = agent.preview.ifBlank {
-                        if (agent.chatRev != null) "chưa có tin" else "không có transcript"
+                        if (agent.chatRev != null) "no messages yet" else "no transcript"
                     }
                     ChuText(
                         (if (sessionWorking(agent)) "▶ " else "") + preview,
@@ -527,7 +527,7 @@ internal fun QueueComposer(
     onSend: () -> Unit,
     modifier: Modifier = Modifier,
     onFocusChanged: (Boolean) -> Unit = {},
-    /** Màn CHAT truyền "Trả lời <agent>…"; null = "Describe the task…" như cũ. */
+    /** Màn CHAT truyền "Reply to <agent>…"; null = "Describe the task…" như cũ. */
     placeholder: String? = null,
     sendLabel: String = "[SEND]",
     /** Nút đứng GIỮA ô gõ và nút gửi (màn CHAT: ⊕ đính file). null = không có. */

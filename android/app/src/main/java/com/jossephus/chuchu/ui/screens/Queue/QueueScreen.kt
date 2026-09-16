@@ -302,7 +302,7 @@ fun QueueScreen(
                 }
                 // Chu cai ngan doc duoc hon icon rieng le (↻/⚙ truoc day khong
                 // ai giai thich duoc ma van giu dung do rong terminal).
-                // [VIỆC] giữ đường vào bảng hàng đợi cũ (UI G1 chỉ còn feed + hội thoại).
+                // [TASKS] giữ đường vào bảng hàng đợi cũ (UI G1 chỉ còn feed + hội thoại).
                 if (!chatOpen) {
                     ChuButton(
                         onClick = { tasksOpen = !tasksOpen },
@@ -313,7 +313,7 @@ fun QueueScreen(
                         minHeight = 24.dp,
                     ) {
                         ChuText(
-                            "VIỆC",
+                            "TASKS",
                             style = ChuTypography.current.labelSmall,
                             color = if (tasksOpen) colors.accent else colors.textPrimary,
                         )
@@ -525,11 +525,11 @@ fun QueueScreen(
                 },
                 onFocusChanged = { composerFocused = it },
                 placeholder = when {
-                    chatOpen -> "Trả lời ${chat.name}…"
-                    !tasksOpen && selectedAgent != null -> "Gửi việc / trả lời ${selectedAgent.name}…"
+                    chatOpen -> "Reply to ${chat.name}…"
+                    !tasksOpen && selectedAgent != null -> "Queue / reply to ${selectedAgent.name}…"
                     else -> null
                 },
-                sendLabel = if (chatOpen) "[GỬI ↵]" else "[SEND]",
+                sendLabel = if (chatOpen) "[SEND ↵]" else "[SEND]",
                 // ⊕ giữa ô gõ và [GỬI], cùng màu với nút gửi lúc rảnh (user 16/9: "màu đồng nhất").
                 trailing = if (!chatOpen) null else {
                     {

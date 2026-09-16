@@ -90,9 +90,9 @@ internal fun QueueChatView(
 
     Box(modifier = modifier.fillMaxSize()) {
         when {
-            chat.loading && messages.isEmpty() -> Center("ĐANG TẢI CHAT…")
+            chat.loading && messages.isEmpty() -> Center("LOADING CHAT…")
             chat.error != null && messages.isEmpty() -> Center("▌ ${chat.error}")
-            messages.isEmpty() -> Center("chưa có tin nào")
+            messages.isEmpty() -> Center("no messages yet")
             else -> LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize(),
@@ -102,14 +102,14 @@ internal fun QueueChatView(
                 item(key = "older") {
                     Box(Modifier.fillMaxWidth().padding(vertical = 2.dp), contentAlignment = Alignment.Center) {
                         when {
-                            chat.loadingOlder -> ChuText("đang tải…", style = type.labelSmall, color = colors.textMuted)
+                            chat.loadingOlder -> ChuText("loading…", style = type.labelSmall, color = colors.textMuted)
                             chat.hasMore -> ChuText(
-                                "tải thêm $CHAT_OLDER_LABEL tin cũ hơn",
+                                "load $CHAT_OLDER_LABEL older messages",
                                 style = type.labelSmall,
                                 color = colors.accent,
                                 modifier = Modifier.clickable(onClick = onLoadOlder).padding(6.dp),
                             )
-                            else -> ChuText("đầu cuộc chat", style = type.labelSmall, color = colors.textMuted)
+                            else -> ChuText("start of chat", style = type.labelSmall, color = colors.textMuted)
                         }
                     }
                 }
@@ -119,7 +119,7 @@ internal fun QueueChatView(
                         "assistant" -> AssistantRow(m, textSize, tone = tone)
                         "tool" -> ToolRow(m, tone = tone)
                         else -> ChuText(
-                            "✻ suy nghĩ",
+                            "✻ thinking",
                             style = type.labelSmall,
                             color = tone?.meta ?: colors.textMuted,
                             modifier = Modifier.padding(start = 10.dp),
@@ -136,7 +136,7 @@ internal fun QueueChatView(
                         Spacer(Modifier.width(8.dp))
                         Column(Modifier.weight(1f).padding(vertical = 4.dp, horizontal = 0.dp)) {
                             ChuText(
-                                if (t.isRunning) "▶ đang gửi · #${t.id}" else "⏳ chờ agent rảnh · #${t.id}",
+                                if (t.isRunning) "▶ sending · #${t.id}" else "⏳ waiting for agent · #${t.id}",
                                 style = type.labelSmall,
                                 color = colors.textMuted,
                             )
@@ -237,7 +237,7 @@ private fun ToolRow(m: ChatMessage, tone: ChatTone?) {
                 modifier = Modifier.padding(top = 4.dp),
             )
             if (m.resLen > (m.res?.length ?: 0)) {
-                ChuText("… còn ${m.resLen - (m.res?.length ?: 0)} ký tự nữa", style = type.labelSmall, color = colors.accentSecondary)
+                ChuText("… ${m.resLen - (m.res?.length ?: 0)} more chars", style = type.labelSmall, color = colors.accentSecondary)
             }
         }
     }
@@ -271,9 +271,9 @@ internal fun chatAge(updatedAt: Long, now: Long = System.currentTimeMillis()): S
     if (updatedAt <= 0L) return ""
     val s = ((now - updatedAt) / 1000).coerceAtLeast(0)
     return when {
-        s < 60 -> "cập nhật ${s} giây trước"
-        s < 3600 -> "cập nhật ${s / 60} phút trước"
-        else -> "cập nhật ${s / 3600} giờ trước"
+        s < 60 -> "updated ${s}s ago"
+        s < 3600 -> "updated ${s / 60}m ago"
+        else -> "updated ${s / 3600}h ago"
     }
 }
 
@@ -288,7 +288,7 @@ internal fun chatWhen(ts: String, now: Long = System.currentTimeMillis()): Strin
         val date = parser.parse(ts.substring(0, 19)) ?: return ""
         val age = now - date.time
         when {
-            age < 60_000L -> "vừa xong"
+            age < 60_000L -> "just now"
             age < 3_600_000L -> "${age / 60_000L}′"
             age < 86_400_000L -> SimpleDateFormat("HH:mm", Locale.US).format(date)
             age < 7 * 86_400_000L -> "${age / 86_400_000L}d"
