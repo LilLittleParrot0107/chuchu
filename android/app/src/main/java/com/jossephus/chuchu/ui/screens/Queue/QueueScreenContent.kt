@@ -147,11 +147,14 @@ internal fun QueueFeedView(
     val type = ChuTypography.current
     // Vị trí cuộn do QueueScreen giữ (rememberSaveable) — mode/hội thoại quay lại vẫn y chỗ.
     val curFeed by rememberUpdatedState(feed)
+    // Đã khôi phục vị trí cho lần vào hiện tại chưa. Collector bên dưới chỉ ghi
+    // pinned/neo SAU khi khôi phục xong: layout đầu tiên lúc vào có thể còn ở vị
+    // trí cũ trong khi neo đã lưu là tin khác (feed cắt đầu làm index trôi) —
+    // ghi sớm là đè mất đúng cái neo cần khôi phục.
+    var restored by remember { mutableStateOf(false) }
     LaunchedEffect(listState) {
         snapshotFlow { listState.layoutInfo }.collect { info ->
-            // Bỏ qua layout rỗng: lúc đó LazyColumn chưa compose (đang tải), ghi
-            // pinned=true vào đây sẽ đè mất vị trí đã lưu trước khi kịp khôi phục.
-            if (info.totalItemsCount > 0) {
+            if (info.totalItemsCount > 0 && restored) {
                 val last = info.visibleItemsInfo.lastOrNull()?.index ?: -1
                 onPinnedChange(last >= info.totalItemsCount - 2)
                 // Neo = KEY tin đầu đang thấy: feed cắt tin ở đầu nên index trôi, key ổn định.
@@ -162,7 +165,6 @@ internal fun QueueFeedView(
     }
     // Vào lần đầu / quay lại: dừng đúng tin cuối đã thấy; neo rơi khỏi cửa sổ feed
     // (hoặc đang ở đáy) thì về điểm mới nhất (user chốt 17/9).
-    var restored by remember { mutableStateOf(false) }
     LaunchedEffect(feed.messages.isNotEmpty(), pinned, anchorKey) {
         if (restored || feed.messages.isEmpty()) return@LaunchedEffect
         restored = true
