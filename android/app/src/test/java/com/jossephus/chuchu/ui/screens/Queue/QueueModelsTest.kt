@@ -242,4 +242,17 @@ class QueueModelsTest {
         assertEquals(160, normalized.length)
         assertTrue(normalized.endsWith("…"))
     }
+
+    @Test
+    fun `doc duoc loai agent cua pane`() {
+        // qsrv chuyển nguyên field `agent` của herdr (16/9) — app tô màu tên theo loại.
+        val s = QueueState.parse(
+            """{"agents":[{"pane":"w1:p1","name":"OC | build","glyph":"●","tone":"ok",
+                "label":"ranh","word":"","agent":"opencode","chat_rev":"12.3"},
+               {"pane":"w1:p2","name":"agy","glyph":"○","tone":"dim","label":"ranh","word":""}]}"""
+        )
+        assertEquals("opencode", s.agents[0].agent)
+        assertEquals("12.3", s.agents[0].chatRev)
+        assertNull(s.agents[1].agent)
+    }
 }

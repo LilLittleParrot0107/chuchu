@@ -48,8 +48,10 @@ import com.jossephus.chuchu.ui.components.ChuText
 import com.jossephus.chuchu.ui.components.KohiCompactAction
 import com.jossephus.chuchu.ui.components.KohiSectionBand
 import com.jossephus.chuchu.ui.components.KohiSelectableRow
+import com.jossephus.chuchu.ui.theme.AgentKind
 import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTypography
+import com.jossephus.chuchu.ui.theme.rosterColor
 
 internal const val ALL_AGENTS = "ALL"
 
@@ -170,7 +172,9 @@ internal fun QueueAgentRoster(
                         ChuText(
                             agent.name,
                             style = type.label.copy(fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal),
-                            color = colors.textPrimary,
+                            // Màu tên theo LOẠI agent (user chốt 16/9, phương án 1B): claude/opencode/agy
+                            // mỗi loại một sắc, loại lạ giữ textPrimary như cũ.
+                            color = AgentKind.of(agent.agent).rosterColor(),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f),

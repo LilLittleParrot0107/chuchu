@@ -61,7 +61,9 @@ import com.jossephus.chuchu.ui.components.KohiNoticeBand
 import com.jossephus.chuchu.ui.components.KohiSectionBand
 import com.jossephus.chuchu.ui.components.ChuText
 import com.jossephus.chuchu.ui.screens.Files.MachineUiState
+import com.jossephus.chuchu.ui.theme.AgentKind
 import com.jossephus.chuchu.ui.theme.ChuColors
+import com.jossephus.chuchu.ui.theme.rosterColor
 import com.jossephus.chuchu.ui.theme.ChuTypography
 import kotlinx.coroutines.delay
 
@@ -160,6 +162,8 @@ fun QueueScreen(
         ?: agents.firstOrNull()?.pane
         ?: ALL_AGENTS
     val selectedAgent = agents.firstOrNull { it.pane == pane }
+    // Agent đang mở CHAT — tô màu tên/tin theo LOẠI agent (user chốt 16/9, 1B + 2B).
+    val chatAgent = if (chatOpen) agents.firstOrNull { it.pane == chat.pane } else null
     // WHY: qq chi giu 3 task DONE gan nhat trong view de list khong phinh vo
     // han theo thoi gian; muon xoa han thi dung CLR DONE (no moi don state).
     // Active dat truoc doneTail de thu tu doc chay tu viec pending sang viec
@@ -243,6 +247,8 @@ fun QueueScreen(
             }
             KohiCommandBand(
                 title = if (chatOpen) chat.name.uppercase().take(16) else "QUEUE",
+                // Tên phiên tô màu theo loại agent khi mở CHAT (như roster).
+                titleColor = if (chatOpen) AgentKind.of(chatAgent?.agent).rosterColor() else colors.textPrimary,
                 status = if (chatOpen) "· CHAT" else status,
                 statusColor = if (chatOpen) colors.textSecondary else statusColor,
                 // Không có nút back trong app (user chốt 16/9): back hệ thống đóng chat (BackHandler) hoặc rời màn.
@@ -288,7 +294,6 @@ fun QueueScreen(
 
             if (chatOpen) {
                 // ── MÀN CHAT: roster + việc + dải máy nhường chỗ, chat ăn hết (user chốt 16/9 "mở hoàn toàn") ──
-                val chatAgent = agents.firstOrNull { it.pane == chat.pane }
                 val dotColor = chatAgent?.tone?.color() ?: colors.textMuted
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
@@ -313,6 +318,7 @@ fun QueueScreen(
                     onLoadOlder = onLoadOlderChat,
                     pendingTasks = ui.state.tasks.filter { it.target == chat.pane && !it.isCompleted && !it.isFailed },
                     fontSizeSp = chatFontSizeSp,
+                    kind = AgentKind.of(chatAgent?.agent),
                     listState = chatListState,
                     modifier = Modifier.fillMaxWidth().weight(1f),
                 )

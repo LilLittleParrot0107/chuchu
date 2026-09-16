@@ -37,8 +37,11 @@ import androidx.compose.ui.unit.dp
 import com.jossephus.chuchu.ui.components.ChuText
 import com.jossephus.chuchu.ui.components.MiniMarkdownText
 import com.jossephus.chuchu.ui.components.LinkifiedText
+import com.jossephus.chuchu.ui.theme.AgentKind
+import com.jossephus.chuchu.ui.theme.ChatTone
 import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTypography
+import com.jossephus.chuchu.ui.theme.chatTone
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.TimeZone
@@ -60,11 +63,14 @@ internal fun QueueChatView(
     pendingTasks: List<QueueTask> = emptyList(),
     /** Cỡ chữ (sp) cho tin của anh và của agent; ≤ 0 = cỡ body của theme. */
     fontSizeSp: Float = 0f,
+    /** Loại agent của phiên — tin của agent tô màu như terminal từng tool (user chốt 16/9, 2B). */
+    kind: AgentKind = AgentKind.OTHER,
     listState: LazyListState = rememberLazyListState(),
     modifier: Modifier = Modifier,
 ) {
     val colors = ChuColors.current
     val type = ChuTypography.current
+    val tone = remember(kind) { kind.chatTone() }
     val messages = chat.messages
     val textSize = if (fontSizeSp > 0f) fontSizeSp.sp else type.body.fontSize
     // Như terminal: cỡ chữ Settings, dãn dòng tự nhiên của font, không thêm leading.
@@ -110,9 +116,14 @@ internal fun QueueChatView(
                 items(messages, key = ChatMessage::key) { m ->
                     when (m.role) {
                         "user" -> UserRow(m, bodyStyle)
-                        "assistant" -> AssistantRow(m, textSize)
-                        "tool" -> ToolRow(m)
-                        else -> ChuText("✻ suy nghĩ", style = type.labelSmall, color = colors.textMuted, modifier = Modifier.padding(start = 10.dp))
+                        "assistant" -> AssistantRow(m, textSize, tone = tone)
+                        "tool" -> ToolRow(m, tone = tone)
+                        else -> ChuText(
+                            "✻ suy nghĩ",
+                            style = type.labelSmall,
+                            color = tone?.meta ?: colors.textMuted,
+                            modifier = Modifier.padding(start = 10.dp),
+                        )
                     }
                 }
                 // Tin xếp hàng chưa vào transcript: hiện ở cuối để khỏi tưởng mất. Xoá thì về Queue.
@@ -173,19 +184,20 @@ private fun UserRow(m: ChatMessage, bodyStyle: androidx.compose.ui.text.TextStyl
 }
 
 @Composable
-private fun AssistantRow(m: ChatMessage, textSize: TextUnit) {
+private fun AssistantRow(m: ChatMessage, textSize: TextUnit, tone: ChatTone?) {
+    val colors = ChuColors.current
     Column(Modifier.fillMaxWidth().padding(start = 10.dp)) {
         Row(Modifier.fillMaxWidth()) {
             Spacer(Modifier.weight(1f))
-            TimeStamp(m.ts)
+            TimeStamp(m.ts, color = tone?.meta ?: colors.textMuted)
         }
-        MiniMarkdownText(m.text, fontSize = textSize)
+        MiniMarkdownText(m.text, fontSize = textSize, tone = tone)
     }
 }
 
 /** Một lần gọi tool: dòng xám "⚙ Tên · mô tả"; chạm mở kết quả (đã cắt 2 KB ở server). */
 @Composable
-private fun ToolRow(m: ChatMessage) {
+private fun ToolRow(m: ChatMessage, tone: ChatTone?) {
     val colors = ChuColors.current
     val type = ChuTypography.current
     var open by remember(m.key) { mutableStateOf(false) }
@@ -198,17 +210,18 @@ private fun ToolRow(m: ChatMessage) {
             .clickable(enabled = canOpen) { open = !open },
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            ChuText("⚙ ", style = type.labelSmall, color = if (m.err) colors.error else colors.textMuted)
+            ChuText("⚙ ", style = type.labelSmall, color = if (m.err) colors.error else (tone?.meta ?: colors.textMuted))
             ChuText(
                 m.toolName,
                 style = type.labelSmall.copy(fontWeight = FontWeight.Medium),
-                color = colors.textSecondary,
+                // opencode gọi tool bằng xanh #4E7CBF như terminal; claude/agy giữ textSecondary.
+                color = tone?.toolName ?: colors.textSecondary,
             )
             if (m.desc.isNotBlank()) {
                 ChuText(
                     " · ${m.desc}",
                     style = type.labelSmall,
-                    color = colors.textMuted,
+                    color = tone?.meta ?: colors.textMuted,
                     maxLines = if (open) 6 else 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false),
@@ -231,10 +244,12 @@ private fun ToolRow(m: ChatMessage) {
 }
 
 @Composable
-private fun TimeStamp(ts: String) {
+private fun TimeStamp(ts: String, color: androidx.compose.ui.graphics.Color? = null) {
     val colors = ChuColors.current
     val label = remember(ts) { chatClock(ts) }
-    if (label.isNotEmpty()) ChuText(label, style = ChuTypography.current.labelSmall, color = colors.textMuted)
+    if (label.isNotEmpty()) {
+        ChuText(label, style = ChuTypography.current.labelSmall, color = color ?: colors.textMuted)
+    }
 }
 
 private const val CHAT_OLDER_LABEL = "50"

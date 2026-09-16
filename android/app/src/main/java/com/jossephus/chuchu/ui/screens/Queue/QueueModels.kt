@@ -87,6 +87,8 @@ data class QueueAgent(
      * App so với lần xem cuối để hiện "CHAT · MỚI". null = agent không có transcript.
      */
     val chatRev: String? = null,
+    /** Loại agent herdr báo ("claude"/"opencode"/"agy") — tô màu tên theo loại (user chốt 16/9). */
+    val agent: String? = null,
 ) {
     /**
      * Thứ tự trên roster — số nhỏ lên trên (user chốt 4/9): thứ cần TAY người
@@ -254,6 +256,7 @@ data class QueueState(
             label = englishQueueLabel(o.optString("label")),
             word = englishQueueLabel(o.optString("word")),
             chatRev = o.optString("chat_rev").takeIf { it.isNotBlank() && it != "null" },
+            agent = o.optString("agent").takeIf { it.isNotBlank() && it != "null" },
         )
 
         private fun parseTask(o: JSONObject) = QueueTask(

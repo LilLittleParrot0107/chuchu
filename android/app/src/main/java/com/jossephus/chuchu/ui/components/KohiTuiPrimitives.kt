@@ -38,6 +38,9 @@ fun KohiCommandBand(
     title: String,
     status: String? = null,
     statusColor: Color = ChuColors.current.textMuted,
+    // Màu tên band — mặc định textPrimary; màn CHAT Queue truyền màu theo LOẠI agent
+    // (user chốt 16/9: tên session đổi màu theo loại, đồng bộ với roster).
+    titleColor: Color = ChuColors.current.textPrimary,
     onBack: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     // null = surface (chuẩn). Queue/Dbtop truyền background để cả khối trên
@@ -82,7 +85,7 @@ fun KohiCommandBand(
             ChuText(
                 title.uppercase(),
                 style = type.title.copy(fontWeight = FontWeight.Bold),
-                color = colors.textPrimary,
+                color = titleColor,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )

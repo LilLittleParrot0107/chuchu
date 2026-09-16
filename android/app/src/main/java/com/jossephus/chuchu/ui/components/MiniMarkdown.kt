@@ -32,6 +32,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import com.jossephus.chuchu.ui.theme.ChatTone
 import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTypography
 
@@ -124,19 +125,24 @@ internal fun splitBlocks(md: String): List<MdBlock> {
 // ─────────────────────────── styles ───────────────────────────
 
 @Composable
-private fun rememberMdStyles(): MdStyles {
+private fun rememberMdStyles(tone: ChatTone?): MdStyles {
     val colors = ChuColors.current
     val type = ChuTypography.current
     // Styles phai duoc remember: tao moi moi recompose lam key cua
     // remember(markdown, styles) thay doi lien tuc -> parse lai toan bo text.
-    return remember(colors, type) {
+    // tone: mau rieng cua tung loai agent (16/9, phuong an 2B) — null = mac dinh theme.
+    return remember(colors, type, tone) {
         MdStyles(
-            code = SpanStyle(fontFamily = FontFamily.Monospace, background = colors.border.copy(alpha = 0.3f)),
-            bold = SpanStyle(fontWeight = FontWeight.Bold),
+            code = SpanStyle(
+                fontFamily = FontFamily.Monospace,
+                background = tone?.codeBg ?: colors.border.copy(alpha = 0.3f),
+                color = tone?.code ?: Color.Unspecified,
+            ),
+            bold = SpanStyle(fontWeight = FontWeight.Bold, color = tone?.bold ?: Color.Unspecified),
             italic = SpanStyle(fontStyle = FontStyle.Italic),
-            link = SpanStyle(color = colors.accent),
+            link = SpanStyle(color = tone?.link ?: colors.accent),
             quote = SpanStyle(color = colors.textSecondary, fontStyle = FontStyle.Italic),
-            muted = SpanStyle(color = colors.textMuted),
+            muted = SpanStyle(color = tone?.meta ?: colors.textMuted),
             h1 = SpanStyle(fontWeight = FontWeight.Bold, fontSize = type.body.fontSize * 1.25f),
             h2 = SpanStyle(fontWeight = FontWeight.Bold, fontSize = type.body.fontSize * 1.12f),
             h3 = SpanStyle(fontWeight = FontWeight.Bold),
@@ -145,14 +151,19 @@ private fun rememberMdStyles(): MdStyles {
 }
 
 @Composable
-fun MiniMarkdownText(markdown: String, fontSize: TextUnit = TextUnit.Unspecified) {
+fun MiniMarkdownText(
+    markdown: String,
+    fontSize: TextUnit = TextUnit.Unspecified,
+    /** Mau theo loai agent cua phien (claude/opencode/agy) — null = mau theme. */
+    tone: ChatTone? = null,
+) {
     val colors = ChuColors.current
     val type = ChuTypography.current
-    val styles = rememberMdStyles()
+    val styles = rememberMdStyles(tone)
     // Cỡ chữ theo caller (màn CHAT truyền cỡ chữ terminal trong Settings); dãn dòng để TỰ NHIÊN
     // của font (ascent+descent) — đúng cách terminal vẽ, user 16/9: 1,6 "thưa quá", terminal "đạt".
     val textStyle = type.body.copy(
-        color = colors.textPrimary,
+        color = tone?.body ?: colors.textPrimary,
         fontSize = if (fontSize != TextUnit.Unspecified) fontSize else type.body.fontSize,
         lineHeight = TextUnit.Unspecified,
     )
@@ -353,7 +364,7 @@ private fun AnnotatedString.Builder.appendPlainLinkified(text: String, s: MdStyl
 
 @Composable
 fun LinkifiedText(text: String, style: TextStyle, color: Color, modifier: Modifier = Modifier) {
-    val styles = rememberMdStyles()
+    val styles = rememberMdStyles(tone = null)
     val built = remember(text, styles) { buildAnnotatedString { appendPlainLinkified(text, styles) } }
     BasicText(text = built, style = style.copy(color = color), modifier = modifier)
 }
