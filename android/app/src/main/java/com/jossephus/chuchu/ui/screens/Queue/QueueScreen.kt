@@ -100,10 +100,10 @@ fun QueueScreen(
     onSendChat: (String) -> Unit = {},
     // Hàng HỘI THOẠI gửi tới chip đang chọn mà không cần mở chat (UI G1, 16/9).
     onSendToPane: (String, String) -> Unit = { _, _ -> },
-    // DÒNG THỜI GIAN (UI G1): dữ liệu /feed + bật/tắt poll + lọc theo chip.
+    // DÒNG THỜI GIAN (UI G1): dữ liệu /feed + bật/tắt poll. Bỏ lọc theo chip 17/9 —
+    // dòng thời gian luôn của cả chuồng; chọn phiên chỉ để nhắm ô gõ.
     feed: FeedUiState = FeedUiState(),
     onFeedVisible: (Boolean) -> Unit = {},
-    onFeedPane: (String?) -> Unit = {},
     /** ⊕ trong chat: tải file lên ~/inbox trên host, trả đường dẫn để dán vào tin (null = hỏng). */
     onUploadToInbox: suspend (name: String, length: Long, open: () -> java.io.InputStream?) -> String? = { _, _, _ -> null },
     /** Cỡ chữ terminal (sp) để tin trong chat cùng cỡ với terminal. */
@@ -177,18 +177,16 @@ fun QueueScreen(
         if (inspectedTaskId != null) focusManager.clearFocus()
     }
     var selectedPane by remember(initialPane) { mutableStateOf(initialPane) }
-    var lastRosterTapPane by remember { mutableStateOf<String?>(null) }
-    var lastRosterTapAt by remember { mutableLongStateOf(0L) }
     // G1 (user chốt 16/9): mặc định mở ở DÒNG THỜI GIAN; bảng VIỆC là lớp riêng đè lên.
     var mode by rememberSaveable { mutableStateOf(QueueMode.Timeline) }
     var tasksOpen by rememberSaveable { mutableStateOf(false) }
     // Chỉ long-poll /feed khi chế độ dòng thời gian đang hiện (đỡ tốn radio);
-    // mở CHAT (chạm đôi chip từ timeline) cũng tạm ngưng vì tin đã hiện trong chat.
+    // mở CHAT cũng tạm ngưng vì tin đã hiện trong chat.
     LaunchedEffect(mode, chatOpen) { onFeedVisible(mode == QueueMode.Timeline && !chatOpen) }
 
     val agents = ui.state.agents
-    // Mặc định TẤT CẢ (chip đầu rail) — mở Queue là thấy ngay dòng thời gian của cả chuồng;
-    // muốn nhắm một agent thì chạm chip (hoặc deep link initialPane).
+    // Mặc định TẤT CẢ — dòng thời gian luôn của cả chuồng; đây chỉ là ĐÍCH cho ô gõ,
+    // đổi bằng cách chạm một tin trên dòng thời gian / một dòng HỘI THOẠI (user 17/9).
     val pane = selectedPane
         ?.takeIf { candidate -> candidate == ALL_AGENTS || agents.any { it.pane == candidate } }
         ?: ALL_AGENTS
@@ -198,18 +196,16 @@ fun QueueScreen(
     // WHY: qq chi giu 3 task DONE gan nhat trong view de list khong phinh vo
     // han theo thoi gian; muon xoa han thi dung CLR DONE (no moi don state).
     // Active dat truoc doneTail de thu tu doc chay tu viec pending sang viec
-    // vua xong, giong hang doi that.
-    val visibleTasks = remember(ui.state.tasks, pane) {
-        val scoped =
-            if (pane == ALL_AGENTS) ui.state.tasks else ui.state.tasks.filter { it.target == pane }
-        val active = scoped.filterNot { it.isCompleted }
-        val doneTail = scoped.filter { it.isCompleted }.takeLast(3)
+    // vua xong, giong hang doi that. Bang VIEC luon hien toan chuong: bo loc theo
+    // pane khi xoa rail chip (user 17/9) — rail tung lam ca viec loc lan chon dich.
+    val visibleTasks = remember(ui.state.tasks) {
+        val active = ui.state.tasks.filterNot { it.isCompleted }
+        val doneTail = ui.state.tasks.filter { it.isCompleted }.takeLast(3)
         active + doneTail
     }
     val doneCount = visibleTasks.count { it.isCompleted }
     val isAdding = QueueOperationKey.ADD in ui.busyOps
-    val isClearingDone =
-        QueueOperationKey.clearDone(if (pane == ALL_AGENTS) null else pane) in ui.busyOps
+    val isClearingDone = QueueOperationKey.clearDone(null) in ui.busyOps
 
     fun copyPrompt(task: QueueTask) {
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -330,7 +326,7 @@ fun QueueScreen(
                         label = "CLR DONE",
                         enabled = !isClearingDone,
                         danger = true,
-                        onClick = { onClearDone(if (pane == ALL_AGENTS) null else pane) },
+                        onClick = { onClearDone(null) },
                     )
                 }
             }
@@ -384,38 +380,13 @@ fun QueueScreen(
                 onSelect = { picked -> tasksOpen = false; mode = picked },
             )
 
-            QueueSessionRail(
-                agents = agents,
-                selectedPane = pane,
-                onSelect = { nextPane ->
-                    // Chạm = chọn (lọc dòng thời gian / nhắm ô gõ); chạm đôi trong 350 ms
-                    // vào CÙNG agent = mở chat, giữ thói quen của roster cũ (user 16/9).
-                    val now = System.currentTimeMillis()
-                    val isDouble = nextPane == lastRosterTapPane && now - lastRosterTapAt < ROSTER_DOUBLE_TAP_MS
-                    lastRosterTapPane = nextPane
-                    lastRosterTapAt = now
-                    if (isDouble && nextPane != ALL_AGENTS) {
-                        val target = agents.firstOrNull { it.pane == nextPane }
-                        if (target?.chatRev != null) {
-                            onOpenChat(nextPane)
-                            return@QueueSessionRail
-                        }
-                    }
-                    selectedPane = nextPane
-                    onFeedPane(nextPane.takeIf { it != ALL_AGENTS })
-                },
-            )
-
-            // Bảng VIỆC (lớp cũ): header vung content phai tu tra loi "duoi day thuoc
-            // ve agent nao": TEN · STATUS · N TASKS tren mot dong duy nhat.
+            // Bảng VIỆC (lớp cũ): luôn là toàn chuồng — bỏ lọc theo chip khi xoá rail
+            // (user 17/9); header chỉ còn số việc.
             if (tasksOpen) {
                 KohiSectionBand(
-                    label = selectedAgent?.name ?: "ALL TASKS",
-                    meta = buildString {
-                        selectedAgent?.let { append(it.label.uppercase()).append(" · ") }
-                        append("${visibleTasks.size} TASKS")
-                    },
-                    accent = selectedAgent?.tone?.color() ?: colors.accent,
+                    label = "ALL TASKS",
+                    meta = "${visibleTasks.size} TASKS",
+                    accent = colors.accent,
                 )
             }
 
@@ -427,10 +398,10 @@ fun QueueScreen(
                 when {
                     tasksOpen -> when {
                         visibleTasks.isEmpty() && ui.everLoaded -> EmptyQueueInspector(
-                            agent = selectedAgent,
-                            scopeLabel = selectedAgent?.name ?: "ALL AGENTS",
+                            agent = null,
+                            scopeLabel = "ALL AGENTS",
                             allTasks = ui.state.tasks,
-                            pane = pane,
+                            pane = ALL_AGENTS,
                         )
                         !ui.everLoaded && ui.loading -> Box(
                             modifier = Modifier.fillMaxSize(),
@@ -463,7 +434,7 @@ fun QueueScreen(
                                 QueueTaskRow(
                                     task = task,
                                     selected = false,
-                                    showTarget = pane == ALL_AGENTS,
+                                    showTarget = true,
                                     // Tap = mo thang sheet detail co scrim (user chot
                                     // 27/8, dong bo voi dashboard) — buoc chon-roi-
                                     // INSPECT trung gian da bo.
@@ -474,30 +445,27 @@ fun QueueScreen(
                     }
                     mode == QueueMode.Timeline -> QueueFeedView(
                         feed = feed,
-                        onOpen = { m ->
-                            // Chạm tin = sang HỘI THOẠI với đúng phiên đó (user chốt G1):
-                            // muốn gõ thì gõ ngay ở ô dưới, không nhảy thẳng vào thread.
+                        onPick = { m ->
+                            // Chạm tin = nhắm phiên đó cho ô gõ ngay dưới (user chốt 17/9):
+                            // ở lại dòng thời gian, gõ request luôn tại chỗ.
                             selectedPane = m.pane
-                            onFeedPane(m.pane)
-                            mode = QueueMode.Threads
                         },
                     )
                     else -> QueueConversationList(
                         agents = agents,
-                        tasks = ui.state.tasks,
                         selectedPane = pane,
                         chatSeen = chatSeen,
-                        onOpenChat = onOpenChat,
-                        onSelect = { p -> selectedPane = p; onFeedPane(p) },
+                        // Mở chat cũng nhớ phiên đó làm đích ô gõ khi quay lại (17/9).
+                        onOpenChat = { p -> selectedPane = p; onOpenChat(p) },
+                        onSelect = { p -> selectedPane = p },
                     )
                 }
             }
             }
 
-            // Dải máy + ô nhập chỉ có chỗ để gõ: CHAT · bảng VIỆC · HỘI THOẠI.
-            // DÒNG THỜI GIAN là màn đọc thuần (user chốt 16/9: bỏ dải dưới timeline) —
-            // không dải máy, không ô nhập, tin cuối nằm ngay trên mép dưới.
-            if (chatOpen || tasksOpen || mode == QueueMode.Threads) {
+            // Dải máy + ô nhập có mặt ở MỌI chế độ (user chốt 17/9: gõ request ngay
+            // trên dòng thời gian). Rail chip đã xoá — đích của ô gõ đổi bằng cách
+            // chạm một tin (timeline) hoặc một dòng HỘI THOẠI.
             // Dải máy ghim ngay trên ô nhập: lúc gõ việc mới là lúc cần biết
             // máy còn tải nổi không và còn quota không (user chốt P2, 3/9).
             // Thu panel theo BÀN PHÍM, KHÔNG theo focus. Android không bỏ focus
@@ -508,9 +476,9 @@ fun QueueScreen(
             MachineStrip(machine, onUsageVisible = onUsageVisible, onRefreshUsage = onRefreshUsage,
                 collapse = imeUp)
 
-            // Một ô nhập cho cả ba ngữ cảnh: VIỆC (xếp hàng đợi) · HỘI THOẠI (gửi
-            // tới chip đang chọn, agent bận thì xếp — sendToPane) · CHAT (gõ thẳng
-            // vào pane). DÒNG THỜI GIAN là màn đọc thuần: không ô nhập (user chốt 16/9).
+            // Một ô nhập cho cả ba ngữ cảnh: VIỆC (xếp hàng đợi) · HỘI THOẠI và
+            // DÒNG THỜI GIAN (gửi tới phiên đang nhắm, agent bận thì xếp — sendToPane)
+            // · CHAT (gõ thẳng vào pane).
             val chatAgentForComposer = if (chatOpen) agents.firstOrNull { it.pane == chat.pane } else selectedAgent
             QueueComposer(
                 modifier = Modifier.onSizeChanged { composerHeightPx = it.height },
@@ -525,8 +493,9 @@ fun QueueScreen(
                 onFocusChanged = { composerFocused = it },
                 placeholder = when {
                     chatOpen -> "Reply to ${chat.name}…"
-                    !tasksOpen && selectedAgent != null -> "Queue / reply to ${selectedAgent.name}…"
-                    else -> null
+                    selectedAgent != null -> "Queue / reply to ${selectedAgent.name}…"
+                    tasksOpen -> "Pick a session first…"
+                    else -> "Tap a message to reply…"
                 },
                 sendLabel = if (chatOpen) "[SEND ↵]" else "[SEND]",
                 // ⊕ giữa ô gõ và [GỬI], cùng màu với nút gửi lúc rảnh (user 16/9: "màu đồng nhất").
@@ -568,7 +537,6 @@ fun QueueScreen(
                     }
                 },
             )
-            }
         }
 
         inspectedTask?.let { task ->
@@ -650,8 +618,6 @@ private fun queueStatusText(ui: QueueUiState): String {
 private const val FEEDBACK_TTL_MS = 3_200L
 
 /** Hai chạm vào cùng agent trong khoảng này = mở chat. */
-private const val ROSTER_DOUBLE_TAP_MS = 350L
-
 /** Khoảng lặng nuốt cú back dội ngay sau khi back đóng chat (không xuyên qua Queue). */
 private const val BACK_SWALLOW_MS = 450L
 

@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.BasicTextField
@@ -57,7 +56,6 @@ import com.jossephus.chuchu.ui.components.KohiSectionBand
 import com.jossephus.chuchu.ui.components.KohiSelectableRow
 import com.jossephus.chuchu.ui.components.LinkifiedText
 import com.jossephus.chuchu.ui.components.MiniMarkdownText
-import com.jossephus.chuchu.ui.components.TuiBadge
 import com.jossephus.chuchu.ui.theme.AgentKind
 import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTypography
@@ -99,115 +97,30 @@ internal fun QueueModeSwitch(
     )
 }
 
-/**
- * Đốm màu của một session: đỏ/vàng khi CẦN ANH (warn/error) để việc gấp nổi lên, còn lại
- * theo LOẠI agent (claude/opencode/agy) — cùng quy ước với hàng HỘI THOẠI.
- */
-@Composable
-private fun sessionDotColor(agent: QueueAgent): Color {
-    return if (agent.tone == QueueTone.Warn || agent.tone == QueueTone.Error) agent.tone.color()
-    else AgentKind.of(agent.agent).rosterColor()
-}
-
-/** Ký hiệu trạng thái cạnh tên trên chip: ▶ đang chạy · ✓ vừa xong · ? cần anh · "" rảnh. */
-private fun sessionMark(agent: QueueAgent): String = when (agent.label.trim().lowercase()) {
-    "working", "busy", "sending", "running" -> "▶"
-    "done" -> "✓"
-    "needs approval", "blocked", "unknown" -> "?"
-    else -> ""
-}
-
+/** Session đang chạy (theo label) — dùng cho chấm trạng thái, không phải selection. */
 private fun sessionWorking(agent: QueueAgent): Boolean =
     agent.label.trim().lowercase() in setOf("working", "busy", "sending", "running")
 
-@Composable
-private fun SessionChip(
-    selected: Boolean,
-    onClick: () -> Unit,
-    dotColor: Color,
-    dot: String,
-    label: String,
-    mark: String,
-    markColor: Color,
-) {
-    val colors = ChuColors.current
-    val type = ChuTypography.current
-    Row(
-        modifier = Modifier
-            .background(if (selected) colors.accent.copy(alpha = 0.12f) else colors.surface)
-            .border(1.dp, if (selected) colors.accent else colors.border)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 5.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (dot.isNotEmpty()) {
-            ChuText(dot, style = type.labelSmall, color = dotColor)
-            Spacer(Modifier.width(4.dp))
-        }
-        ChuText(
-            label,
-            style = type.label,
-            color = if (selected) colors.textPrimary else colors.textSecondary,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        if (mark.isNotEmpty()) {
-            Spacer(Modifier.width(4.dp))
-            ChuText(mark, style = type.labelSmall, color = markColor)
-        }
-    }
-}
-
 /**
- * Hàng chip session dùng chung cho cả hai chế độ (G1): chọn chip = lọc dòng thời gian,
- * hoặc chọn đích cho ô gõ ở HỘI THOẠI; chip đang chọn GIỮ NGUYÊN khi gạt chế độ.
+ * Chấm trạng thái một session (user chốt 17/9: "để cho t mấy chấm show status thanh lịch"):
+ * đỏ/vàng khi CẦN ANH, accent khi đang chạy, xanh khi vừa xong, xám khi rảnh — thay hẳn
+ * các tag chữ "new"/"N waiting" rẻ tiền.
  */
 @Composable
-internal fun QueueSessionRail(
-    agents: List<QueueAgent>,
-    selectedPane: String,
-    onSelect: (String) -> Unit,
-    modifier: Modifier = Modifier,
-) {
+private fun sessionStatusColor(agent: QueueAgent): Color {
     val colors = ChuColors.current
-    LazyRow(
-        modifier = modifier.fillMaxWidth(),
-        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        item(key = ALL_AGENTS) {
-            SessionChip(
-                selected = selectedPane == ALL_AGENTS,
-                onClick = { onSelect(ALL_AGENTS) },
-                dotColor = colors.textMuted,
-                dot = "",
-                label = "ALL",
-                mark = "",
-                markColor = colors.textMuted,
-            )
-        }
-        items(agents, key = QueueAgent::pane) { agent ->
-            SessionChip(
-                selected = selectedPane == agent.pane,
-                onClick = { onSelect(agent.pane) },
-                dotColor = sessionDotColor(agent),
-                dot = "●",
-                label = agent.name,
-                mark = sessionMark(agent),
-                markColor = if (agent.tone == QueueTone.Dim) colors.textMuted else agent.tone.color(),
-            )
-        }
-    }
+    return if (sessionWorking(agent)) colors.accent else agent.tone.color()
 }
 
 /**
  * DÒNG THỜI GIAN (G1): tin cuối các session đang động, gộp theo giờ, tin mới ở dưới.
- * Màn ĐỌC thuần — không ô nhập (user chốt 16/9); chạm tin để sang HỘI THOẠI trả lời.
+ * Chạm một tin = nhắm luôn phiên đó cho ô gõ ngay dưới (user chốt 17/9) — không nhảy
+ * sang HỘI THOẠI như bản G1 đầu.
  */
 @Composable
 internal fun QueueFeedView(
     feed: FeedUiState,
-    onOpen: (FeedMessage) -> Unit,
+    onPick: (FeedMessage) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = ChuColors.current
@@ -235,7 +148,7 @@ internal fun QueueFeedView(
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 items(feed.messages, key = FeedMessage::key) { m ->
-                    FeedRow(m, onOpen = onOpen, bodySize = type.body.fontSize)
+                    FeedRow(m, onPick = onPick, bodySize = type.body.fontSize)
                 }
             }
         }
@@ -243,7 +156,7 @@ internal fun QueueFeedView(
 }
 
 @Composable
-private fun FeedRow(m: FeedMessage, onOpen: (FeedMessage) -> Unit, bodySize: TextUnit) {
+private fun FeedRow(m: FeedMessage, onPick: (FeedMessage) -> Unit, bodySize: TextUnit) {
     val colors = ChuColors.current
     val type = ChuTypography.current
     val kind = AgentKind.of(m.agent)
@@ -252,7 +165,7 @@ private fun FeedRow(m: FeedMessage, onOpen: (FeedMessage) -> Unit, bodySize: Tex
         "user" -> Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { onOpen(m) }
+                .clickable { onPick(m) }
                 .height(IntrinsicSize.Min)
                 .background(colors.accent.copy(alpha = 0.10f)),
             verticalAlignment = Alignment.Top,
@@ -261,7 +174,7 @@ private fun FeedRow(m: FeedMessage, onOpen: (FeedMessage) -> Unit, bodySize: Tex
             Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f).padding(vertical = 5.dp, horizontal = 0.dp)) {
                 ChuText(
-                    "anh → ${m.name} · ${chatClock(m.ts)}",
+                    "${m.name} · ${chatClock(m.ts)}",
                     style = type.labelSmall,
                     color = colors.textMuted,
                     maxLines = 1,
@@ -273,7 +186,7 @@ private fun FeedRow(m: FeedMessage, onOpen: (FeedMessage) -> Unit, bodySize: Tex
         else -> Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { onOpen(m) }
+                .clickable { onPick(m) }
                 .padding(top = 4.dp, end = 2.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -286,8 +199,10 @@ private fun FeedRow(m: FeedMessage, onOpen: (FeedMessage) -> Unit, bodySize: Tex
                     modifier = Modifier.weight(1f, fill = false),
                 )
                 Spacer(Modifier.width(6.dp))
+                // Nhãn chữ ("working"/"done"…) thu thành một chấm màu (user 17/9:
+                // "để cho t mấy chấm show status") — cùng ngôn ngữ với HỘI THOẠI.
                 if (m.label.isNotBlank()) {
-                    ChuText(m.label.lowercase(), style = type.labelSmall, color = m.tone.color())
+                    ChuText("●", style = type.labelSmall, color = m.tone.color())
                     Spacer(Modifier.width(6.dp))
                 }
                 ChuText(chatClock(m.ts), style = type.labelSmall, color = colors.textMuted)
@@ -298,13 +213,12 @@ private fun FeedRow(m: FeedMessage, onOpen: (FeedMessage) -> Unit, bodySize: Tex
 }
 
 /**
- * HỘI THOẠI (G1): danh sách session y như hàng đợi thật — việc cần anh lên đầu (thứ tự
- * đã sắp từ /state), mỗi dòng có xem trước tin cuối + badge; chạm dòng = mở thread.
+ * HỘI THOẠI (G1, gọn lại 17/9): danh sách session như hàng đợi thật — việc cần anh lên
+ * đầu (thứ tự đã sắp từ /state), một chấm trạng thái + một dòng xem trước; chạm = mở thread.
  */
 @Composable
 internal fun QueueConversationList(
     agents: List<QueueAgent>,
-    tasks: List<QueueTask>,
     selectedPane: String,
     chatSeen: Map<String, String>,
     onOpenChat: (String) -> Unit,
@@ -313,9 +227,6 @@ internal fun QueueConversationList(
 ) {
     val colors = ChuColors.current
     val type = ChuTypography.current
-    val pending = remember(tasks) {
-        tasks.filter { !it.isCompleted }.groupingBy { it.target }.eachCount()
-    }
     if (agents.isEmpty()) {
         Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             ChuText("NO AGENTS FOUND · CHECK HERDR/QSRV", style = type.labelSmall, color = colors.textMuted)
@@ -329,15 +240,7 @@ internal fun QueueConversationList(
     ) {
         items(agents, key = QueueAgent::pane) { agent ->
             val selected = selectedPane == agent.pane
-            val active = pending[agent.pane] ?: 0
             val hasNew = agent.chatRev != null && agent.chatRev != chatSeen[agent.pane]
-            val badge = when {
-                agent.tone == QueueTone.Warn -> "?" to agent.tone.color()
-                agent.tone == QueueTone.Error -> "!" to agent.tone.color()
-                active > 0 -> "$active waiting" to colors.accent
-                hasNew -> "new" to colors.success
-                else -> null
-            }
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -347,7 +250,7 @@ internal fun QueueConversationList(
                     .padding(horizontal = 10.dp, vertical = 7.dp),
                 verticalAlignment = Alignment.Top,
             ) {
-                ChuText("●", style = type.labelSmall, color = sessionDotColor(agent), modifier = Modifier.padding(top = 2.dp))
+                ChuText("●", style = type.labelSmall, color = sessionStatusColor(agent), modifier = Modifier.padding(top = 2.dp))
                 Spacer(Modifier.width(8.dp))
                 Column(Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -359,11 +262,12 @@ internal fun QueueConversationList(
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f, fill = false),
                         )
-                        badge?.let { (text, color) ->
-                            Spacer(Modifier.width(6.dp))
-                            TuiBadge(text, color)
-                        }
                         Spacer(Modifier.weight(1f))
+                        // Chưa đọc = một chấm nhỏ cạnh giờ, thay tag chữ "new" (user 17/9).
+                        if (hasNew) {
+                            ChuText("●", style = type.labelSmall, color = colors.accent)
+                            Spacer(Modifier.width(6.dp))
+                        }
                         chatWhen(agent.previewTs).takeIf { it.isNotEmpty() }?.let {
                             ChuText(it, style = type.labelSmall, color = colors.textMuted)
                         }
@@ -372,10 +276,10 @@ internal fun QueueConversationList(
                         if (agent.chatRev != null) "no messages yet" else "no transcript"
                     }
                     ChuText(
-                        (if (sessionWorking(agent)) "▶ " else "") + preview,
+                        preview,
                         style = type.bodySmall,
-                        color = if (sessionWorking(agent)) colors.textPrimary else colors.textSecondary,
-                        maxLines = 2,
+                        color = colors.textSecondary,
+                        maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
