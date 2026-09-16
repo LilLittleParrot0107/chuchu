@@ -1,5 +1,6 @@
 package com.jossephus.chuchu.ui.screens.Queue
 
+import androidx.compose.runtime.mutableLongStateOf
 import com.jossephus.chuchu.ui.components.ChuButtonVariant
 import com.jossephus.chuchu.ui.components.ChuButton
 import androidx.activity.result.contract.ActivityResultContracts
@@ -147,6 +148,8 @@ fun QueueScreen(
         if (inspectedTaskId != null) focusManager.clearFocus()
     }
     var selectedPane by remember(initialPane) { mutableStateOf(initialPane) }
+    var lastRosterTapPane by remember { mutableStateOf<String?>(null) }
+    var lastRosterTapAt by remember { mutableLongStateOf(0L) }
 
     val agents = ui.state.agents
     val pane = selectedPane
@@ -326,7 +329,17 @@ fun QueueScreen(
                 tasks = ui.state.tasks,
                 selectedPane = pane,
                 onSelect = { nextPane ->
+                    // Chạm = chọn (ngay lập tức); chạm lần hai trong 350 ms vào CÙNG agent = mở
+                    // chat (user 16/9). Không dùng detectTapGestures để chạm đơn không phải đợi.
+                    val now = System.currentTimeMillis()
+                    val isDouble = nextPane == lastRosterTapPane && now - lastRosterTapAt < ROSTER_DOUBLE_TAP_MS
+                    lastRosterTapPane = nextPane
+                    lastRosterTapAt = now
                     selectedPane = nextPane
+                    if (isDouble && nextPane != ALL_AGENTS) {
+                        val target = agents.firstOrNull { it.pane == nextPane }
+                        if (target?.chatRev != null) onOpenChat(nextPane)
+                    }
                 },
                 maxHeight = rosterMax,
             )
@@ -543,3 +556,6 @@ private fun queueStatusText(ui: QueueUiState): String {
 }
 
 private const val FEEDBACK_TTL_MS = 3_200L
+
+/** Hai chạm vào cùng agent trong khoảng này = mở chat. */
+private const val ROSTER_DOUBLE_TAP_MS = 350L
