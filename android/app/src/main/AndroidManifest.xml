@@ -19,7 +19,8 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Chuchu"
-        android:extractNativeLibs="false">
+        android:extractNativeLibs="false"
+        android:enableOnBackInvokedCallback="false">
         <activity
             android:name="com.jossephus.chuchu.MainActivity"
             android:enabled="true"

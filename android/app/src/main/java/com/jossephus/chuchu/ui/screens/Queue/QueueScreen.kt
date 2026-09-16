@@ -109,7 +109,25 @@ fun QueueScreen(
     val chatListState = rememberLazyListState()
     val chatScope = rememberCoroutineScope()
     // Back khi đang mở chat = về Queue, không thoát màn.
-    BackHandler(enabled = chatOpen) { onCloseChat() }
+    var swallowBackUntil by remember { mutableLongStateOf(0L) }
+    var swallowBack by remember { mutableStateOf(false) }
+    BackHandler(enabled = chatOpen) {
+        swallowBackUntil = System.currentTimeMillis() + BACK_SWALLOW_MS
+        onCloseChat()
+    }
+    // Một cử chỉ vuốt-giữ-lâu hoặc hai nhịp back sát nhau có thể bắn HAI sự kiện
+    // back: cú đầu đóng chat, cú sau xuyên qua màn Queue về thẳng tab Hosts
+    // (user 16/9 tối: "đôi khi back lại về home, đúng ra phải về queue").
+    // Sau khi đóng chat, giữ một BackHandler nuốt back trong khoảng lặng ngắn.
+    // Khai báo SAU handler trên: OnBackPressedDispatcher gọi callback thêm sau
+    // trước (LIFO) nên cú dội bị nuốt, người dùng ở lại Queue.
+    LaunchedEffect(swallowBackUntil) {
+        if (swallowBackUntil == 0L) return@LaunchedEffect
+        swallowBack = true
+        delay(BACK_SWALLOW_MS)
+        swallowBack = false
+    }
+    BackHandler(enabled = swallowBack) { /* nuốt cú back dội sau khi đóng chat */ }
     var prompt by remember { mutableStateOf("") }
     // ⊕ trong chat: chọn file → tải lên ~/inbox qua dufs → dán đường dẫn vào ô gõ (user 16/9).
     val attachLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -571,3 +589,6 @@ private const val FEEDBACK_TTL_MS = 3_200L
 
 /** Hai chạm vào cùng agent trong khoảng này = mở chat. */
 private const val ROSTER_DOUBLE_TAP_MS = 350L
+
+/** Khoảng lặng nuốt cú back dội ngay sau khi back đóng chat (không xuyên qua Queue). */
+private const val BACK_SWALLOW_MS = 450L
