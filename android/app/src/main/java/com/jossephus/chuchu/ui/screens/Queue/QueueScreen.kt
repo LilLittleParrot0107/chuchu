@@ -1,5 +1,12 @@
 package com.jossephus.chuchu.ui.screens.Queue
 
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.activity.compose.BackHandler
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -74,10 +81,22 @@ fun QueueScreen(
     onMachineVisible: (Boolean) -> Unit = {},
     onUsageVisible: (Boolean) -> Unit = {},
     onRefreshUsage: () -> Unit = {},
+    // Màn CHAT của agent (16/9): xem transcript Claude Code ngay trong Queue.
+    chat: ChatUiState = ChatUiState(),
+    chatSeen: Map<String, String> = emptyMap(),
+    onOpenChat: (String) -> Unit = {},
+    onCloseChat: () -> Unit = {},
+    onLoadOlderChat: () -> Unit = {},
+    onSendChat: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val colors = ChuColors.current
     val context = LocalContext.current
+    val chatOpen = chat.pane != null
+    val chatListState = rememberLazyListState()
+    val chatScope = rememberCoroutineScope()
+    // Back khi đang mở chat = về Queue, không thoát màn.
+    BackHandler(enabled = chatOpen) { onCloseChat() }
 
     // Chỉ hỏi khi màn Queue còn hiện; rời màn là dừng poll.
     DisposableEffect(Unit) {
@@ -193,16 +212,22 @@ fun QueueScreen(
                 else -> colors.success
             }
             KohiCommandBand(
-                title = "QUEUE",
-                status = status,
-                statusColor = statusColor,
-                onBack = onBack,
+                title = if (chatOpen) chat.name.uppercase().take(16) else "QUEUE",
+                status = if (chatOpen) "· CHAT" else status,
+                statusColor = if (chatOpen) colors.textSecondary else statusColor,
+                onBack = if (chatOpen) onCloseChat else onBack,
                 // Toi mau nen theme: status bar + band + content + rail (man
                 // rong) la MOT ton, khong con khoi surface sac bep o tren.
                 containerColor = colors.background,
                 modifier = Modifier.onSizeChanged { commandBandHeightPx = it.height },
             ) {
-                ui.state.globalActions.firstOrNull()?.let { action ->
+                if (chatOpen) {
+                    // Chỉ một nút: nhảy xuống tin mới nhất. Tìm kiếm [⌕] để bước 2.
+                    KohiCompactAction(label = "↓", onClick = {
+                        chatScope.launch { if (chat.messages.isNotEmpty()) chatListState.scrollToItem(chat.messages.size) }
+                    })
+                }
+                if (!chatOpen) ui.state.globalActions.firstOrNull()?.let { action ->
                     val busy = action.operationKey(null) in ui.busyOps
                     KohiCompactAction(
                         label = if (busy) "WAIT" else action.label.uppercase(),
@@ -213,12 +238,12 @@ fun QueueScreen(
                 }
                 // Chu cai ngan doc duoc hon icon rieng le (↻/⚙ truoc day khong
                 // ai giai thich duoc ma van giu dung do rong terminal).
-                KohiCompactAction(label = "SYNC", onClick = onRefresh)
-                KohiCompactAction(label = "CFG", onClick = { configOpen = true })
+                if (!chatOpen) KohiCompactAction(label = "SYNC", onClick = onRefresh)
+                if (!chatOpen) KohiCompactAction(label = "CFG", onClick = { configOpen = true })
                 // Clear done nam cung hang LOGS/SYNC chu khong o section band:
                 // chip 26dp keo band 26dp len 36dp dung luc co viec xong, trong
                 // khi qq giu band muc thuan thong tin mot dong.
-                if (doneCount > 0) {
+                if (!chatOpen && doneCount > 0) {
                     // Label co dinh "CLR DONE" ca khi dang chay: doi sang "CLR…"
                     // lam rong band nhay dong; trang thai busy da bao qua enabled.
                     KohiCompactAction(
@@ -230,6 +255,35 @@ fun QueueScreen(
                 }
             }
 
+            if (chatOpen) {
+                // ── MÀN CHAT: roster + việc + dải máy nhường chỗ, chat ăn hết (user chốt 16/9 "mở hoàn toàn") ──
+                val chatAgent = agents.firstOrNull { it.pane == chat.pane }
+                val dotColor = chatAgent?.tone?.color() ?: colors.textMuted
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    ChuText("● ", style = ChuTypography.current.labelSmall, color = dotColor)
+                    ChuText(
+                        buildString {
+                            append(chatAgent?.label?.lowercase() ?: "…")
+                            append(" · ${chat.messages.count { it.role != "think" }} tin")
+                            chatAge(chat.updatedAt).takeIf { it.isNotEmpty() }?.let { append(" · $it") }
+                            if (chat.cwd.isNotBlank()) append(" · cwd ${chat.cwd.replace("/home/a", "~")}")
+                        },
+                        style = ChuTypography.current.labelSmall,
+                        color = colors.textMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                QueueChatView(
+                    chat = chat,
+                    onLoadOlder = onLoadOlderChat,
+                    listState = chatListState,
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                )
+            } else {
             // Paused da hien trong status cua command band -> khong lap lai
             // bang mot notice band 28dp nua.
             val notice = ui.error ?: ui.state.banner?.text
@@ -262,6 +316,23 @@ fun QueueScreen(
                 },
                 accent = selectedAgent?.tone?.color() ?: colors.accent,
             )
+
+            // Hai đoạn dưới band: [TÌNH TRẠNG] là nội dung cũ, [CHAT] mở màn chat của agent.
+            // "· MỚI" khi transcript đổi từ lần xem cuối (qsrv chat_rev vs rev đã xem).
+            if (selectedAgent != null) {
+                val hasNew = selectedAgent.chatRev != null && selectedAgent.chatRev != chatSeen[selectedAgent.pane]
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    KohiCompactAction(label = "TÌNH TRẠNG", onClick = {}, enabled = false)
+                    KohiCompactAction(
+                        label = if (hasNew) "CHAT · MỚI" else "CHAT",
+                        onClick = { onOpenChat(selectedAgent.pane) },
+                        enabled = selectedAgent.chatRev != null,
+                    )
+                }
+            }
 
             Box(
                 modifier = Modifier
@@ -326,17 +397,26 @@ fun QueueScreen(
             val imeUp = WindowInsets.ime.getBottom(LocalDensity.current) > 0
             MachineStrip(machine, onUsageVisible = onUsageVisible, onRefreshUsage = onRefreshUsage,
                 collapse = imeUp)
+            }
 
+            // Một ô nhập cho cả hai chế độ: Queue thì xếp việc vào hàng đợi, CHAT thì gõ thẳng vào pane.
+            val chatAgentForComposer = if (chatOpen) agents.firstOrNull { it.pane == chat.pane } else selectedAgent
             QueueComposer(
                 modifier = Modifier.onSizeChanged { composerHeightPx = it.height },
                 value = prompt,
                 onValueChange = { prompt = it },
-                agent = selectedAgent,
-                sending = isAdding,
+                agent = chatAgentForComposer,
+                sending = if (chatOpen) chat.sending else isAdding,
                 onFocusChanged = { composerFocused = it },
+                placeholder = if (chatOpen) "Trả lời ${chat.name}…" else null,
+                sendLabel = if (chatOpen) "[GỬI ↵]" else "[SEND]",
                 onSend = {
                     val text = prompt.trim()
-                    if (text.isNotEmpty() && selectedAgent != null) {
+                    if (text.isEmpty()) return@QueueComposer
+                    if (chatOpen) {
+                        onSendChat(text)
+                        prompt = ""
+                    } else if (selectedAgent != null) {
                         onAdd(text, selectedAgent.pane, null)
                         prompt = ""
                     }

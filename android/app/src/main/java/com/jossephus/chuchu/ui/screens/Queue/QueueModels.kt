@@ -82,6 +82,11 @@ data class QueueAgent(
     val label: String,
     /** Short attention marker from qsrv; qq calls this the agent word. */
     val word: String,
+    /**
+     * Vân tay (mtime.size) transcript Claude Code của agent — qsrv chỉ stat, không đọc.
+     * App so với lần xem cuối để hiện "CHAT · MỚI". null = agent không có transcript.
+     */
+    val chatRev: String? = null,
 ) {
     /**
      * Thứ tự trên roster — số nhỏ lên trên (user chốt 4/9): thứ cần TAY người
@@ -246,6 +251,7 @@ data class QueueState(
             tone = QueueTone.from(o.optString("tone")),
             label = englishQueueLabel(o.optString("label")),
             word = englishQueueLabel(o.optString("word")),
+            chatRev = o.optString("chat_rev").takeIf { it.isNotBlank() && it != "null" },
         )
 
         private fun parseTask(o: JSONObject) = QueueTask(
@@ -271,5 +277,92 @@ data class QueueState(
             }
             return out
         }
+    }
+}
+
+
+/**
+ * Một tin trong màn CHAT của agent (qsrv `GET /chat`, 16/9). qsrv đọc thẳng transcript
+ * Claude Code từ đuôi file, không sao chép; app chỉ giữ trang đang xem.
+ *
+ * [role]: `user` (anh gõ) · `assistant` (markdown) · `tool` (một lần gọi tool, [res] là
+ * kết quả đã cắt còn 2 KB, [resLen] độ dài thật) · `think` (chỉ hiện một dòng nhỏ).
+ * [offset] = vị trí byte của bản ghi trong file — ổn định vì file chỉ nối thêm, dùng
+ * để ghép trang mới với trang cũ và làm key danh sách.
+ */
+data class ChatMessage(
+    val role: String,
+    val uuid: String,
+    val ts: String,
+    val text: String = "",
+    val toolName: String = "",
+    val desc: String = "",
+    val toolId: String = "",
+    val res: String? = null,
+    val resLen: Int = 0,
+    val err: Boolean = false,
+    val offset: Long = 0L,
+    /** Thứ tự trong cùng bản ghi (một bản ghi assistant có thể vừa text vừa tool_use). */
+    val sub: Int = 0,
+) {
+    val key: String get() = "$offset:$sub"
+    val isTool: Boolean get() = role == "tool"
+}
+
+data class ChatPage(
+    val pane: String,
+    val name: String,
+    val cwd: String,
+    val file: String,
+    val size: Long,
+    val rev: String,
+    val messages: List<ChatMessage>,
+    /** Offset để xin trang cũ hơn (`before=`); null = đã tới đầu file. */
+    val cursor: Long?,
+    val hasMore: Boolean,
+) {
+    companion object {
+        fun parse(json: String): ChatPage {
+            val o = JSONObject(json)
+            val arr = o.optJSONArray("messages")
+            val out = ArrayList<ChatMessage>(arr?.length() ?: 0)
+            var lastOff = -1L
+            var sub = 0
+            if (arr != null) for (i in 0 until arr.length()) {
+                val m = arr.optJSONObject(i) ?: continue
+                val role = m.optString("role")
+                if (role !in CHAT_ROLES) continue
+                val off = m.optLong("off", -1L)
+                sub = if (off == lastOff) sub + 1 else 0
+                lastOff = off
+                out += ChatMessage(
+                    role = role,
+                    uuid = m.optString("uuid"),
+                    ts = m.optString("ts"),
+                    text = m.optString("text"),
+                    toolName = m.optString("name"),
+                    desc = m.optString("desc"),
+                    toolId = m.optString("id"),
+                    res = if (m.has("res") && !m.isNull("res")) m.optString("res") else null,
+                    resLen = m.optInt("resLen", 0),
+                    err = m.optBoolean("err", false),
+                    offset = off,
+                    sub = sub,
+                )
+            }
+            return ChatPage(
+                pane = o.optString("pane"),
+                name = o.optString("name"),
+                cwd = o.optString("cwd"),
+                file = o.optString("file"),
+                size = o.optLong("size", 0L),
+                rev = o.optString("rev"),
+                messages = out,
+                cursor = if (o.has("cursor") && !o.isNull("cursor")) o.optLong("cursor") else null,
+                hasMore = o.optBoolean("has_more", false),
+            )
+        }
+
+        private val CHAT_ROLES = setOf("user", "assistant", "tool", "think")
     }
 }

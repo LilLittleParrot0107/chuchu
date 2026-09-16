@@ -517,6 +517,12 @@ private fun QueueDestination(
         onMachineVisible = sharedQueueVm::setMachinePolling,
         onUsageVisible = sharedQueueVm::setQuotaWanted,
         onRefreshUsage = sharedQueueVm::requestQuotaRefresh,
+        chat = sharedQueueVm.chat.collectAsStateWithLifecycle().value,
+        chatSeen = sharedQueueVm.chatSeen.collectAsStateWithLifecycle().value,
+        onOpenChat = sharedQueueVm::openChat,
+        onCloseChat = sharedQueueVm::closeChat,
+        onLoadOlderChat = sharedQueueVm::loadOlderChat,
+        onSendChat = sharedQueueVm::sendChat,
         onBack = onBack,
     )
 }

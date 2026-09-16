@@ -339,6 +339,9 @@ internal fun QueueComposer(
     onSend: () -> Unit,
     modifier: Modifier = Modifier,
     onFocusChanged: (Boolean) -> Unit = {},
+    /** Màn CHAT truyền "Trả lời <agent>…"; null = "Describe the task…" như cũ. */
+    placeholder: String? = null,
+    sendLabel: String = "[SEND]",
 ) {
     val colors = ChuColors.current
     val type = ChuTypography.current
@@ -401,7 +404,7 @@ internal fun QueueComposer(
                     Box {
                         if (value.isEmpty()) {
                             ChuText(
-                                agent?.let { "Describe the task…" } ?: "Pick an agent first…",
+                                agent?.let { placeholder ?: "Describe the task…" } ?: "Pick an agent first…",
                                 style = type.body,
                                 color = colors.disabledText,
                                 maxLines = 1,
@@ -424,7 +427,7 @@ internal fun QueueComposer(
             minHeight = 34.dp,
         ) {
             ChuText(
-                if (sending) "[…]" else "[SEND]",
+                if (sending) "[…]" else sendLabel,
                 style = type.label.copy(fontWeight = FontWeight.Bold),
                 color = when {
                     sending -> colors.textMuted

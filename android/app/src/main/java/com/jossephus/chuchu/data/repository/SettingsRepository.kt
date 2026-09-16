@@ -16,6 +16,19 @@ import kotlinx.coroutines.flow.asStateFlow
 
 class SettingsRepository(context: Context) {
 
+    /** Rev transcript đã xem theo pane (tab Queue · CHAT, 16/9): "CHAT · MỚI" khi rev đổi. */
+    private val chatSeenPrefs: SharedPreferences =
+        context.getSharedPreferences("queue_chat_seen", Context.MODE_PRIVATE)
+
+    fun chatSeenRev(pane: String): String? = chatSeenPrefs.getString(pane, null)
+
+    fun setChatSeenRev(pane: String, rev: String) {
+        chatSeenPrefs.edit().putString(pane, rev).apply()
+    }
+
+    fun allChatSeenRevs(): Map<String, String> =
+        chatSeenPrefs.all.mapNotNull { (k, v) -> (v as? String)?.let { k to it } }.toMap()
+
     private val legacyTerminalPrefs: SharedPreferences =
         context.getSharedPreferences(LEGACY_TERMINAL_PREFS, Context.MODE_PRIVATE)
 

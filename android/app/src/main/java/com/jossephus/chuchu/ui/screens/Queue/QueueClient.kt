@@ -63,6 +63,59 @@ class QueueClient(
         data class Failed(val message: String) : FetchResponse
     }
 
+    sealed interface ChatFetch {
+        data class Fresh(val page: ChatPage) : ChatFetch
+        /** since == rev trên server (304) — giữ trang đang xem. */
+        data object Unchanged : ChatFetch
+        data class Failed(val message: String, val needsAuth: Boolean = false) : ChatFetch
+    }
+
+    /**
+     * `GET /chat` (16/9): [limit] tin cuối của transcript agent [pane]; [before] = cursor
+     * trang trước để lấy tin cũ hơn; [sinceRev] + [waitSec] = long-poll như /state, server
+     * giữ tới khi file đổi rồi trả 200, hết giờ trả 304.
+     */
+    fun chat(pane: String, limit: Int = 50, before: Long? = null, sinceRev: String? = null, waitSec: Int = 0): ChatFetch {
+        val wait = if (sinceRev.isNullOrEmpty() || before != null) 0 else waitSec.coerceIn(0, 25)
+        val q = StringBuilder("/chat?pane=").append(URLEncoder.encode(pane, "UTF-8")).append("&limit=").append(limit)
+        if (before != null) q.append("&before=").append(before)
+        if (!sinceRev.isNullOrEmpty() && before == null) {
+            q.append("&since=").append(URLEncoder.encode(sinceRev, "UTF-8"))
+            if (wait > 0) q.append("&wait=").append(wait)
+        }
+        return try {
+            val (code, body) = request(q.toString(), null, readTimeoutMs + wait * 1000)
+            when (code) {
+                HttpURLConnection.HTTP_NOT_MODIFIED -> ChatFetch.Unchanged
+                HttpURLConnection.HTTP_OK -> ChatFetch.Fresh(ChatPage.parse(body))
+                HttpURLConnection.HTTP_NOT_FOUND -> ChatFetch.Failed(
+                    runCatching { JSONObject(body).optString("error") }.getOrNull()?.takeIf { it.isNotBlank() }
+                        ?: "This qsrv has no /chat yet — update qsrv on the host",
+                )
+                HttpURLConnection.HTTP_UNAUTHORIZED -> ChatFetch.Failed("The token is invalid or has changed", needsAuth = true)
+                HttpURLConnection.HTTP_FORBIDDEN -> ChatFetch.Failed("Access denied (403) — open Tailscale and verify the account", needsAuth = true)
+                else -> ChatFetch.Failed("Chat server error ($code)")
+            }
+        } catch (e: SocketTimeoutException) {
+            ChatFetch.Failed("Chat read timed out — check Tailscale")
+        } catch (e: UnknownHostException) {
+            ChatFetch.Failed("Host not found — check Tailscale VPN/DNS")
+        } catch (e: IOException) {
+            ChatFetch.Failed(offlineMessage(e))
+        } catch (e: Exception) {
+            ChatFetch.Failed("Could not read the chat (${e.javaClass.simpleName})")
+        }
+    }
+
+    /** `POST /chat/send`: gõ thẳng [text] + Enter vào pane của agent (không qua hàng đợi). */
+    fun chatSend(pane: String, text: String): Act {
+        val payload = JSONObject().apply {
+            put("pane", pane)
+            put("text", text)
+        }
+        return send("/chat/send", payload)
+    }
+
     sealed interface FocusFetch {
         /** Pane herdr đang được nhìn: tên agent + thư mục làm việc (null nếu herdr không biết). */
         data class Ok(val name: String, val cwd: String?) : FocusFetch

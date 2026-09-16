@@ -27,6 +27,23 @@ import kotlinx.coroutines.withContext
  * `state` giữ lại bản đọc được gần nhất kể cả khi đang mất mạng — mất sóng giữa
  * chừng thì vẫn thấy hàng đợi cũ kèm dòng báo lỗi, hơn là màn hình trắng.
  */
+/** Trạng thái màn CHAT (tab Queue). [pane] null = đang đóng. */
+data class ChatUiState(
+    val pane: String? = null,
+    val name: String = "",
+    val cwd: String = "",
+    val size: Long = 0L,
+    val rev: String = "",
+    val messages: List<ChatMessage> = emptyList(),
+    val cursor: Long? = null,
+    val hasMore: Boolean = false,
+    val loading: Boolean = false,
+    val loadingOlder: Boolean = false,
+    val sending: Boolean = false,
+    val error: String? = null,
+    val updatedAt: Long = 0L,
+)
+
 data class QueueUiState(
     val state: QueueState = QueueState.Empty,
     val loading: Boolean = false,
@@ -43,6 +60,14 @@ class QueueViewModel(
 
     private val _ui = MutableStateFlow(QueueUiState())
     val ui: StateFlow<QueueUiState> = _ui.asStateFlow()
+
+    // ── Màn CHAT của một agent (16/9): đọc transcript qua qsrv /chat ──────────────
+    private val _chat = MutableStateFlow(ChatUiState())
+    val chat: StateFlow<ChatUiState> = _chat.asStateFlow()
+    /** pane -> rev đã xem; app so với `QueueAgent.chatRev` để hiện "CHAT · MỚI". */
+    private val _chatSeen = MutableStateFlow<Map<String, String>>(settings.allChatSeenRevs())
+    val chatSeen: StateFlow<Map<String, String>> = _chatSeen.asStateFlow()
+    private var chatJob: Job? = null
 
     private val _ambientSummary = MutableStateFlow(QueueAmbientSummary.Empty)
 
@@ -124,10 +149,126 @@ class QueueViewModel(
         )
     }
 
+    fun chatSeenRev(pane: String): String? = _chatSeen.value[pane] ?: settings.chatSeenRev(pane)
+
+    private fun markChatSeen(pane: String, rev: String) {
+        if (rev.isBlank()) return
+        settings.setChatSeenRev(pane, rev)
+        _chatSeen.update { it + (pane to rev) }
+    }
+
+    /** Mở màn chat của [pane]: tải 50 tin cuối rồi long-poll chừng nào màn còn mở. */
+    fun openChat(pane: String) {
+        val name = _ui.value.state.agents.firstOrNull { it.pane == pane }?.name ?: pane
+        _chat.value = ChatUiState(pane = pane, name = name, loading = true)
+        syncChatPolling()
+    }
+
+    fun closeChat() {
+        chatJob?.cancel(); chatJob = null
+        _chat.value = ChatUiState()
+    }
+
+    private fun syncChatPolling() {
+        val pane = _chat.value.pane
+        val shouldRun = pane != null && isAppActive && isQueueVisible
+        if (!shouldRun) { chatJob?.cancel(); chatJob = null; return }
+        if (chatJob?.isActive == true) return
+        chatJob = viewModelScope.launch {
+            var backoff = 0L
+            while (isActive && _chat.value.pane == pane) {
+                val t0 = System.currentTimeMillis()
+                val failed = chatRefreshOnce(pane, waitSec = LONGPOLL_S)
+                backoff = if (failed) minOf(maxOf(backoff * 2, FOREGROUND_POLL_MS), MAX_FOREGROUND_BACKOFF_MS) else 0L
+                val elapsed = System.currentTimeMillis() - t0
+                delay(maxOf(backoff, MIN_GAP_MS - elapsed))
+            }
+        }
+    }
+
+    /** true nếu hỏng. Trang mới về thì GHÉP với tin cũ hơn đã tải (offset là vị trí byte, ổn định). */
+    private suspend fun chatRefreshOnce(pane: String, waitSec: Int): Boolean {
+        val c = client() ?: run { _chat.update { it.copy(loading = false, error = "Queue chưa cấu hình") }; return true }
+        val since = _chat.value.rev.takeIf { it.isNotBlank() }
+        val result = withContext(Dispatchers.IO) { c.chat(pane, limit = CHAT_PAGE, sinceRev = since, waitSec = waitSec) }
+        persistAuthRecovery(c)
+        if (_chat.value.pane != pane) return false
+        return when (val r = result) {
+            is QueueClient.ChatFetch.Fresh -> {
+                val page = r.page
+                _chat.update { cur ->
+                    val firstNew = page.messages.firstOrNull()?.offset ?: Long.MAX_VALUE
+                    val kept = cur.messages.filter { it.offset < firstNew }
+                    val hasMore = if (kept.isEmpty()) page.hasMore else cur.hasMore
+                    val cursor = if (kept.isEmpty()) page.cursor else cur.cursor
+                    cur.copy(name = page.name.ifBlank { cur.name }, cwd = page.cwd, size = page.size, rev = page.rev,
+                             messages = kept + page.messages, hasMore = hasMore, cursor = cursor,
+                             loading = false, error = null, updatedAt = System.currentTimeMillis())
+                }
+                markChatSeen(pane, page.rev)
+                false
+            }
+            QueueClient.ChatFetch.Unchanged -> { _chat.update { it.copy(loading = false, error = null) }; false }
+            is QueueClient.ChatFetch.Failed -> {
+                _chat.update { it.copy(loading = false, error = r.message) }
+                if (r.needsAuth) _ui.update { it.copy(needsSetup = true) }
+                true
+            }
+        }
+    }
+
+    /** "tải thêm": trang cũ hơn trước cursor, nối lên đầu. */
+    fun loadOlderChat() {
+        val cur = _chat.value
+        val pane = cur.pane ?: return
+        val before = cur.cursor ?: return
+        if (cur.loadingOlder) return
+        _chat.update { it.copy(loadingOlder = true) }
+        viewModelScope.launch {
+            val c = client() ?: run { _chat.update { it.copy(loadingOlder = false) }; return@launch }
+            val result = withContext(Dispatchers.IO) { c.chat(pane, limit = CHAT_PAGE, before = before) }
+            if (_chat.value.pane != pane) return@launch
+            _chat.update { st ->
+                when (result) {
+                    is QueueClient.ChatFetch.Fresh -> {
+                        val older = result.page.messages.filter { m -> st.messages.none { it.key == m.key } }
+                        st.copy(messages = older + st.messages, cursor = result.page.cursor, hasMore = result.page.hasMore, loadingOlder = false)
+                    }
+                    else -> st.copy(loadingOlder = false, error = (result as? QueueClient.ChatFetch.Failed)?.message ?: st.error)
+                }
+            }
+        }
+    }
+
+    /** Gõ thẳng vào pane của agent đang mở chat (không qua hàng đợi). */
+    fun sendChat(text: String) {
+        val pane = _chat.value.pane ?: return
+        if (text.isBlank() || _chat.value.sending) return
+        _chat.update { it.copy(sending = true) }
+        viewModelScope.launch {
+            try {
+                val c = client() ?: return@launch
+                val r = withContext(Dispatchers.IO) { c.chatSend(pane, text.trim()) }
+                persistAuthRecovery(c)
+                when (r) {
+                    is QueueClient.Act.Ok -> postFeedback("", "Đã gửi vào ${_chat.value.name}", QueueFeedbackTone.Success)
+                    is QueueClient.Act.Conflict -> postFeedback("", "Gửi lại", QueueFeedbackTone.Warning)
+                    is QueueClient.Act.Failed -> {
+                        _ui.update { it.copy(needsSetup = r.needsAuth) }
+                        postFeedback(r.message, "Không gửi được", QueueFeedbackTone.Error)
+                    }
+                }
+            } finally {
+                _chat.update { it.copy(sending = false) }
+            }
+        }
+    }
+
     /** Keep polling off while the app is paused, regardless of the visible route. */
     fun setAppActive(active: Boolean) {
         isAppActive = active
         syncPollingMode()
+        syncChatPolling()
         // Cả poll /machine lẫn ý muốn làm mới quota đều dừng khi app xuống nền:
         // trang USAGE còn mở trong túi quần không được kéo theo claude 380MB/30s.
         machinePoller.setAppActive(active)
@@ -138,6 +279,7 @@ class QueueViewModel(
     fun setQueueVisible(visible: Boolean) {
         isQueueVisible = visible
         syncPollingMode()
+        syncChatPolling()
     }
 
     private fun syncPollingMode() {
@@ -449,6 +591,8 @@ class QueueViewModel(
         /** 5s — ở Queue người ta liếc chứ không theo dõi; tab MACHINE thì 2s. */
         private const val MACHINE_POLL_MS = 5_000L
         private const val LONGPOLL_S = 25
+        /** Số tin mỗi trang màn CHAT. */
+        private const val CHAT_PAGE = 50
         private const val MIN_GAP_MS = 1_000L
         private const val AMBIENT_MIN_GAP_MS = 2_000L
         private const val FOREGROUND_POLL_MS = 2_000L
