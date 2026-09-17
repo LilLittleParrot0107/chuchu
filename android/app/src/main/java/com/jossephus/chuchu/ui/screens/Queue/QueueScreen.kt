@@ -21,6 +21,8 @@ import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -414,7 +416,30 @@ fun QueueScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f),
+                    .weight(1f)
+                    // (17/9) Vuốt trái/phải trên thân màn đổi giữa DÒNG THỜI GIAN ↔
+                    // HỘI THOẠI như app chat: vuốt trái = sang HỘI THOẠI, vuốt phải =
+                    // về DÒNG THỜI GIAN. LazyColumn chỉ ăn hướng dọc nên vuốt ngang
+                    // tới được đây; bảng VIỆC mở thì vuốt cũng đổi mode (đóng bảng),
+                    // khớp đúng hành vi chạm nút đổi chế độ.
+                    .pointerInput(Unit) {
+                        var acc = 0f
+                        val threshold = 90.dp.toPx()
+                        detectHorizontalDragGestures(
+                            onDragStart = { acc = 0f },
+                            onDragEnd = {
+                                val next = when {
+                                    acc <= -threshold -> QueueMode.Threads
+                                    acc >= threshold -> QueueMode.Timeline
+                                    else -> null
+                                }
+                                if (next != null && next != mode) {
+                                    tasksOpen = false
+                                    mode = next
+                                }
+                            },
+                        ) { _, dx -> acc += dx }
+                    },
             ) {
                 when {
                     tasksOpen -> when {
