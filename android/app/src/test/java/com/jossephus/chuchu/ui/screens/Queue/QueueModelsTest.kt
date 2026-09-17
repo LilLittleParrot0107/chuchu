@@ -148,8 +148,6 @@ class QueueModelsTest {
 
         assertEquals("retry:9", action.operationKey(9))
         assertEquals("retry:-", action.operationKey(null))
-        assertEquals("clear-done:*", QueueOperationKey.clearDone(null))
-        assertTrue(QueueOperationKey.isClearDone("clear-done:w3:p1"))
     }
 
     @Test

@@ -505,7 +505,6 @@ private fun QueueDestination(
         initialPane = initialPane,
         onAction = sharedQueueVm::runAction,
         onAdd = sharedQueueVm::addTask,
-        onClearDone = sharedQueueVm::clearDoneTasks,
         onRefresh = sharedQueueVm::refreshNow,
         onShowFeedback = sharedQueueVm::showFeedback,
         onConsumeFeedback = sharedQueueVm::consumeFeedback,

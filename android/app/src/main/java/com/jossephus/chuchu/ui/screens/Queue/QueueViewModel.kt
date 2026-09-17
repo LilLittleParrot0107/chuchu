@@ -500,13 +500,17 @@ class QueueViewModel(
 
         val result = withContext(Dispatchers.IO) { c.fetch(since, waitSec) }
         persistAuthRecovery(c)
-        return refreshMutex.withLock { when (val r = result) {
+        // State mới nhất được giữ lại đây để gọi autoClearDone SAU khi nhả mutex:
+        // nó bắn HTTP riêng qua viewModelScope, không được nằm trong khoá poll.
+        var fresh: QueueState? = null
+        val failed = refreshMutex.withLock { when (val r = result) {
             is QueueClient.Fetch.Fresh -> {
                 _ui.update {
                     it.copy(state = r.state, loading = false, everLoaded = true,
                             error = null, needsSetup = false)
                 }
                 _ambientSummary.value = QueueAmbientSummary.from(r.state, null)
+                fresh = r.state
                 false
             }
             QueueClient.Fetch.Unchanged -> {
@@ -526,6 +530,9 @@ class QueueViewModel(
                 true
             }
         } }
+        // Việc đã xong tự biến khỏi hàng đợi (user chốt 17/9) — thay hẳn nút CLR.
+        fresh?.let(::autoClearDone)
+        return failed
     }
 
     fun refreshNow() {
@@ -628,61 +635,47 @@ class QueueViewModel(
         }
     }
 
-    /** Xoá sạch toàn bộ các việc đã xong (hoàn tất) của agent hoặc tất cả */
-    fun clearDoneTasks(targetPane: String? = null) {
-        val key = QueueOperationKey.clearDone(targetPane)
-        if (key in _ui.value.busyOps) return
-        _ui.update { it.copy(busyOps = it.busyOps + key) }
-        viewModelScope.launch {
-            try {
-                val c = client() ?: run {
-                    _ui.update { it.copy(needsSetup = true) }
-                    return@launch
-                }
-                val doneTasks = _ui.value.state.tasks.filter {
-                    it.isCompleted &&
-                        (targetPane == null || it.target == targetPane)
-                }
-                if (doneTasks.isEmpty()) {
-                    postFeedback(
-                        "There are no completed tasks to clear",
-                        "No tasks to clear",
-                        QueueFeedbackTone.Info,
-                    )
-                    return@launch
-                }
-                val results = withContext(Dispatchers.IO) {
-                    // Chụp rev một lần trước vòng lặp: gửi rev theo từng task khi op
-                    // yêu cầu (như runAction ở trên làm). Trước đây luôn truyền null,
-                    // qsrv trả 409 cho cả lô nếu phiên khác vừa động vào hàng đợi —
-                    // và lỗi đó bị nuốt vào cột "N/M failed" không ai biết vì sao.
-                    val currentRev = _ui.value.state.rev
-                    doneTasks.map { task ->
-                        val rmAction = task.actions.firstOrNull {
-                            it.op == "rm" || it.op == "del" || it.op == "delete" || it.danger
-                        }
-                        val rev = if (rmAction?.needsRev == true) currentRev else null
-                        c.act(rmAction?.op ?: "rm", task.id, rev)
+    /**
+     * Tự dọn việc đã xong (user chốt 17/9: "tự động xoá queue message ... để không
+     * cần dùng CLR nữa" — thời điểm chốt lại là KHI AGENT LÀM XONG). Mỗi vòng
+     * /state mới, task nào `done` thì gửi `del` im lặng: không feedback, không
+     * busyOps — đây là vệ sinh nền, không phải hành động user bấm.
+     *
+     * `failed`/`unknown` cố tình giữ lại: đó là việc cần người xem.
+     */
+    private val autoCleared = mutableSetOf<Int>()
+    private val autoClearJobs = mutableMapOf<Int, Job>()
+
+    private fun autoClearDone(state: QueueState) {
+        for (task in state.tasks) {
+            if (!task.isCompleted || !autoCleared.add(task.id)) continue
+            if (autoClearJobs[task.id]?.isActive == true) continue
+            autoClearJobs[task.id] = viewModelScope.launch {
+                try {
+                    val c = client() ?: return@launch
+                    // `del` không nằm trong OPS_NEED_REV của qsrv (chỉ top/up) — gửi
+                    // rev null để xoá trúng cả khi hàng đợi vừa nhích rev vì tin khác.
+                    val rm = task.actions.firstOrNull {
+                        it.op == "rm" || it.op == "del" || it.op == "delete" || it.danger
                     }
+                    val rev = if (rm?.needsRev == true) state.rev else null
+                    val r = withContext(Dispatchers.IO) { c.act(rm?.op ?: "del", task.id, rev) }
+                    persistAuthRecovery(c)
+                    when (r) {
+                        // Xoá xong đọc lại state NGAY: /state cũ (còn task này) vẫn
+                        // nằm trong cửa sổ so sánh rev — chờ nhịp poll sau thì hàng đã
+                        // xoá còn hiện thêm một nhịp nữa.
+                        is QueueClient.Act.Ok -> {
+                            responseCache.remove(task.id)
+                            refreshOnce()
+                        }
+                        // Xoá hỏng (mất mạng, 409...) thì trả id về để nhịp poll sau
+                        // thử lại — không kẹt task cũ trong danh sách mãi.
+                        else -> autoCleared.remove(task.id)
+                    }
+                } finally {
+                    autoClearJobs.remove(task.id)
                 }
-                persistAuthRecovery(c)
-                val removed = results.count { it is QueueClient.Act.Ok }
-                refreshOnce()
-                if (removed == doneTasks.size) {
-                    postFeedback(
-                        "Cleared $removed completed tasks",
-                        "Completed tasks cleared",
-                        QueueFeedbackTone.Success,
-                    )
-                } else {
-                    postFeedback(
-                        "Cleared $removed/${doneTasks.size} tasks; ${doneTasks.size - removed} failed",
-                        "Queue cleanup was incomplete",
-                        QueueFeedbackTone.Warning,
-                    )
-                }
-            } finally {
-                _ui.update { it.copy(busyOps = it.busyOps - key) }
             }
         }
     }
@@ -697,6 +690,7 @@ class QueueViewModel(
         settings.setQueueToken(token)
         // Task ids are only unique within one qsrv instance.
         responseCache.evictAll()
+        autoCleared.clear()
         // Summary ambient phải reset cùng state: nếu không, pill/FAB vẫn hiển thị
         // số liệu của qsrv CŨ trong khoảng thời gian trước khi refreshNow() kịp về.
         _ambientSummary.value = QueueAmbientSummary.Empty

@@ -55,6 +55,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.offset
 import com.jossephus.chuchu.ui.components.KohiCommandBand
 import com.jossephus.chuchu.ui.components.KohiCompactAction
@@ -79,7 +80,6 @@ fun QueueScreen(
     initialPane: String? = null,
     onAction: (QueueAction, Int?) -> Unit,
     onAdd: (String, String?, String?) -> Unit,
-    onClearDone: (String?) -> Unit,
     onRefresh: () -> Unit,
     onShowFeedback: (String, QueueFeedbackTone) -> Unit = { _, _ -> },
     onConsumeFeedback: (Long) -> Unit = {},
@@ -210,9 +210,7 @@ fun QueueScreen(
         val doneTail = ui.state.tasks.filter { it.isCompleted }.takeLast(3)
         active + doneTail
     }
-    val doneCount = visibleTasks.count { it.isCompleted }
     val isAdding = QueueOperationKey.ADD in ui.busyOps
-    val isClearingDone = QueueOperationKey.clearDone(null) in ui.busyOps
 
     fun copyPrompt(task: QueueTask) {
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -285,6 +283,8 @@ fun QueueScreen(
                 // Toi mau nen theme: status bar + band + content + rail (man
                 // rong) la MOT ton, khong con khoi surface sac bep o tren.
                 containerColor = colors.background,
+                // Tiêu đề QUEUE to hơn chuẩn (user chốt 17/9: "tăng kích thước chữ Queue").
+                titleSize = 18.sp,
                 modifier = Modifier.onSizeChanged { commandBandHeightPx = it.height },
             ) {
                 if (chatOpen) {
@@ -293,7 +293,11 @@ fun QueueScreen(
                         chatScope.launch { if (chat.messages.isNotEmpty()) chatListState.scrollToItem(chat.messages.size) }
                     })
                 }
-                if (!chatOpen) ui.state.globalActions.firstOrNull()?.let { action ->
+                // PAUSE/RESUME bỏ khỏi band (user chốt 17/9): không ai dùng, mà chip
+                // nằm ngay cạnh [TASKS] làm band chật. Trạng thái PAUSED vẫn hiện ở
+                // status nếu hàng đợi bị tạm dừng từ chỗ khác (qq).
+                if (!chatOpen) ui.state.globalActions
+                    .firstOrNull { it.op != "pause" && it.op != "resume" }?.let { action ->
                     val busy = action.operationKey(null) in ui.busyOps
                     KohiCompactAction(
                         label = if (busy) "WAIT" else action.label.uppercase(),
@@ -315,9 +319,9 @@ fun QueueScreen(
                         minHeight = 24.dp,
                     ) {
                         ChuText(
-                            // Sleek terminal (user 17/9): mang luôn số việc trong
-                            // ngoặc — nhìn band biết ngay hàng đợi còn bao nhiêu.
-                            "[TASKS ${visibleTasks.size}]",
+                            // Bỏ số việc (user chốt 17/9 — số nhảy liên tục mà không
+                            // giúp quyết định gì); nhãn trần giữ band tĩnh.
+                            "[TASKS]",
                             style = ChuTypography.current.labelSmall,
                             color = if (tasksOpen) colors.accent else colors.textPrimary,
                         )
@@ -325,19 +329,6 @@ fun QueueScreen(
                 }
                 if (!chatOpen) KohiCompactAction(label = "SYNC", onClick = onRefresh)
                 if (!chatOpen) KohiCompactAction(label = "CFG", onClick = { configOpen = true })
-                // Clear done nam cung hang LOGS/SYNC chu khong o section band:
-                // chip 26dp keo band 26dp len 36dp dung luc co viec xong, trong
-                // khi qq giu band muc thuan thong tin mot dong.
-                if (!chatOpen && doneCount > 0) {
-                    // "CLR" thay "CLR DONE" (sleek terminal, user 17/9): band mot
-                    // dong da co ngu canh, chu ngan giu band khong phinh.
-                    KohiCompactAction(
-                        label = "CLR",
-                        enabled = !isClearingDone,
-                        danger = true,
-                        onClick = { onClearDone(null) },
-                    )
-                }
             }
 
             if (chatOpen) {

@@ -152,11 +152,13 @@ private fun QueueModeTab(
         modifier = Modifier.clickable(onClick = onClick),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        ChuText("›", style = type.labelSmall, color = if (active) colors.accent else Color.Transparent)
+        // Tab to hơn labelSmall (user chốt 17/9: "tăng kích thước timeline vs
+        // conversations") — 13sp, vẫn giữ dáng con trỏ CLI.
+        ChuText("›", style = type.label, color = if (active) colors.accent else Color.Transparent)
         Spacer(Modifier.width(4.dp))
         ChuText(
             label,
-            style = type.labelSmall.copy(
+            style = type.label.copy(
                 fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
                 letterSpacing = 0.6.sp,
             ),
@@ -166,7 +168,7 @@ private fun QueueModeTab(
             Spacer(Modifier.width(5.dp))
             ChuText(
                 meta,
-                style = type.labelSmall,
+                style = type.label,
                 color = if (active) colors.accent else colors.textMuted.copy(alpha = 0.6f),
             )
         }
@@ -364,14 +366,6 @@ internal fun QueueConversationList(
                     .clickable { if (agent.chatRev != null) onOpenChat(agent.pane) else onSelect(agent.pane) },
                 verticalAlignment = Alignment.Top,
             ) {
-                // Rail 2dp mép trái cho hàng đang chọn (học từ prototype sleek terminal):
-                // mỏng như con trỏ terminal, thay cho viền hộp.
-                Box(
-                    Modifier
-                        .width(2.dp)
-                        .fillMaxHeight()
-                        .background(if (selected) colors.accent else Color.Transparent),
-                )
                 Row(
                     modifier = Modifier
                         .weight(1f)
@@ -395,9 +389,10 @@ internal fun QueueConversationList(
                                 color = if (selected) colors.accent else AgentKind.of(agent.agent).rosterColor(),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f, fill = false),
+                                // Tên chiếm hết chỗ trống (user chốt 17/9: tên session
+                                // show dài ra) — chấm "chưa đọc" và giờ vẫn dạt phải.
+                                modifier = Modifier.weight(1f),
                             )
-                            Spacer(Modifier.weight(1f))
                             // Chưa đọc = một chấm nhỏ cạnh giờ, thay tag chữ "new" (user 17/9).
                             if (hasNew) {
                                 ChuText("●", style = type.labelSmall.copy(fontSize = 8.sp), color = colors.accent)

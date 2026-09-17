@@ -19,6 +19,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.jossephus.chuchu.data.model.dbtop.DataFreshness
 import com.jossephus.chuchu.data.model.dbtop.DeFiFormatter
 import com.jossephus.chuchu.ui.components.ChuButton
@@ -61,6 +62,8 @@ internal fun DbtopTopBar(
         // Tan vao nen theme de khop mau voi vung status bar phia tren —
         // truoc day band xam surface con thanh noti mau background, lo seam.
         containerColor = colors.background,
+        // Tiêu đề DASHBOARD to hơn chuẩn (user chốt 17/9: "tăng kích thước chữ dashboard").
+        titleSize = 18.sp,
     ) {
         KohiCompactAction(
             label = if (isRefreshing) "SCANNING" else "↻",
@@ -219,7 +222,8 @@ internal fun DashboardViewBand(
             ) {
                 ChuText(
                     view.tab,
-                    style = type.labelSmall.copy(fontWeight = FontWeight.Bold),
+                    // Tab dashboard to hơn (user chốt 17/9: "tiêu đề + tab").
+                    style = type.label.copy(fontWeight = FontWeight.Bold),
                     color = if (active) colors.onAccent else colors.textSecondary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,

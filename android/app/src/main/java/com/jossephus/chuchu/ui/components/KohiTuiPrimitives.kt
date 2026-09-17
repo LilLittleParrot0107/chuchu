@@ -21,6 +21,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import com.jossephus.chuchu.ui.theme.CHU_HAIRLINE_ALPHA
 import com.jossephus.chuchu.ui.theme.ChuColors
@@ -46,6 +47,9 @@ fun KohiCommandBand(
     // null = surface (chuẩn). Queue/Dbtop truyền background để cả khối trên
     // cùng (status bar + band) tan vào nền theme như rail.
     containerColor: Color? = null,
+    // Cỡ tiêu đề: mặc định theo type.title (16sp). Queue/Dashboard truyền cỡ to
+    // hơn (user chốt 17/9: chữ QUEUE/DASHBOARD trên thanh trên to lên).
+    titleSize: TextUnit? = null,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
     val colors = ChuColors.current
@@ -84,7 +88,11 @@ fun KohiCommandBand(
             }
             ChuText(
                 title.uppercase(),
-                style = type.title.copy(fontWeight = FontWeight.Bold),
+                style = type.title.copy(
+                    fontWeight = FontWeight.Bold,
+                    fontSize = titleSize ?: type.title.fontSize,
+                    lineHeight = titleSize?.times(1.35f) ?: type.title.lineHeight,
+                ),
                 color = titleColor,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

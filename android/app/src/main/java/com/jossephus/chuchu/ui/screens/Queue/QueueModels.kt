@@ -68,11 +68,7 @@ internal fun QueueAction.operationKey(taskId: Int?): String = "$op:${taskId ?: "
 
 internal object QueueOperationKey {
     const val ADD = "add"
-    private const val CLEAR_DONE_PREFIX = "clear-done:"
     private const val CHAT_SEND_PREFIX = "chat-send:"
-
-    fun clearDone(targetPane: String?): String = "$CLEAR_DONE_PREFIX${targetPane ?: "*"}"
-    fun isClearDone(key: String): Boolean = key.startsWith(CLEAR_DONE_PREFIX)
 
     /** Gửi thẳng vào pane từ hàng HỘI THOẠI (chip đang chọn) — khoá theo pane. */
     fun chatSend(targetPane: String): String = "$CHAT_SEND_PREFIX$targetPane"
