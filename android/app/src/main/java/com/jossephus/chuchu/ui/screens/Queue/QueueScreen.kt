@@ -127,6 +127,10 @@ fun QueueScreen(
     val feedListState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
     var feedPinned by rememberSaveable { mutableStateOf(true) }
     var feedAnchorKey by rememberSaveable { mutableStateOf<String?>(null) }
+    // G1 (user chốt 16/9): mặc định mở ở DÒNG THỜI GIAN; bảng VIỆC là lớp riêng đè lên.
+    // Khai báo sớm vì BackHandler bên dưới cần bật mode/đóng bảng khi đóng chat.
+    var mode by rememberSaveable { mutableStateOf(QueueMode.Timeline) }
+    var tasksOpen by rememberSaveable { mutableStateOf(false) }
     // Back khi đang mở chat = về Queue, không thoát màn.
     var swallowBackUntil by remember { mutableLongStateOf(0L) }
     // MỘT handler duy nhất, LUÔN bật khi màn Queue hiện — thay cho hai handler
@@ -140,6 +144,12 @@ fun QueueScreen(
         when (queueBackAction(chatOpen, now, swallowBackUntil)) {
             QueueBackAction.CloseChat -> {
                 swallowBackUntil = now + BACK_SWALLOW_MS
+                // Back ra khỏi chat LUÔN đáp xuống HỘI THOẠI (user chốt 17/9): chat được
+                // mở từ danh sách này nên đích quay về tự nhiên là nó, không phải về lại
+                // dòng thời gian rồi mới tìm lại session. Kèm đóng bảng VIỆC — nó đang đè
+                // danh sách hội thoại.
+                mode = QueueMode.Threads
+                tasksOpen = false
                 onCloseChat()
             }
             QueueBackAction.Swallow -> Unit // cú dội của cùng cử chỉ — ở lại Queue
@@ -189,9 +199,6 @@ fun QueueScreen(
         if (inspectedTaskId != null) focusManager.clearFocus()
     }
     var selectedPane by remember(initialPane) { mutableStateOf(initialPane) }
-    // G1 (user chốt 16/9): mặc định mở ở DÒNG THỜI GIAN; bảng VIỆC là lớp riêng đè lên.
-    var mode by rememberSaveable { mutableStateOf(QueueMode.Timeline) }
-    var tasksOpen by rememberSaveable { mutableStateOf(false) }
     // Chỉ long-poll /feed khi chế độ dòng thời gian đang hiện (đỡ tốn radio);
     // mở CHAT cũng tạm ngưng vì tin đã hiện trong chat.
     LaunchedEffect(mode, chatOpen) { onFeedVisible(mode == QueueMode.Timeline && !chatOpen) }
