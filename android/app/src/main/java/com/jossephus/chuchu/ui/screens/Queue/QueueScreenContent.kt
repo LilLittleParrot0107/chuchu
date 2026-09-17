@@ -379,7 +379,9 @@ internal fun QueueConversationList(
                     .drawBehind {
                         val stroke = 1.dp.toPx()
                         drawLine(
-                            colors.border.copy(alpha = 0.4f),
+                            // Fix 18/9 (soi screenshot): hairline .4 thành "vây" khi
+                            // ngồi cạnh hàng hai dòng — hạ xuống nét mờ vừa đủ phân ô.
+                            colors.border.copy(alpha = 0.22f),
                             Offset(0f, size.height - stroke / 2f),
                             Offset(size.width, size.height - stroke / 2f),
                             stroke,
@@ -402,14 +404,23 @@ internal fun QueueConversationList(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f),
                     )
-                    // Chưa đọc = một chấm nhỏ cạnh giờ (thay tag chữ "new", user 17/9).
+                    // Fix 18/9 (soi screenshot): unread dạt vào CẠNH TÊN — chấm vàng
+                    // đứng trước giờ làm mép phải rối như nhiễu sóng.
                     if (hasNew) {
+                        Spacer(Modifier.width(6.dp))
                         ChuText("●", style = type.labelSmall.copy(fontSize = 8.sp), color = colors.accent)
-                        Spacer(Modifier.width(5.dp))
                     }
-                    chatWhen(agent.previewTs).takeIf { it.isNotEmpty() }?.let {
-                        ChuText(it, style = type.labelSmall, color = colors.textMuted)
-                    }
+                    Spacer(Modifier.width(8.dp))
+                    // Giờ vào CỘT CỐ ĐỊNH 42dp căn phải: tên cắt ngắn dài khác nhau mà
+                    // giờ trôi theo thì cột phải không thành nhịp (fix 18/9).
+                    ChuText(
+                        chatWhen(agent.previewTs),
+                        style = type.labelSmall.copy(textAlign = TextAlign.End),
+                        // textMuted quá chìm trên nền tím (fix tương phản 18/9).
+                        color = colors.textSecondary,
+                        maxLines = 1,
+                        modifier = Modifier.width(42.dp),
+                    )
                 }
                 val preview = agent.preview.ifBlank {
                     if (agent.chatRev != null) "no messages yet" else "no transcript"
@@ -417,10 +428,12 @@ internal fun QueueConversationList(
                 ChuText(
                     stripPreviewMarkdown(preview),
                     style = type.bodySmall,
-                    color = colors.textSecondary,
+                    // Preview là nội dung chính của hàng — textSecondary bị nhạt nhoà
+                    // so với tên (fix tương phản 18/9).
+                    color = colors.textPrimary.copy(alpha = 0.88f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 2.dp),
+                    modifier = Modifier.padding(top = 4.dp),
                 )
             }
         }
