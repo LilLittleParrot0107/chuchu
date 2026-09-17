@@ -361,7 +361,8 @@ internal fun QueueConversationList(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(IntrinsicSize.Min)
-                    .background(if (selected) colors.accent.copy(alpha = 0.10f) else Color.Transparent)
+                    // Selection theo màu chữ (tên session đổi accent) — user chốt
+                    // 17/9: bỏ bôi nền, chỉ màu chữ là đủ.
                     // Có transcript thì chạm là mở thread; chưa có thì chỉ chọn (ô gõ nhắm vào nó).
                     .clickable { if (agent.chatRev != null) onOpenChat(agent.pane) else onSelect(agent.pane) },
                 verticalAlignment = Alignment.Top,
