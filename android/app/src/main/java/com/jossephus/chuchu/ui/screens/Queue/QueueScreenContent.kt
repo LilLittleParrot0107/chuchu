@@ -222,8 +222,11 @@ internal fun QueueFeedView(
 ) {
     val colors = ChuColors.current
     val type = ChuTypography.current
+    // Gộp các đoạn assistant liền nhau CÙNG PANE của một lượt (17/9) — feed xen kẽ
+    // nhiều phiên nên chỉ tin cùng pane mới được coi là cùng lượt.
+    val messages = remember(feed.messages) { collapseFeedTurns(feed.messages) }
     // Vị trí cuộn do QueueScreen giữ (rememberSaveable) — mode/hội thoại quay lại vẫn y chỗ.
-    val curFeed by rememberUpdatedState(feed)
+    val curMessages by rememberUpdatedState(messages)
     // Đã khôi phục vị trí cho lần vào hiện tại chưa. Collector bên dưới chỉ ghi
     // pinned/neo SAU khi khôi phục xong: layout đầu tiên lúc vào có thể còn ở vị
     // trí cũ trong khi neo đã lưu là tin khác (feed cắt đầu làm index trôi) —
@@ -236,34 +239,34 @@ internal fun QueueFeedView(
                 onPinnedChange(last >= info.totalItemsCount - 2)
                 // Neo = KEY tin đầu đang thấy: feed cắt tin ở đầu nên index trôi, key ổn định.
                 val first = info.visibleItemsInfo.firstOrNull()?.index ?: -1
-                if (first >= 0) onAnchorChange(curFeed.messages.getOrNull(first)?.key)
+                if (first >= 0) onAnchorChange(curMessages.getOrNull(first)?.key)
             }
         }
     }
     // Vào lần đầu / quay lại: dừng đúng tin cuối đã thấy; neo rơi khỏi cửa sổ feed
     // (hoặc đang ở đáy) thì về điểm mới nhất (user chốt 17/9).
-    LaunchedEffect(feed.messages.isNotEmpty(), pinned, anchorKey) {
-        if (restored || feed.messages.isEmpty()) return@LaunchedEffect
+    LaunchedEffect(messages.isNotEmpty(), pinned, anchorKey) {
+        if (restored || messages.isEmpty()) return@LaunchedEffect
         restored = true
         listState.scrollToItem(
-            feedRestoreIndex(feed.messages.map(FeedMessage::key), pinned, anchorKey)
+            feedRestoreIndex(messages.map(FeedMessage::key), pinned, anchorKey)
         )
     }
-    LaunchedEffect(feed.messages.lastOrNull()?.key, feed.messages.size, feed.pane) {
-        if (feed.messages.isNotEmpty() && pinned) listState.scrollToItem(feed.messages.size)
+    LaunchedEffect(messages.lastOrNull()?.key, messages.lastOrNull()?.ts, messages.size, feed.pane) {
+        if (messages.isNotEmpty() && pinned) listState.scrollToItem(messages.size)
     }
     Box(modifier = modifier.fillMaxSize()) {
         when {
-            feed.messages.isEmpty() && feed.loading -> CenterNote("LOADING TIMELINE…")
-            feed.messages.isEmpty() && feed.error != null -> CenterNote("▌ ${feed.error}")
-            feed.messages.isEmpty() -> CenterNote("no messages yet — the house is quiet · switch to CONVERSATIONS to open a session")
+            messages.isEmpty() && feed.loading -> CenterNote("LOADING TIMELINE…")
+            messages.isEmpty() && feed.error != null -> CenterNote("▌ ${feed.error}")
+            messages.isEmpty() -> CenterNote("no messages yet — the house is quiet · switch to CONVERSATIONS to open a session")
             else -> LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                items(feed.messages, key = FeedMessage::key) { m ->
+                items(messages, key = FeedMessage::key) { m ->
                     FeedRow(m, onPick = onPick, bodySize = type.body.fontSize)
                 }
             }
@@ -323,6 +326,7 @@ private fun FeedRow(m: FeedMessage, onPick: (FeedMessage) -> Unit, bodySize: Tex
                 }
                 ChuText(chatClock(m.ts), style = type.labelSmall, color = colors.textMuted)
             }
+            ParasFold(m.key, m.paras, bodySize, tone)
             MiniMarkdownText(m.text, fontSize = bodySize, tone = tone)
         }
     }

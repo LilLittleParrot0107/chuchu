@@ -19,6 +19,11 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -200,6 +205,14 @@ fun QueueScreen(
     val selectedAgent = agents.firstOrNull { it.pane == pane }
     // Agent đang mở CHAT — tô màu tên/tin theo LOẠI agent (user chốt 16/9, 1B + 2B).
     val chatAgent = if (chatOpen) agents.firstOrNull { it.pane == chat.pane } else null
+    // Dọn "response thừa" (user duyệt 17/9): một lượt assistant nhiều đoạn về BỌT một
+    // bubble, think ẩn. Tính ở đây để dòng đếm, danh sách và chip dùng chung một nguồn.
+    val chatMessages = remember(chat.messages) { collapseAssistantTurns(chat.messages) }
+    // Việc còn xếp hàng của đúng pane: pending nào đã hiện thành tin user trong
+    // transcript thì [pendingChipTasks] ẩn — hết cảnh một tin hiện hai lần.
+    val chatChipTasks = remember(chatMessages, ui.state.tasks, chat.pane) {
+        pendingChipTasks(ui.state.tasks.filter { it.target == chat.pane }, chatMessages)
+    }
     // WHY: qq chi giu 3 task DONE gan nhat trong view de list khong phinh vo
     // han theo thoi gian; muon xoa han thi dung CLR DONE (no moi don state).
     // Active dat truoc doneTail de thu tu doc chay tu viec pending sang viec
@@ -290,7 +303,7 @@ fun QueueScreen(
                 if (chatOpen) {
                     // Chỉ một nút: nhảy xuống tin mới nhất. Tìm kiếm [⌕] để bước 2.
                     KohiCompactAction(label = "↓", onClick = {
-                        chatScope.launch { if (chat.messages.isNotEmpty()) chatListState.scrollToItem(chat.messages.size) }
+                        chatScope.launch { if (chatMessages.isNotEmpty()) chatListState.scrollToItem(chatMessages.size) }
                     })
                 }
                 // PAUSE/RESUME bỏ khỏi band (user chốt 17/9): không ai dùng, mà chip
@@ -342,7 +355,7 @@ fun QueueScreen(
                     ChuText(
                         buildString {
                             append(chatAgent?.label?.lowercase() ?: "…")
-                            append(" · ${chat.messages.count { it.role != "think" }} tin")
+                            append(" · ${chatMessages.size} tin")
                             chatAge(chat.updatedAt).takeIf { it.isNotEmpty() }?.let { append(" · $it") }
                             if (chat.cwd.isNotBlank()) append(" · cwd ${chat.cwd.replace("/home/a", "~")}")
                         },
@@ -355,7 +368,7 @@ fun QueueScreen(
                 QueueChatView(
                     chat = chat,
                     onLoadOlder = onLoadOlderChat,
-                    pendingTasks = ui.state.tasks.filter { it.target == chat.pane && !it.isCompleted && !it.isFailed },
+                    messages = chatMessages,
                     fontSizeSp = chatFontSizeSp,
                     kind = AgentKind.of(chatAgent?.agent),
                     listState = chatListState,
@@ -481,6 +494,32 @@ fun QueueScreen(
             val imeUp = WindowInsets.ime.getBottom(LocalDensity.current) > 0
             MachineStrip(machine, onUsageVisible = onUsageVisible, onRefreshUsage = onRefreshUsage,
                 collapse = imeUp)
+
+            // Việc của pane này còn xếp hàng: thay vì hai dòng chiếm chỗ cuối transcript
+            // (mục 2, duyệt 17/9) nó thành chip nhỏ sát ô gõ; chạm = mở chi tiết việc.
+            if (chatOpen && chatChipTasks.isNotEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 12.dp, vertical = 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    chatChipTasks.forEach { t ->
+                        ChuText(
+                            text = (if (t.isRunning) "▶ #${t.id}" else "⏳ #${t.id}") + " · " + t.text.trim().replace('\n', ' ').take(48),
+                            style = ChuTypography.current.labelSmall,
+                            color = colors.textMuted,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .border(1.dp, colors.border, RoundedCornerShape(6.dp))
+                                .clickable { inspectedTaskId = t.id }
+                                .padding(horizontal = 8.dp, vertical = 3.dp),
+                        )
+                    }
+                }
+            }
 
             // Một ô nhập cho cả ba ngữ cảnh: VIỆC (xếp hàng đợi) · HỘI THOẠI và
             // DÒNG THỜI GIAN (gửi tới phiên đang nhắm, agent bận thì xếp — sendToPane)

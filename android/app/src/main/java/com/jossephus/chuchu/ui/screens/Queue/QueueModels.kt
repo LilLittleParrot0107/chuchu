@@ -315,6 +315,12 @@ data class ChatMessage(
     val offset: Long = 0L,
     /** Thứ tự trong cùng bản ghi (một bản ghi assistant có thể vừa text vừa tool_use). */
     val sub: Int = 0,
+    /**
+     * Các đoạn dẫn trước của CÙNG một lượt (collapse ở read side — xem
+     * [collapseAssistantTurns]); rỗng = tin một đoạn như trước. Bubble thường
+     * chỉ hiện đoạn cuối, đoạn này nở ra khi chạm "N earlier".
+     */
+    val paras: List<String> = emptyList(),
 ) {
     val key: String get() = "$offset:$sub"
     val isTool: Boolean get() = role == "tool"
@@ -398,6 +404,8 @@ data class FeedMessage(
     val uuid: String = "",
     /** Vị trí bản ghi trong transcript — ổn định, dùng làm key danh sách. */
     val offset: Long = 0L,
+    /** Đoạn dẫn trước của cùng lượt trên DÒNG THỜI GIAN (xem [collapseFeedTurns]). */
+    val paras: List<String> = emptyList(),
 ) {
     // uuid một mình không đủ: một bản ghi assistant có thể có nhiều đoạn text. offset
     // của opencode là rowid message nên hai đoạn cùng offset nhưng khác uuid.
@@ -440,4 +448,83 @@ data class FeedPage(
 
         private val FEED_ROLES = setOf("user", "assistant")
     }
+}
+
+// ── Dọn "response thừa" trong transcript (user duyệt 17/9, 5 mục) ──────────────
+// qsrv giữ NGUYÊN dữ liệu (hạ tầng chung với qq); mọi cắt gọt nằm ở tầng đọc của
+// app. Các hàm dưới thuần Kotlin, không Compose — unit test chạy được trên JVM.
+
+/**
+ * Gộp các đoạn assistant LIÊN TIẾP của cùng một lượt (không có user/tool chen giữa)
+ * thành một bubble: đoạn cuối là `text`, các đoạn trước nằm trong [ChatMessage.paras]
+ * (bubble thường chỉ hiện đoạn cuối). `think` bị bỏ khỏi tầm nhìn mặc định — và vì
+ * nó bị bỏ NÊN hai đoạn assistant kề nhau qua một block think vẫn gộp làm một.
+ * Key giữ của tin ĐẦU để bubble không đổi chỗ khi lượt dài thêm giữa hai lần poll.
+ */
+fun collapseAssistantTurns(messages: List<ChatMessage>): List<ChatMessage> {
+    val out = ArrayList<ChatMessage>(messages.size)
+    var i = 0
+    while (i < messages.size) {
+        val m = messages[i]
+        when {
+            m.role == "think" -> i++
+            m.role == "assistant" && m.text.isBlank() -> i++
+            m.role == "assistant" -> {
+                val run = ArrayList<String>()
+                run.add(m.text)
+                var last = m
+                var j = i + 1
+                while (j < messages.size) {
+                    val n = messages[j]
+                    // think + assistant rỗng (bản ghi chỉ tool_use) là "vô hình" nên
+                    // bị NHẢY QUA chứ không cắt lượt.
+                    if (n.role == "think" || (n.role == "assistant" && n.text.isBlank())) { j++; continue }
+                    if (n.role != "assistant") break
+                    run.add(n.text); last = n; j++
+                }
+                out.add(if (run.size == 1) m else m.copy(text = last.text, ts = last.ts, paras = run.dropLast()))
+                i = j
+            }
+            else -> { out.add(m); i++ }
+        }
+    }
+    return out
+}
+
+/**
+ * Như [collapseAssistantTurns] cho DÒNG THỜI GIAN: feed xen kẽ nhiều pane nên
+ * một lượt phải là assistant LIÊN TIẾP CÙNG PANE. Nhãn/chấm màu lấy của tin cuối
+ * (trạng thái mới nhất của phiên), key giữ của tin đầu.
+ */
+fun collapseFeedTurns(messages: List<FeedMessage>): List<FeedMessage> {
+    val out = ArrayList<FeedMessage>(messages.size)
+    var i = 0
+    while (i < messages.size) {
+        val m = messages[i]
+        if (m.role == "assistant" && m.text.isNotBlank()) {
+            val run = ArrayList<String>()
+            run.add(m.text)
+            var last = m
+            var j = i + 1
+            while (j < messages.size && messages[j].role == "assistant" && messages[j].pane == m.pane && messages[j].text.isNotBlank()) {
+                run.add(messages[j].text); last = messages[j]; j++
+            }
+            out.add(if (run.size == 1) m else m.copy(name = last.name, label = last.label, tone = last.tone, ts = last.ts, text = last.text, paras = run.dropLast()))
+            i = j
+        } else {
+            out.add(m); i++
+        }
+    }
+    return out
+}
+
+/**
+ * Tin gửi từ ô gõ hiện CẢ HAI: pending task (vừa xếp) và user message (khi agent
+ * kịp đọc vào transcript). Việc nào text đã xuất hiện trong transcript thì ẩn chip,
+ * hết tranh chỗ — đó chính là mục dedup của thoả thuận 17/9.
+ */
+fun pendingChipTasks(tasks: List<QueueTask>, messages: List<ChatMessage>): List<QueueTask> {
+    val echoed = HashSet<String>()
+    for (m in messages) if (m.role == "user") echoed.add(m.text.trim())
+    return tasks.filter { !it.isCompleted && !it.isFailed && it.text.trim() !in echoed }
 }
