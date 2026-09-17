@@ -33,6 +33,7 @@ data class MachineSnapshot(
     val procs: List<MachineProc>,
     val agy: AgyQuota?,
     val claude: ClaudeQuota?,
+    val bai: BaiQuota?,
 ) {
     val memUsedKb: Long get() = (memTotalKb - memAvailKb).coerceAtLeast(0)
     val memPct: Double get() = if (memTotalKb > 0) 100.0 * memUsedKb / memTotalKb else 0.0
@@ -72,6 +73,18 @@ data class ClaudeQuota(
     val ok: Boolean,
     val session: ClaudeWindow?,
     val week: ClaudeWindow?,
+    val dataTs: Long,
+    val error: String?,
+)
+
+/**
+ * So du B.AI — [balance] la Credit **CON LAI** (don vi Credit cua B.AI, khong
+ * phai phan tram; client tu format). Khong co "han muc" nen UI khong ve duoc
+ * thanh %: chi hien so, kem tuoi doc de biet so con tuoi hay cu.
+ */
+data class BaiQuota(
+    val ok: Boolean,
+    val balance: Long,
     val dataTs: Long,
     val error: String?,
 )
@@ -194,6 +207,7 @@ fun parseMachineSnapshot(json: String): MachineSnapshot {
         procs = procs,
         agy = quota?.optJSONObject("agy")?.let { parseAgy(it) },
         claude = quota?.optJSONObject("claude")?.let { parseClaude(it) },
+        bai = quota?.optJSONObject("bai")?.let { parseBai(it) },
     )
 }
 
@@ -252,3 +266,10 @@ private fun parseClaude(o: JSONObject): ClaudeQuota {
         error = o.optString("error").takeIf { it.isNotBlank() && it != "null" },
     )
 }
+
+private fun parseBai(o: JSONObject): BaiQuota = BaiQuota(
+    ok = o.optBoolean("ok", false),
+    balance = o.optLong("balance", 0L),
+    dataTs = o.optLong("ts", 0L),
+    error = o.optString("error").takeIf { it.isNotBlank() && it != "null" },
+)

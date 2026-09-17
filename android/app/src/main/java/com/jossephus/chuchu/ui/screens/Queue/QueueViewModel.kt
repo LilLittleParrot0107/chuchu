@@ -107,6 +107,32 @@ class QueueViewModel(
 
     fun setQuotaWanted(wanted: Boolean) { quotaWanted = wanted }
 
+    /** True khi dải máy còn muốn số (màn Queue đang hiện). */
+    private var machineWanted = false
+    private var quotaTickerJob: Job? = null
+
+    /**
+     * Tự làm mới số quota mỗi 10 phút khi màn Queue đang hiện (user chốt 17/9):
+     * trước đây quota chỉ được làm mới lúc trang USAGE mở, nên đứng ở DÒNG THỜI
+     * GIAN cả buổi là số cũ dần mà không ai hay. ĐÁ `quota=1` (không phải force):
+     * server thấy cache quá 30s thì gọi script làm mới, còn mỗi script tự chặn
+     * thêm (claude TTL 600s, bai tối thiểu 60s/lần). Chỉ chạy khi app
+     * FOREGROUND và Queue đang hiện, như mọi poll khác — bỏ túi là dừng.
+     */
+    private fun syncQuotaAutoRefresh() {
+        if (!isAppActive || !machineWanted) {
+            quotaTickerJob?.cancel(); quotaTickerJob = null
+            return
+        }
+        if (quotaTickerJob?.isActive == true) return
+        quotaTickerJob = viewModelScope.launch(Dispatchers.IO) {
+            while (isActive) {
+                delay(QUOTA_AUTO_REFRESH_MS)
+                client()?.machine("1")
+            }
+        }
+    }
+
     /**
      * Nút ⟳ trên trang USAGE: bắn một phát `quota=force` ngay, không đợi nhịp
      * poll và không đợi TTL 10 phút của script. Bỏ luôn phản hồi — số mới sẽ
@@ -117,7 +143,11 @@ class QueueViewModel(
     }
 
     /** Bật khi màn Queue hiện, tắt khi rời — không poll sau lưng người dùng. */
-    fun setMachinePolling(active: Boolean) = machinePoller.setWanted("queue", active)
+    fun setMachinePolling(active: Boolean) {
+        machineWanted = active
+        machinePoller.setWanted("queue", active)
+        syncQuotaAutoRefresh()
+    }
 
     val ambientSummary: StateFlow<QueueAmbientSummary> = _ambientSummary.asStateFlow()
 
@@ -397,6 +427,7 @@ class QueueViewModel(
         // trang USAGE còn mở trong túi quần không được kéo theo claude 380MB/30s.
         machinePoller.setAppActive(active)
         if (!active) quotaWanted = false
+        syncQuotaAutoRefresh()
     }
 
     /** Select foreground cadence only while the Queue destination is composed. */
@@ -721,6 +752,8 @@ class QueueViewModel(
     companion object {
         /** 5s — ở Queue người ta liếc chứ không theo dõi; tab MACHINE thì 2s. */
         private const val MACHINE_POLL_MS = 5_000L
+        /** Tự làm mới quota mỗi 10 phút khi Queue đang hiện (user chốt 17/9). */
+        private const val QUOTA_AUTO_REFRESH_MS = 10 * 60_000L
         private const val LONGPOLL_S = 25
         /** Số tin mỗi trang màn CHAT. */
         private const val CHAT_PAGE = 50

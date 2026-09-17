@@ -317,7 +317,7 @@ private fun UsagePage(readout: MachineReadout, alpha: Float) {
     val colors = ChuColors.current
     val type = ChuTypography.current
     val s = readout.snapshot
-    if (s.claude == null && s.agy == null) {
+    if (s.claude == null && s.agy == null && s.bai == null) {
         ChuText("Loading quota…", style = rowStyle(), color = colors.textMuted)
         return
     }
@@ -360,6 +360,22 @@ private fun UsagePage(readout: MachineReadout, alpha: Float) {
             tail = tail, alpha = alpha, labelColor = colors.success, labelWidth = PANEL_LABEL_W, reserveTail = true, modifier = rowMod(),
             fontSize = PANEL_BAR_SP, textSize = PANEL_TEXT_SP)
     }
+    // b.ai (17/9): chi co SO DU, khong co han muc — khong co tong thi khong ve
+    // duoc thanh (thanh can mot cai de so sanh). Nen day la dong CHU nhu topRam,
+    // nhung van nam trong luoi cua BlockBar: nhan chiem cot nhan, so canh phai
+    // dung cot phai. So khong rut gon: credit la tien that, doc duoc tung con.
+    s.bai?.let { b ->
+        Row(rowMod().fillMaxWidth().padding(vertical = 1.dp), verticalAlignment = Alignment.CenterVertically) {
+            ChuText("bai·credit", style = rowStyle(), color = colors.accentSecondary.copy(alpha = alpha),
+                maxLines = 1, modifier = Modifier.weight(1f))
+            ChuText(
+                if (b.ok) "${credits(b.balance)} cr" else "—",
+                style = rowStyle().copy(textAlign = TextAlign.End),
+                color = (if (b.ok) colors.textPrimary else colors.textMuted).copy(alpha = alpha),
+                maxLines = 1, modifier = Modifier.width(PANEL_RIGHT_W.dp),
+            )
+        }
+    }
 }
 
 /** Chiều cao MỖI hàng, khoá cứng qua [rowMod] — không còn "xấp xỉ" (13/9). */
@@ -388,6 +404,7 @@ private fun usageRowCount(r: MachineReadout): Int {
     q?.accounts?.filter { it.configured }?.forEach {
         if (it.pct5h != null || it.pctWeek != null) n++
     }
+    if (r.snapshot.bai != null) n++
     return maxOf(n, 1)
 }
 
@@ -419,6 +436,9 @@ private fun quotaAge(s: Long): String = when {
 }
 
 private fun pct(v: Double?): String = v?.let { String.format(Locale.US, "%.0f%%", it) } ?: "—"
+
+/** 14275165 -> "14,275,165" — so Credit that, khong rut gon kieu 14.3M (17/9). */
+internal fun credits(v: Long): String = String.format(Locale.US, "%,d", v)
 
 private fun gMb(mb: Long): String = String.format(Locale.US, "%.1f", mb / 1024.0)
 

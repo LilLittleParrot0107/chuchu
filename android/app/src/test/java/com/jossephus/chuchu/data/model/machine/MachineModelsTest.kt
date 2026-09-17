@@ -31,7 +31,9 @@ class MachineModelsTest {
                             {"id": "acc4", "configured": false}]},
        "claude": {"ok": true, "ts": 1788371000,
                   "session": {"used_pct": 4, "resets_at": "Sep 3, 4:20am", "resets_epoch": 1788384000},
-                  "week": {"used_pct": 20, "resets_at": "Sep 6, 4pm", "resets_epoch": 1788685200}}}}
+                  "week": {"used_pct": 20, "resets_at": "Sep 6, 4pm", "resets_epoch": 1788685200}},
+       "bai": {"ok": true, "ts": 1788371900, "balance": 14275165, "kind": "personal",
+               "user": "user_PetRVOXfiJbc", "active": "active", "error": null}}}
     """.trimIndent()
 
     @Test
@@ -59,6 +61,11 @@ class MachineModelsTest {
         assertEquals(4, s.claude!!.session!!.usedPct)
         assertEquals(20, s.claude!!.week!!.usedPct)
         assertEquals("Sep 6, 4pm", s.claude!!.week!!.resetsAt)
+
+        assertTrue(s.bai!!.ok)
+        assertEquals(14275165L, s.bai!!.balance)
+        assertEquals(1788371900L, s.bai!!.dataTs)
+        assertNull(s.bai!!.error)
     }
 
     @Test
@@ -69,6 +76,7 @@ class MachineModelsTest {
         assertNull(s.battery)
         assertNull(s.agy)
         assertNull(s.claude)
+        assertNull(s.bai)
         assertNull(s.tempCpu)
         assertTrue(s.procs.isEmpty())
         assertEquals(0.0, s.memPct, 0.001)          // khong co mem -> 0, khong chia cho 0
