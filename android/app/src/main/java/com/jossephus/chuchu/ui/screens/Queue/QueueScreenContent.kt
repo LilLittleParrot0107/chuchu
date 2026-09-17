@@ -281,12 +281,29 @@ private fun FeedRow(m: FeedMessage, onPick: (FeedMessage) -> Unit, bodySize: Tex
     // 12% lề phải, không tem, giờ trong khối. Timeline giữ tem tên vì trộn phiên.
     when (m.role) {
         "user" -> Column(Modifier.fillMaxWidth().clickable { onPick(m) }) {
+            // Tem người nhận (user đòi 18/9 — timeline trộn phiên, tin của anh phải
+            // nêu GỬI ĐẾN đâu): lề phải, cùng công thức tem agent "● tên · giờ",
+            // màu theo LOẠI agent của phiên nhận.
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth().padding(bottom = 3.dp),
+            ) {
+                Spacer(Modifier.weight(1f))
+                ChuText("●", style = type.labelSmall, color = kind.rosterColor())
+                Spacer(Modifier.width(5.dp))
+                ChuText(
+                    m.name,
+                    style = type.labelSmall.copy(fontWeight = FontWeight.Bold),
+                    color = colors.textSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.widthIn(max = 200.dp),
+                )
+                Spacer(Modifier.width(6.dp))
+                ChuText(chatClock(m.ts), style = type.labelSmall, color = colors.textMuted)
+            }
             TintBox(fillColor = colors.accent.copy(alpha = 0.12f), fraction = 0.88f, alignEnd = true) {
                 LinkifiedText(m.text, style = type.body, color = colors.textPrimary, modifier = Modifier.fillMaxWidth())
-                Row(Modifier.fillMaxWidth()) {
-                    Spacer(Modifier.weight(1f))
-                    ChuText(chatClock(m.ts), style = type.labelSmall, color = colors.textMuted)
-                }
             }
         }
         else -> Column(Modifier.fillMaxWidth().clickable { onPick(m) }) {
