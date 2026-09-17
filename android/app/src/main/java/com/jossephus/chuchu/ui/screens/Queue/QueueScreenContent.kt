@@ -264,7 +264,7 @@ internal fun QueueFeedView(
                 state = listState,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 items(messages, key = FeedMessage::key) { m ->
                     FeedRow(m, onPick = onPick, bodySize = type.body.fontSize)
@@ -368,7 +368,7 @@ internal fun QueueConversationList(
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(vertical = 8.dp, horizontal = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         items(agents, key = QueueAgent::pane) { agent ->
             val hasNew = agent.chatRev != null && agent.chatRev != chatSeen[agent.pane]
