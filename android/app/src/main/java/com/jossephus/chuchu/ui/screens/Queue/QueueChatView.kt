@@ -11,8 +11,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
@@ -141,23 +145,23 @@ private fun Center(text: String) {
 @Composable
 private fun UserRow(m: ChatMessage, bodyStyle: androidx.compose.ui.text.TextStyle) {
     val colors = ChuColors.current
-    // F1·B (user chốt 17/9): tin của anh = bubble bên PHẢI như app chat — nền accent
-    // 12%, viền ĐẬM liều 3 (2,5dp, 70%) cùng màu, bo 5dp. Bỏ hẳn ❯ và vạch dọc;
-    // giờ nằm trong góc dưới phải của bubble.
+    // GIỮ BẢN CŨ (user ra lệnh revert 17/9 "tin nhắn đợi như cũ"): nền vàng 14% +
+    // vạch 3dp + ❯, full-width. Bubble phải chỉ thử ở prototype, không duyệt cho đây.
+    // Cách khối trên 10dp thêm: tin của anh mở một lượt mới, không dính tool/markdown.
     Row(
-        modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-        horizontalArrangement = Arrangement.End,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 10.dp)
+            .height(IntrinsicSize.Min)
+            .background(colors.accent.copy(alpha = 0.14f)),
+        verticalAlignment = Alignment.Top,
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth(0.86f)
-                .background(colors.accent.copy(alpha = 0.12f), BubbleShape)
-                .border(2.5.dp, colors.accent.copy(alpha = 0.7f), BubbleShape)
-                .padding(horizontal = 10.dp, vertical = 6.dp),
-        ) {
-            LinkifiedText(m.text, style = bodyStyle, color = colors.textPrimary, modifier = Modifier.fillMaxWidth())
-            Row(Modifier.fillMaxWidth()) {
-                Spacer(Modifier.weight(1f))
+        Box(Modifier.width(3.dp).fillMaxHeight().background(colors.accent))
+        Spacer(Modifier.width(8.dp))
+        Column(Modifier.weight(1f).padding(top = 6.dp, bottom = 6.dp, end = 10.dp)) {
+            Row(verticalAlignment = Alignment.Top) {
+                ChuText("❯ ", style = bodyStyle, color = colors.accent)
+                LinkifiedText(m.text, style = bodyStyle, color = colors.textPrimary, modifier = Modifier.weight(1f))
                 TimeStamp(m.ts)
             }
         }

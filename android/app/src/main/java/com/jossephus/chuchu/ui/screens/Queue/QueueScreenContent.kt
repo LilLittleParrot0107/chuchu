@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -280,35 +281,29 @@ private fun FeedRow(m: FeedMessage, onPick: (FeedMessage) -> Unit, bodySize: Tex
     val type = ChuTypography.current
     val kind = AgentKind.of(m.agent)
     val tone = remember(kind) { kind.chatTone() }
-    // F1·B (chốt 17/9): cùng ngôn ngữ bubble với màn CHAT — anh bên phải (accent),
-    // agent bên trái (màu của nó, fill 3%, viền 2,5dp 70%). Timeline trộn nhiều
-    // phiên nên tem tên + chấm trạng thái ĐƯỢC GIỮ, nhưng nằm trong bubble.
+    // F1·B (chốt 17/9): bubble agent bên TRÁI fill 3% màu của nó, viền 2,5dp 70%.
+    // NHÁNH USER GIỮ BẢN CŨ theo lệnh revert cùng ngày — tin của anh vẫn là hàng
+    // full-width vạch accent (timeline trộn phiên, tem tên+giờ cần chỗ rộng).
     when (m.role) {
         "user" -> Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { onPick(m) },
-            horizontalArrangement = Arrangement.End,
+                .clickable { onPick(m) }
+                .height(IntrinsicSize.Min)
+                .background(colors.accent.copy(alpha = 0.10f)),
+            verticalAlignment = Alignment.Top,
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth(0.86f)
-                    .background(colors.accent.copy(alpha = 0.12f), FeedBubbleShape)
-                    .border(2.5.dp, colors.accent.copy(alpha = 0.7f), FeedBubbleShape)
-                    .padding(horizontal = 10.dp, vertical = 5.dp),
-            ) {
+            Box(Modifier.width(3.dp).fillMaxHeight().background(colors.accent.copy(alpha = 0.7f)))
+            Spacer(Modifier.width(8.dp))
+            Column(Modifier.weight(1f).padding(vertical = 5.dp, horizontal = 0.dp)) {
                 ChuText(
-                    m.name,
+                    "${m.name} · ${chatClock(m.ts)}",
                     style = type.labelSmall,
                     color = colors.textMuted,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
                 LinkifiedText(m.text, style = type.body, color = colors.textPrimary, modifier = Modifier.fillMaxWidth())
-                Row(Modifier.fillMaxWidth()) {
-                    Spacer(Modifier.weight(1f))
-                    ChuText(chatClock(m.ts), style = type.labelSmall, color = colors.textMuted)
-                }
             }
         }
         else -> Column(
