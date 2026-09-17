@@ -23,7 +23,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.foundation.text.KeyboardActions
@@ -264,7 +263,7 @@ internal fun QueueFeedView(
             else -> LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 items(messages, key = FeedMessage::key) { m ->
@@ -281,9 +280,9 @@ private fun FeedRow(m: FeedMessage, onPick: (FeedMessage) -> Unit, bodySize: Tex
     val type = ChuTypography.current
     val kind = AgentKind.of(m.agent)
     val tone = remember(kind) { kind.chatTone() }
-    // F1·B (chốt 17/9): bubble agent bên TRÁI fill 3% màu của nó, viền 2,5dp 70%.
-    // NHÁNH USER GIỮ BẢN CŨ theo lệnh revert cùng ngày — tin của anh vẫn là hàng
-    // full-width vạch accent (timeline trộn phiên, tem tên+giờ cần chỗ rộng).
+    // F1·B liều 3 @3%, ĐÚNG cấu trúc prototype (user đòi 17/9): hộp agent = viền
+    // 2,5dp màu agent cắn bởi tem "● tên" (trên) + chấm trạng thái + giờ (phải).
+    // NHÁNH USER GIỮ BẢN CŨ theo lệnh revert "tin nhắn đợi" cùng ngày.
     when (m.role) {
         "user" -> Row(
             modifier = Modifier
@@ -306,40 +305,44 @@ private fun FeedRow(m: FeedMessage, onPick: (FeedMessage) -> Unit, bodySize: Tex
                 LinkifiedText(m.text, style = type.body, color = colors.textPrimary, modifier = Modifier.fillMaxWidth())
             }
         }
-        else -> Column(
-            modifier = Modifier
-                .fillMaxWidth(0.92f)
-                .clickable { onPick(m) }
-                .background(kind.rosterColor().copy(alpha = 0.03f), FeedBubbleShape)
-                .border(2.5.dp, kind.rosterColor().copy(alpha = 0.7f), FeedBubbleShape)
-                .padding(horizontal = 10.dp, vertical = 5.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+        else -> FramedBox(
+            modifier = Modifier.clickable { onPick(m) },
+            borderColor = kind.rosterColor().copy(alpha = 0.7f),
+            fillColor = kind.rosterColor().copy(alpha = 0.03f),
+            fraction = 0.92f,
+            label = {
+                ChuText("●", style = type.labelSmall, color = kind.rosterColor())
+                Spacer(Modifier.width(5.dp))
                 ChuText(
                     m.name,
                     style = type.labelSmall.copy(fontWeight = FontWeight.Bold),
-                    color = kind.rosterColor(),
+                    color = colors.textSecondary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false),
+                    modifier = Modifier.widthIn(max = 180.dp),
                 )
-                Spacer(Modifier.width(6.dp))
-                // Nhãn chữ ("working"/"done"…) thu thành một chấm màu (user 17/9:
-                // "để cho t mấy chấm show status") — cùng ngôn ngữ với HỘI THOẠI.
+            },
+            timeLabel = {
+                // Nhãn chữ ("working"/"done"…) thu thành một chấm màu (user 17/9) —
+                // giờ chấm nằm trên đường viền, cạnh giờ.
                 if (m.label.isNotBlank()) {
                     ChuText("●", style = type.labelSmall, color = m.tone.color())
-                    Spacer(Modifier.width(6.dp))
+                    Spacer(Modifier.width(5.dp))
                 }
                 ChuText(chatClock(m.ts), style = type.labelSmall, color = colors.textMuted)
-            }
+            },
+        ) {
             ParasFold(m.key, m.paras, bodySize, tone)
             MiniMarkdownText(m.text, fontSize = bodySize, tone = tone)
+            ChuText(
+                chatClock(m.ts),
+                style = type.labelSmall,
+                color = colors.textMuted,
+                modifier = Modifier.padding(top = 2.dp),
+            )
         }
     }
 }
-
-/** Bo 5dp của bubble DÒNG THỜI GIAN — khớp BubbleShape màn CHAT. */
-private val FeedBubbleShape = RoundedCornerShape(5.dp)
 
 /**
  * HỘI THOẠI (G1, gọn lại 17/9): danh sách session như hàng đợi thật — việc cần anh lên
@@ -364,70 +367,62 @@ internal fun QueueConversationList(
     }
     LazyColumn(
         modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(vertical = 4.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
+        contentPadding = PaddingValues(vertical = 8.dp, horizontal = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         items(agents, key = QueueAgent::pane) { agent ->
             val hasNew = agent.chatRev != null && agent.chatRev != chatSeen[agent.pane]
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(IntrinsicSize.Min)
-                    // Không còn HOÀNG HỘT gì cho session đang mở (user chốt 17/9:
-                    // "chả UI chat nào làm vậy") — tên luôn màu roster, composer
-                    // tự nêu đích "reply to …"; chỉ chấm ● chưa đọc là điểm nhấn.
+            // F1 (duyệt lại 17/9): MỖI SESSION LÀ MỘT HỘP — hàng phẳng "bản cũ" bị
+            // bỏ; tem "● glyph + tên" cắn đường viền trên trái, giờ + chấm chưa đọc
+            // cắn viền trên phải, trong hộp là dòng xem trước. Không tô gì cho session
+            // đang mở (chốt 17/9) — màu viền/fill luôn là của agent.
+            val kColor = AgentKind.of(agent.agent).rosterColor()
+            FramedBox(
+                modifier = Modifier.clickable {
                     // Có transcript thì chạm là mở thread; chưa có thì chỉ chọn (ô gõ nhắm vào nó).
-                    .clickable { if (agent.chatRev != null) onOpenChat(agent.pane) else onSelect(agent.pane) },
-                verticalAlignment = Alignment.Top,
-            ) {
-                Row(
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(start = 10.dp, end = 10.dp, top = 8.dp, bottom = 8.dp),
-                    verticalAlignment = Alignment.Top,
-                ) {
-                    // MỘT glyph duy nhất cho trạng thái: ● chạy · ○ rảnh · ▲ kẹt
-                    // (hình dạng mang nghĩa, màu lấy từ tone như chấm cũ).
+                    if (agent.chatRev != null) onOpenChat(agent.pane) else onSelect(agent.pane)
+                },
+                borderColor = kColor.copy(alpha = 0.7f),
+                fillColor = kColor.copy(alpha = 0.03f),
+                fraction = 1f,
+                label = {
+                    // MỘT glyph duy nhất cho trạng thái: ● chạy · ○ rảnh · ▲ kẹt.
                     ChuText(
                         runtimeDot(agent),
                         style = type.labelSmall.copy(textAlign = TextAlign.Center),
                         color = sessionStatusColor(agent),
-                        modifier = Modifier.width(10.dp).padding(top = 2.dp),
                     )
-                    Spacer(Modifier.width(8.dp))
-                    Column(Modifier.weight(1f)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            ChuText(
-                                agent.name,
-                                style = type.label.copy(fontWeight = FontWeight.Bold),
-                                color = AgentKind.of(agent.agent).rosterColor(),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                // Tên chiếm hết chỗ trống (user chốt 17/9: tên session
-                                // show dài ra) — chấm "chưa đọc" và giờ vẫn dạt phải.
-                                modifier = Modifier.weight(1f),
-                            )
-                            // Chưa đọc = một chấm nhỏ cạnh giờ, thay tag chữ "new" (user 17/9).
-                            if (hasNew) {
-                                ChuText("●", style = type.labelSmall.copy(fontSize = 8.sp), color = colors.accent)
-                                Spacer(Modifier.width(5.dp))
-                            }
-                            chatWhen(agent.previewTs).takeIf { it.isNotEmpty() }?.let {
-                                ChuText(it, style = type.labelSmall, color = colors.textMuted)
-                            }
-                        }
-                        val preview = agent.preview.ifBlank {
-                            if (agent.chatRev != null) "no messages yet" else "no transcript"
-                        }
-                        ChuText(
-                            stripPreviewMarkdown(preview),
-                            style = type.bodySmall,
-                            color = colors.textSecondary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+                    Spacer(Modifier.width(5.dp))
+                    ChuText(
+                        agent.name,
+                        style = type.label.copy(fontWeight = FontWeight.Bold),
+                        color = kColor,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.widthIn(max = 180.dp),
+                    )
+                },
+                timeLabel = {
+                    // Chưa đọc = một chấm nhỏ cạnh giờ (thay tag chữ "new", user 17/9).
+                    if (hasNew) {
+                        ChuText("●", style = type.labelSmall.copy(fontSize = 8.sp), color = colors.accent)
+                        Spacer(Modifier.width(4.dp))
                     }
+                    chatWhen(agent.previewTs).takeIf { it.isNotEmpty() }?.let {
+                        ChuText(it, style = type.labelSmall, color = colors.textMuted)
+                    }
+                },
+            ) {
+                val preview = agent.preview.ifBlank {
+                    if (agent.chatRev != null) "no messages yet" else "no transcript"
                 }
+                ChuText(
+                    stripPreviewMarkdown(preview),
+                    style = type.bodySmall,
+                    color = colors.textSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
     }

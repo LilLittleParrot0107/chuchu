@@ -8,6 +8,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -103,7 +106,7 @@ internal fun QueueChatView(
             else -> LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 10.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 item(key = "older") {
@@ -171,24 +174,88 @@ private fun UserRow(m: ChatMessage, bodyStyle: androidx.compose.ui.text.TextStyl
 @Composable
 private fun AssistantRow(m: ChatMessage, textSize: TextUnit, tone: ChatTone?, kind: AgentKind) {
     val colors = ChuColors.current
-    // Bubble bên TRÁI, fill = 3% màu agent (liều user chốt — gần như trắng, chỉ để
-    // phân biệt vùng), viền đậm 2,5dp 70% màu agent; giờ trong góc dưới trái.
+    // F1·B liều 3 @3%, ĐÚNG cấu trúc prototype (duyệt lại 17/9): tem "● ASSISTANT"
+    // và giờ NẰM TRÊN ĐƯỜNG VIỀN (label cắn viền như fieldset), không nằm trong box.
     val bubbleColor = kind.rosterColor()
-    Column(
-        modifier = Modifier
-            .fillMaxWidth(0.92f)
-            .background(bubbleColor.copy(alpha = 0.03f), BubbleShape)
-            .border(2.5.dp, bubbleColor.copy(alpha = 0.7f), BubbleShape)
-            .padding(horizontal = 10.dp, vertical = 6.dp),
+    FramedBox(
+        borderColor = bubbleColor.copy(alpha = 0.7f),
+        fillColor = bubbleColor.copy(alpha = 0.03f),
+        fraction = 0.92f,
+        label = {
+            ChuText("●", style = ChuTypography.current.labelSmall, color = bubbleColor)
+            Spacer(Modifier.width(5.dp))
+            ChuText(
+                "ASSISTANT",
+                style = ChuTypography.current.labelSmall.copy(fontWeight = FontWeight.Bold),
+                color = colors.textSecondary,
+            )
+        },
+        timeLabel = { TimeStamp(m.ts, color = tone?.meta ?: colors.textMuted) },
     ) {
         ParasFold(m.key, m.paras, textSize, tone)
         MiniMarkdownText(m.text, fontSize = textSize, tone = tone)
-        TimeStamp(m.ts, color = tone?.meta ?: colors.textMuted)
+        TimeStamp(m.ts, color = colors.textMuted)
     }
 }
 
-/** Bo 5dp dùng cho cả bubble hai phía (F1·B). */
-private val BubbleShape = RoundedCornerShape(5.dp)
+/**
+ * Cái hộp F1 — bản Compose của `.fr .box` trong prototype (user đòi đúng thiết kế
+ * 17/9): viền 2,5dp màu agent 70%, fill 3%, bo 5dp; dòng nhãn (tem tên bên trái,
+ * giờ bên phải) nằm GIỮA đường viền trên, nền màu background để "cắt" viền như
+ * fieldset legend. Dùng cho bubble agent ở CHAT + TIMELINE và hàng HỘI THOẠI.
+ */
+@Composable
+internal fun FramedBox(
+    borderColor: androidx.compose.ui.graphics.Color,
+    fillColor: androidx.compose.ui.graphics.Color,
+    fraction: Float,
+    alignEnd: Boolean = false,
+    modifier: Modifier = Modifier,
+    label: (@Composable () -> Unit)? = null,
+    timeLabel: (@Composable () -> Unit)? = null,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val bg = ChuColors.current.background
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = if (alignEnd) Arrangement.End else Arrangement.Start,
+    ) {
+        Box(Modifier.fillMaxWidth(fraction)) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .background(fillColor, QueueBoxShape)
+                    .border(2.5.dp, borderColor, QueueBoxShape)
+                    .padding(start = 10.dp, end = 10.dp, top = 13.dp, bottom = 6.dp),
+                content = content,
+            )
+            if (label != null) {
+                Row(
+                    Modifier
+                        .align(Alignment.TopStart)
+                        .offset(y = (-7).dp)
+                        .widthIn(max = 260.dp)
+                        .background(bg, RoundedCornerShape(3.dp))
+                        .padding(horizontal = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) { label() }
+            }
+            if (timeLabel != null) {
+                Row(
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .offset(y = (-7).dp)
+                        .background(bg, RoundedCornerShape(3.dp))
+                        .padding(horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) { timeLabel() }
+            }
+        }
+    }
+}
+
+/** Bo 5dp của hộp F1 (liều viền 3 — user chốt 17/9). */
+internal val QueueBoxShape = RoundedCornerShape(5.dp)
 
 /**
  * "· N earlier" — các đoạn dẫn trước của cùng lượt (mục 5, duyệt 17/9). Mặc định
