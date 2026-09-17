@@ -482,7 +482,7 @@ fun collapseAssistantTurns(messages: List<ChatMessage>): List<ChatMessage> {
                     if (n.role != "assistant") break
                     run.add(n.text); last = n; j++
                 }
-                out.add(if (run.size == 1) m else m.copy(text = last.text, ts = last.ts, paras = run.dropLast()))
+                out.add(if (run.size == 1) m else m.copy(text = last.text, ts = last.ts, paras = run.dropLast(1)))
                 i = j
             }
             else -> { out.add(m); i++ }
@@ -509,7 +509,7 @@ fun collapseFeedTurns(messages: List<FeedMessage>): List<FeedMessage> {
             while (j < messages.size && messages[j].role == "assistant" && messages[j].pane == m.pane && messages[j].text.isNotBlank()) {
                 run.add(messages[j].text); last = messages[j]; j++
             }
-            out.add(if (run.size == 1) m else m.copy(name = last.name, label = last.label, tone = last.tone, ts = last.ts, text = last.text, paras = run.dropLast()))
+            out.add(if (run.size == 1) m else m.copy(name = last.name, label = last.label, tone = last.tone, ts = last.ts, text = last.text, paras = run.dropLast(1)))
             i = j
         } else {
             out.add(m); i++
