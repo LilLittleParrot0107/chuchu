@@ -7,16 +7,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -280,29 +276,21 @@ private fun FeedRow(m: FeedMessage, onPick: (FeedMessage) -> Unit, bodySize: Tex
     val type = ChuTypography.current
     val kind = AgentKind.of(m.agent)
     val tone = remember(kind) { kind.chatTone() }
-    // F1·B liều 3 @3%, ĐÚNG cấu trúc prototype (user đòi 17/9): hộp agent = viền
-    // 2,5dp màu agent cắn bởi tem "● tên" (trên) + chấm trạng thái + giờ (phải).
-    // NHÁNH USER GIỮ BẢN CŨ theo lệnh revert "tin nhắn đợi" cùng ngày.
+    // F1·B liều 3 @3%, ĐÚNG cấu trúc prototype: hai phía hai HỘP — anh phải (accent
+    // 12%, không tem — ".fr.u" trong prototype), agent trái (màu của nó, tem "● tên"
+    // + chấm status/gờ cắn viền trên). (17/9 "lên hộp luôn": timeline đồng bộ chat.)
     when (m.role) {
-        "user" -> Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { onPick(m) }
-                .height(IntrinsicSize.Min)
-                .background(colors.accent.copy(alpha = 0.10f)),
-            verticalAlignment = Alignment.Top,
+        "user" -> FramedBox(
+            modifier = Modifier.clickable { onPick(m) },
+            borderColor = colors.accent.copy(alpha = 0.7f),
+            fillColor = colors.accent.copy(alpha = 0.12f),
+            fraction = 0.86f,
+            alignEnd = true,
         ) {
-            Box(Modifier.width(3.dp).fillMaxHeight().background(colors.accent.copy(alpha = 0.7f)))
-            Spacer(Modifier.width(8.dp))
-            Column(Modifier.weight(1f).padding(vertical = 5.dp, horizontal = 0.dp)) {
-                ChuText(
-                    "${m.name} · ${chatClock(m.ts)}",
-                    style = type.labelSmall,
-                    color = colors.textMuted,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                LinkifiedText(m.text, style = type.body, color = colors.textPrimary, modifier = Modifier.fillMaxWidth())
+            LinkifiedText(m.text, style = type.body, color = colors.textPrimary, modifier = Modifier.fillMaxWidth())
+            Row(Modifier.fillMaxWidth()) {
+                Spacer(Modifier.weight(1f))
+                ChuText(chatClock(m.ts), style = type.labelSmall, color = colors.textMuted)
             }
         }
         else -> FramedBox(
