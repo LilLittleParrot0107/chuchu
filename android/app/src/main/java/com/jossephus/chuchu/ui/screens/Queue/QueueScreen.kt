@@ -19,13 +19,9 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -217,11 +213,7 @@ fun QueueScreen(
     // Dọn "response thừa" (user duyệt 17/9): một lượt assistant nhiều đoạn về BỌT một
     // bubble, think ẩn. Tính ở đây để dòng đếm, danh sách và chip dùng chung một nguồn.
     val chatMessages = remember(chat.messages) { collapseAssistantTurns(chat.messages) }
-    // Việc còn xếp hàng của đúng pane: pending nào đã hiện thành tin user trong
-    // transcript thì [pendingChipTasks] ẩn — hết cảnh một tin hiện hai lần.
-    val chatChipTasks = remember(chatMessages, ui.state.tasks, chat.pane) {
-        pendingChipTasks(ui.state.tasks.filter { it.target == chat.pane }, chatMessages)
-    }
+    // (17/9 revert) chatChipTasks + hàng chip ⏳ đã gỡ — pending chỉ còn trong bảng VIỆC.
     // WHY: qq chi giu 3 task DONE gan nhat trong view de list khong phinh vo
     // han theo thoi gian; muon xoa han thi dung CLR DONE (no moi don state).
     // Active dat truoc doneTail de thu tu doc chay tu viec pending sang viec
@@ -527,31 +519,9 @@ fun QueueScreen(
             MachineStrip(machine, onUsageVisible = onUsageVisible, onRefreshUsage = onRefreshUsage,
                 collapse = imeUp)
 
-            // Việc của pane này còn xếp hàng: thay vì hai dòng chiếm chỗ cuối transcript
-            // (mục 2, duyệt 17/9) nó thành chip nhỏ sát ô gõ; chạm = mở chi tiết việc.
-            if (chatOpen && chatChipTasks.isNotEmpty()) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
-                        .padding(horizontal = 12.dp, vertical = 2.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    chatChipTasks.forEach { t ->
-                        ChuText(
-                            text = (if (t.isRunning) "▶ #${t.id}" else "⏳ #${t.id}") + " · " + t.text.trim().replace('\n', ' ').take(48),
-                            style = ChuTypography.current.labelSmall,
-                            color = colors.textMuted,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier
-                                .border(1.dp, colors.border, RoundedCornerShape(6.dp))
-                                .clickable { inspectedTaskId = t.id }
-                                .padding(horizontal = 8.dp, vertical = 3.dp),
-                        )
-                    }
-                }
-            }
+            // (17/9 revert) Hàng chip ⏳ sát ô gõ đã GỠ — "như cũ" ở đây là KHÔNG có
+            // hàng chip nào (pending chỉ còn trong bảng VIỆC); hai dòng cuối transcript
+            // cũng không quay lại. Việc của pane này vẫn mở được qua [TASKS].
 
             // Một ô nhập cho cả ba ngữ cảnh: VIỆC (xếp hàng đợi) · HỘI THOẠI và
             // DÒNG THỜI GIAN (gửi tới phiên đang nhắm, agent bận thì xếp — sendToPane)
