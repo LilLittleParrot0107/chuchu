@@ -9,8 +9,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -145,15 +143,9 @@ private fun Center(text: String) {
 @Composable
 private fun UserRow(m: ChatMessage, bodyStyle: androidx.compose.ui.text.TextStyle) {
     val colors = ChuColors.current
-    // F1·B chốt cuối (17/9): tin của anh = HỘP BÊN PHẢI đồng bộ hộp agent — viền
-    // accent 2,5dp 70%, fill accent 12%, bo 5dp, không tem tên (.fr.u trong
-    // prototype), giờ trong góc dưới phải. Hàng vạch vàng ❯ chỉ là bản tạm.
-    FramedBox(
-        borderColor = colors.accent.copy(alpha = 0.7f),
-        fillColor = colors.accent.copy(alpha = 0.12f),
-        fraction = 0.86f,
-        alignEnd = true,
-    ) {
+    // ② + tint (user chốt 18/9): hộp TÔ MÀU không viền — accent 12%, lề phải, bo 4dp,
+    // không tem tên (tin của anh luôn là của anh vì ở bên phải), giờ góc dưới phải.
+    TintBox(fillColor = colors.accent.copy(alpha = 0.12f), fraction = 0.88f, alignEnd = true) {
         LinkifiedText(m.text, style = bodyStyle, color = colors.textPrimary, modifier = Modifier.fillMaxWidth())
         Row(Modifier.fillMaxWidth()) {
             Spacer(Modifier.weight(1f))
@@ -165,88 +157,61 @@ private fun UserRow(m: ChatMessage, bodyStyle: androidx.compose.ui.text.TextStyl
 @Composable
 private fun AssistantRow(m: ChatMessage, textSize: TextUnit, tone: ChatTone?, kind: AgentKind) {
     val colors = ChuColors.current
-    // F1·B liều 3 @3%, ĐÚNG cấu trúc prototype (duyệt lại 17/9): tem "● ASSISTANT"
-    // và giờ NẰM TRÊN ĐƯỜNG VIỀN (label cắn viền như fieldset), không nằm trong box.
+    val type = ChuTypography.current
     val bubbleColor = kind.rosterColor()
-    FramedBox(
-        borderColor = bubbleColor.copy(alpha = 0.7f),
-        fillColor = bubbleColor.copy(alpha = 0.03f),
-        fraction = 0.92f,
-        label = {
-            ChuText("●", style = ChuTypography.current.labelSmall, color = bubbleColor)
+    // Tem "● ASSISTANT · giờ" nằm TRÊN khối (hết viền nên hết cắn viền); thân =
+    // 10% màu agent, bo 4dp — cùng công thức với tin của anh, khác màu/ bên.
+    Column(Modifier.fillMaxWidth(0.94f)) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(bottom = 3.dp),
+        ) {
+            ChuText("●", style = type.labelSmall, color = bubbleColor)
             Spacer(Modifier.width(5.dp))
             ChuText(
                 "ASSISTANT",
-                style = ChuTypography.current.labelSmall.copy(fontWeight = FontWeight.Bold),
+                style = type.labelSmall.copy(fontWeight = FontWeight.Bold),
                 color = colors.textSecondary,
             )
-        },
-        timeLabel = { TimeStamp(m.ts, color = tone?.meta ?: colors.textMuted) },
-    ) {
-        ParasFold(m.key, m.paras, textSize, tone)
-        MiniMarkdownText(m.text, fontSize = textSize, tone = tone)
-        TimeStamp(m.ts, color = colors.textMuted)
-    }
-}
-
-/**
- * Cái hộp F1 — bản Compose của `.fr .box` trong prototype (user đòi đúng thiết kế
- * 17/9): viền 2,5dp màu agent 70%, fill 3%, bo 5dp; dòng nhãn (tem tên bên trái,
- * giờ bên phải) nằm GIỮA đường viền trên, nền màu background để "cắt" viền như
- * fieldset legend. Dùng cho bubble agent ở CHAT + TIMELINE và hàng HỘI THOẠI.
- */
-@Composable
-internal fun FramedBox(
-    borderColor: androidx.compose.ui.graphics.Color,
-    fillColor: androidx.compose.ui.graphics.Color,
-    fraction: Float,
-    alignEnd: Boolean = false,
-    modifier: Modifier = Modifier,
-    label: (@Composable () -> Unit)? = null,
-    timeLabel: (@Composable () -> Unit)? = null,
-    content: @Composable ColumnScope.() -> Unit,
-) {
-    val bg = ChuColors.current.background
-    Row(
-        modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = if (alignEnd) Arrangement.End else Arrangement.Start,
-    ) {
-        Box(Modifier.fillMaxWidth(fraction)) {
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .background(fillColor, QueueBoxShape)
-                    .border(2.5.dp, borderColor, QueueBoxShape)
-                    .padding(start = 10.dp, end = 10.dp, top = 13.dp, bottom = 6.dp),
-                content = content,
-            )
-            if (label != null) {
-                Row(
-                    Modifier
-                        .align(Alignment.TopStart)
-                        .offset(y = (-7).dp)
-                        .widthIn(max = 260.dp)
-                        .background(bg, RoundedCornerShape(3.dp))
-                        .padding(horizontal = 5.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) { label() }
-            }
-            if (timeLabel != null) {
-                Row(
-                    Modifier
-                        .align(Alignment.TopEnd)
-                        .offset(y = (-7).dp)
-                        .background(bg, RoundedCornerShape(3.dp))
-                        .padding(horizontal = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) { timeLabel() }
-            }
+            Spacer(Modifier.width(6.dp))
+            TimeStamp(m.ts, color = tone?.meta ?: colors.textMuted)
+        }
+        TintBox(fillColor = bubbleColor.copy(alpha = 0.10f)) {
+            ParasFold(m.key, m.paras, textSize, tone)
+            MiniMarkdownText(m.text, fontSize = textSize, tone = tone)
         }
     }
 }
 
-/** Bo 5dp của hộp F1 (liều viền 3 — user chốt 17/9). */
-internal val QueueBoxShape = RoundedCornerShape(5.dp)
+/**
+ * Khối tô màu KHÔNG viền (kiểu 2 + tint, duyệt 18/9): nền là màu nhận diện
+ * (agent = 10% màu của nó, anh = 12% accent), bo 4dp, tem nằm ngoài trên đầu.
+ * Dùng chung chat + timeline.
+ */
+@Composable
+internal fun TintBox(
+    fillColor: androidx.compose.ui.graphics.Color,
+    fraction: Float = 1f,
+    alignEnd: Boolean = false,
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = if (alignEnd) Arrangement.End else Arrangement.Start,
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth(fraction)
+                .background(fillColor, BoxShape)
+                .padding(horizontal = 10.dp, vertical = 7.dp),
+            content = content,
+        )
+    }
+}
+
+/** Bo góc khối tint — nhỉnh hơn ô nhập (2dp) một chút, vẫn cùng họ app. */
+internal val BoxShape = RoundedCornerShape(4.dp)
 
 /**
  * "· N earlier" — các đoạn dẫn trước của cùng lượt (mục 5, duyệt 17/9). Mặc định
@@ -283,7 +248,7 @@ private fun ToolRow(m: ChatMessage, tone: ChatTone?) {
     Column(
         Modifier
             .fillMaxWidth()
-            .padding(start = 10.dp)
+            .padding(start = 26.dp)
             .then(if (open) Modifier.border(1.dp, colors.border).background(colors.surfaceVariant).padding(6.dp) else Modifier)
             .clickable(enabled = canOpen) { open = !open },
     ) {
