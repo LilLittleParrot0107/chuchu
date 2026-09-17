@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -23,6 +22,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.foundation.text.KeyboardActions
@@ -280,33 +280,44 @@ private fun FeedRow(m: FeedMessage, onPick: (FeedMessage) -> Unit, bodySize: Tex
     val type = ChuTypography.current
     val kind = AgentKind.of(m.agent)
     val tone = remember(kind) { kind.chatTone() }
+    // F1·B (chốt 17/9): cùng ngôn ngữ bubble với màn CHAT — anh bên phải (accent),
+    // agent bên trái (màu của nó, fill 3%, viền 2,5dp 70%). Timeline trộn nhiều
+    // phiên nên tem tên + chấm trạng thái ĐƯỢC GIỮ, nhưng nằm trong bubble.
     when (m.role) {
         "user" -> Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { onPick(m) }
-                .height(IntrinsicSize.Min)
-                .background(colors.accent.copy(alpha = 0.10f)),
-            verticalAlignment = Alignment.Top,
+                .clickable { onPick(m) },
+            horizontalArrangement = Arrangement.End,
         ) {
-            Box(Modifier.width(3.dp).fillMaxHeight().background(colors.accent.copy(alpha = 0.7f)))
-            Spacer(Modifier.width(8.dp))
-            Column(Modifier.weight(1f).padding(vertical = 5.dp, horizontal = 0.dp)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth(0.86f)
+                    .background(colors.accent.copy(alpha = 0.12f), FeedBubbleShape)
+                    .border(2.5.dp, colors.accent.copy(alpha = 0.7f), FeedBubbleShape)
+                    .padding(horizontal = 10.dp, vertical = 5.dp),
+            ) {
                 ChuText(
-                    "${m.name} · ${chatClock(m.ts)}",
+                    m.name,
                     style = type.labelSmall,
                     color = colors.textMuted,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
                 LinkifiedText(m.text, style = type.body, color = colors.textPrimary, modifier = Modifier.fillMaxWidth())
+                Row(Modifier.fillMaxWidth()) {
+                    Spacer(Modifier.weight(1f))
+                    ChuText(chatClock(m.ts), style = type.labelSmall, color = colors.textMuted)
+                }
             }
         }
         else -> Column(
             modifier = Modifier
-                .fillMaxWidth()
+                .fillMaxWidth(0.92f)
                 .clickable { onPick(m) }
-                .padding(top = 4.dp, end = 2.dp),
+                .background(kind.rosterColor().copy(alpha = 0.03f), FeedBubbleShape)
+                .border(2.5.dp, kind.rosterColor().copy(alpha = 0.7f), FeedBubbleShape)
+                .padding(horizontal = 10.dp, vertical = 5.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 ChuText(
@@ -331,6 +342,9 @@ private fun FeedRow(m: FeedMessage, onPick: (FeedMessage) -> Unit, bodySize: Tex
         }
     }
 }
+
+/** Bo 5dp của bubble DÒNG THỜI GIAN — khớp BubbleShape màn CHAT. */
+private val FeedBubbleShape = RoundedCornerShape(5.dp)
 
 /**
  * HỘI THOẠI (G1, gọn lại 17/9): danh sách session như hàng đợi thật — việc cần anh lên
@@ -359,14 +373,14 @@ internal fun QueueConversationList(
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         items(agents, key = QueueAgent::pane) { agent ->
-            val selected = selectedPane == agent.pane
             val hasNew = agent.chatRev != null && agent.chatRev != chatSeen[agent.pane]
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(IntrinsicSize.Min)
-                    // Selection theo màu chữ (tên session đổi accent) — user chốt
-                    // 17/9: bỏ bôi nền, chỉ màu chữ là đủ.
+                    // Không còn HOÀNG HỘT gì cho session đang mở (user chốt 17/9:
+                    // "chả UI chat nào làm vậy") — tên luôn màu roster, composer
+                    // tự nêu đích "reply to …"; chỉ chấm ● chưa đọc là điểm nhấn.
                     // Có transcript thì chạm là mở thread; chưa có thì chỉ chọn (ô gõ nhắm vào nó).
                     .clickable { if (agent.chatRev != null) onOpenChat(agent.pane) else onSelect(agent.pane) },
                 verticalAlignment = Alignment.Top,
@@ -391,7 +405,7 @@ internal fun QueueConversationList(
                             ChuText(
                                 agent.name,
                                 style = type.label.copy(fontWeight = FontWeight.Bold),
-                                color = if (selected) colors.accent else AgentKind.of(agent.agent).rosterColor(),
+                                color = AgentKind.of(agent.agent).rosterColor(),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 // Tên chiếm hết chỗ trống (user chốt 17/9: tên session

@@ -12,15 +12,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -42,6 +39,7 @@ import com.jossephus.chuchu.ui.theme.ChatTone
 import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTypography
 import com.jossephus.chuchu.ui.theme.chatTone
+import com.jossephus.chuchu.ui.theme.rosterColor
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.TimeZone
@@ -121,7 +119,7 @@ internal fun QueueChatView(
                 items(messages, key = ChatMessage::key) { m ->
                     when (m.role) {
                         "user" -> UserRow(m, bodyStyle)
-                        "assistant" -> AssistantRow(m, textSize, tone = tone)
+                        "assistant" -> AssistantRow(m, textSize, tone = tone, kind = kind)
                         "tool" -> ToolRow(m, tone = tone)
                         // think/tin rỗng đã bị collapseAssistantTurns bỏ ở tầng đọc.
                         else -> Unit
@@ -143,23 +141,23 @@ private fun Center(text: String) {
 @Composable
 private fun UserRow(m: ChatMessage, bodyStyle: androidx.compose.ui.text.TextStyle) {
     val colors = ChuColors.current
-    // Cách khối trên 10dp thêm (danh sách chỉ 6dp): tin của anh mở một lượt mới, không dính
-    // vào tool/markdown ngay trên (user 16/9 "díu quá").
-    // Plan A (user chọn 16/9): nền vàng 14% + vạch 3dp, chữ giữ màu, đệm 6/10dp.
+    // F1·B (user chốt 17/9): tin của anh = bubble bên PHẢI như app chat — nền accent
+    // 12%, viền ĐẬM liều 3 (2,5dp, 70%) cùng màu, bo 5dp. Bỏ hẳn ❯ và vạch dọc;
+    // giờ nằm trong góc dưới phải của bubble.
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 10.dp)
-            .height(IntrinsicSize.Min)
-            .background(colors.accent.copy(alpha = 0.14f)),
-        verticalAlignment = Alignment.Top,
+        modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+        horizontalArrangement = Arrangement.End,
     ) {
-        Box(Modifier.width(3.dp).fillMaxHeight().background(colors.accent))
-        Spacer(Modifier.width(8.dp))
-        Column(Modifier.weight(1f).padding(top = 6.dp, bottom = 6.dp, end = 10.dp)) {
-            Row(verticalAlignment = Alignment.Top) {
-                ChuText("❯ ", style = bodyStyle, color = colors.accent)
-                LinkifiedText(m.text, style = bodyStyle, color = colors.textPrimary, modifier = Modifier.weight(1f))
+        Column(
+            modifier = Modifier
+                .fillMaxWidth(0.86f)
+                .background(colors.accent.copy(alpha = 0.12f), BubbleShape)
+                .border(2.5.dp, colors.accent.copy(alpha = 0.7f), BubbleShape)
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+        ) {
+            LinkifiedText(m.text, style = bodyStyle, color = colors.textPrimary, modifier = Modifier.fillMaxWidth())
+            Row(Modifier.fillMaxWidth()) {
+                Spacer(Modifier.weight(1f))
                 TimeStamp(m.ts)
             }
         }
@@ -167,17 +165,26 @@ private fun UserRow(m: ChatMessage, bodyStyle: androidx.compose.ui.text.TextStyl
 }
 
 @Composable
-private fun AssistantRow(m: ChatMessage, textSize: TextUnit, tone: ChatTone?) {
+private fun AssistantRow(m: ChatMessage, textSize: TextUnit, tone: ChatTone?, kind: AgentKind) {
     val colors = ChuColors.current
-    Column(Modifier.fillMaxWidth().padding(start = 10.dp)) {
-        Row(Modifier.fillMaxWidth()) {
-            Spacer(Modifier.weight(1f))
-            TimeStamp(m.ts, color = tone?.meta ?: colors.textMuted)
-        }
+    // Bubble bên TRÁI, fill = 3% màu agent (liều user chốt — gần như trắng, chỉ để
+    // phân biệt vùng), viền đậm 2,5dp 70% màu agent; giờ trong góc dưới trái.
+    val bubbleColor = kind.rosterColor()
+    Column(
+        modifier = Modifier
+            .fillMaxWidth(0.92f)
+            .background(bubbleColor.copy(alpha = 0.03f), BubbleShape)
+            .border(2.5.dp, bubbleColor.copy(alpha = 0.7f), BubbleShape)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+    ) {
         ParasFold(m.key, m.paras, textSize, tone)
         MiniMarkdownText(m.text, fontSize = textSize, tone = tone)
+        TimeStamp(m.ts, color = tone?.meta ?: colors.textMuted)
     }
 }
+
+/** Bo 5dp dùng cho cả bubble hai phía (F1·B). */
+private val BubbleShape = RoundedCornerShape(5.dp)
 
 /**
  * "· N earlier" — các đoạn dẫn trước của cùng lượt (mục 5, duyệt 17/9). Mặc định
@@ -219,7 +226,7 @@ private fun ToolRow(m: ChatMessage, tone: ChatTone?) {
             .clickable(enabled = canOpen) { open = !open },
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            ChuText(if (m.err) "⚙ ✕ " else "⚙ ✓ ", style = type.labelSmall, color = if (m.err) colors.error else (tone?.meta ?: colors.textMuted))
+            ChuText(if (m.err) "└ ⚙ ✕ " else "└ ⚙ ✓ ", style = type.labelSmall, color = if (m.err) colors.error else (tone?.meta ?: colors.textMuted))
             ChuText(
                 m.toolName,
                 style = type.labelSmall.copy(fontWeight = FontWeight.Medium),
