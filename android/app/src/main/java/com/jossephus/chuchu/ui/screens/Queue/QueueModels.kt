@@ -561,7 +561,12 @@ data class BlockedOption(
     /** Lựa chọn Claude đang trỏ (❯) trên terminal. */
     val selected: Boolean = false,
 ) {
-    /** "Type something." / "Chat about this": gửi số xong, câu trả lời gõ ở ô dưới đi thẳng vào pane. */
+    /**
+     * Lựa chọn "gõ tiếp": gửi số xong, câu trả lời gõ ở ô dưới đi thẳng vào pane. Claude Code:
+     * "Type something." / "Chat about this"; opencode: "Type your own answer"; agy: "Write-in...".
+     */
     val opensComposer: Boolean
-        get() = label.trim().trimEnd('.', '…').lowercase().let { it == "type something" || it == "chat about this" }
+        get() = label.trim().trimEnd('.', '…').lowercase().let {
+            it == "type something" || it == "chat about this" || it == "type your own answer" || it.startsWith("write-in")
+        }
 }

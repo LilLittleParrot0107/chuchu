@@ -55,6 +55,10 @@ class BlockedPromptTest {
         assertFalse(p.options[0].opensComposer)
         assertTrue(p.options[1].opensComposer)
         assertTrue(p.options[2].opensComposer)
+        // opencode + agy (đo 21/9) có ô "gõ tiếp" tên khác
+        assertTrue(BlockedOption(4, "Type your own answer").opensComposer)
+        assertTrue(BlockedOption(4, "Write-in...").opensComposer)
+        assertFalse(BlockedOption(2, "Allow always").opensComposer)
         assertEquals("generic", BlockedPrompt.parse(JSONObject("""{"options":[{"n":1,"label":"x"}]}"""))!!.kind)
     }
 
