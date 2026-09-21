@@ -158,8 +158,8 @@ internal fun QueueChatView(
 /**
  * Thẻ NEEDS YOU (prototype kohi-chat-blocked-prototype.html, user duyệt 21/9): viền/nền đỏ
  * nhạt như chấm trạng thái, tiêu đề + loại prompt, lệnh trong khung xám, câu hỏi, rồi ĐÚNG
- * các lựa chọn Claude đưa với số y như terminal. Lựa chọn Claude đang trỏ viền vàng nhạt;
- * chạm = gõ số đó vào pane; ô vừa gửi đổi xanh và thẻ khoá tới khi prompt đổi. "Type
+ * các lựa chọn Claude đưa với số y như terminal. Chạm = gõ số đó vào pane; ô vừa gửi đổi
+ * xanh và thẻ khoá tới khi prompt đổi (ô con trỏ terminal KHÔNG tô — user 21/9). "Type
  * something" / "Chat about this" viền đứt: gửi số xong câu trả lời gõ ở ô dưới.
  */
 @Composable
@@ -237,11 +237,10 @@ private fun BlockedCard(
 private fun BlockedOptionRow(opt: BlockedOption, sent: Boolean, enabled: Boolean, onClick: () -> Unit) {
     val colors = ChuColors.current
     val type = ChuTypography.current
-    val borderColor = when {
-        sent -> colors.success
-        opt.selected -> colors.accent.copy(alpha = 0.6f)
-        else -> colors.border
-    }
+    // Không tô ô con trỏ terminal đang đứng (opt.selected): trên máy thật viền vàng nhìn như
+    // "đã chọn" dù chưa chạm (user 21/9). Chỉ ô ĐÃ GỬI mới đổi xanh; cờ selected vẫn giữ
+    // trong model vì qsrv cần nó để điều hướng ←/→ ↑/↓.
+    val borderColor = if (sent) colors.success else colors.border
     val desc = opt.desc.ifBlank { if (opt.opensComposer) "type in the box below" else "" }
     Row(
         Modifier
