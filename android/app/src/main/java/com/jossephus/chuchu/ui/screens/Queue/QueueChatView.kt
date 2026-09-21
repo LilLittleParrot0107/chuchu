@@ -34,6 +34,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.jossephus.chuchu.ui.components.ChuText
+import com.jossephus.chuchu.ui.components.noRippleClickable
 import com.jossephus.chuchu.ui.components.MiniMarkdownText
 import com.jossephus.chuchu.ui.components.LinkifiedText
 import com.jossephus.chuchu.ui.theme.AgentKind
@@ -112,7 +113,7 @@ internal fun QueueChatView(
                                 "load $CHAT_OLDER_LABEL older messages",
                                 style = type.labelSmall,
                                 color = colors.accent,
-                                modifier = Modifier.clickable(onClick = onLoadOlder).padding(6.dp),
+                                modifier = Modifier.noRippleClickable(onClick = onLoadOlder).padding(6.dp),
                             )
                             else -> ChuText("start of chat", style = type.labelSmall, color = colors.textMuted)
                         }
@@ -228,7 +229,7 @@ internal fun ParasFold(key: String, paras: List<String>, textSize: TextUnit, ton
         text = if (open) "▴ ${paras.size} earlier" else "· ${paras.size} earlier ▾",
         style = type.labelSmall,
         color = colors.textMuted,
-        modifier = Modifier.clickable { open = !open }.padding(vertical = 2.dp),
+        modifier = Modifier.noRippleClickable { open = !open }.padding(vertical = 2.dp),
     )
     if (open) paras.forEach { MiniMarkdownText(it, fontSize = textSize, tone = tone) }
 }
@@ -250,7 +251,7 @@ private fun ToolRow(m: ChatMessage, tone: ChatTone?) {
             .fillMaxWidth()
             .padding(start = 26.dp)
             .then(if (open) Modifier.border(1.dp, colors.border).background(colors.surfaceVariant).padding(6.dp) else Modifier)
-            .clickable(enabled = canOpen) { open = !open },
+            .noRippleClickable(enabled = canOpen) { open = !open },
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             ChuText(if (m.err) "└ ⚙ ✕ " else "└ ⚙ ✓ ", style = type.labelSmall, color = if (m.err) colors.error else (tone?.meta ?: colors.textMuted))

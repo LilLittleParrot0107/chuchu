@@ -17,10 +17,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -57,8 +62,35 @@ fun DbtopScreen(
     // Tong debt chi phu thuoc snapshot — dung cong lai moi lan man recompose
     // (doi tab, chon row, xoay che do tien deu recompose ca screen).
     val totalDebt = remember(ui.state) { ui.state.rows.sumOf { it.debt ?: 0.0 } }
+    val views = remember { DbtopView.entries }
+    val pagerState = rememberPagerState(initialPage = ui.selectedView.ordinal) { views.size }
+    val coroutineScope = rememberCoroutineScope()
 
-    BackHandler(onBack = onClose)
+    // Đồng bộ khi người dùng vuốt xong sang trang khác (settled)
+    LaunchedEffect(pagerState.settledPage) {
+        val target = views[pagerState.settledPage]
+        if (ui.selectedView != target) {
+            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            viewModel.selectView(target)
+        }
+    }
+
+    // Đồng bộ khi ViewModel đổi view từ nguồn ngoài (vd: banner cảnh báo rủi ro)
+    LaunchedEffect(ui.selectedView) {
+        if (pagerState.currentPage != ui.selectedView.ordinal) {
+            pagerState.animateScrollToPage(ui.selectedView.ordinal)
+        }
+    }
+
+    BackHandler {
+        if (pagerState.currentPage != 0) {
+            coroutineScope.launch {
+                pagerState.animateScrollToPage(0)
+            }
+        } else {
+            onClose()
+        }
+    }
     LifecycleResumeEffect(Unit) {
         viewModel.startPolling()
         onPauseOrDispose { viewModel.stopPolling() }
@@ -118,120 +150,114 @@ fun DbtopScreen(
                 },
             )
             DashboardViewBand(
-                selected = ui.selectedView,
+                selected = views[pagerState.currentPage],
                 onSelect = { nextView ->
                     haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                     viewModel.selectView(nextView)
+                    coroutineScope.launch {
+                        pagerState.animateScrollToPage(nextView.ordinal)
+                    }
                 },
             )
 
-            // Band "POSITIONS · 10 ITEMS" duoi tab da bo han (user 28/8:
-            // "vo gia tri") — tab band tu noi ta dang o dau, so item khong
-            // giup quyet dinh gi.
-            if (wide && ui.selectedView == DbtopView.POSITIONS) {
-                // Layout Master-Detail tối ưu cho màn hình gập mở rộng của Vivo X Fold 5
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .weight(1.1f)
-                            .fillMaxHeight(),
-                    ) {
-                        PositionsView(
-                            rows = ui.state.rows,
-                            selectedKey = ui.selectedPositionKey,
-                            showYield = currentPerDay != null,
-                            nowSec = nowSec,
-                            onSelect = { row ->
-                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                viewModel.togglePosition(row.positionKey())
-                            },
-                        )
-                    }
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight()
-                            .background(colors.surface)
-                            .border(1.dp, colors.border),
-                    ) {
-                        if (selectedRow != null) {
-                            PositionDetailPane(
-                                row = selectedRow,
-                                showYield = currentPerDay != null && (selectedRow.expiry == null || selectedRow.expiry > nowSec),
-                                onClose = { viewModel.togglePosition(selectedRow.positionKey()) },
-                                // Man gap: cot phai cao full man — bo tran 280dp
-                                // (tran do danh cho pane inline man hep ngay xua),
-                                // dai thong tin trai het chieu doc, khoi cuon.
-                                maxHeight = androidx.compose.ui.unit.Dp.Infinity,
-                            )
+            // HorizontalPager: vuốt trái/phải di chuyển mượt mà giữa các tab POS, WATCH, CHART, SPEND
+            // Không compose sẵn trang kề: CHART vẽ canvas, compose ngầm là tốn công vô ích.
+            HorizontalPager(
+                state = pagerState,
+                key = { views[it] },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+            ) { page ->
+                when (views[page]) {
+                    DbtopView.POSITIONS -> {
+                        if (wide) {
+                            // Layout Master-Detail tối ưu cho màn hình gập mở rộng của Vivo X Fold 5
+                            Row(
+                                modifier = Modifier.fillMaxSize(),
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1.1f)
+                                        .fillMaxHeight(),
+                                ) {
+                                    PositionsView(
+                                        rows = ui.state.rows,
+                                        selectedKey = ui.selectedPositionKey,
+                                        showYield = currentPerDay != null,
+                                        nowSec = nowSec,
+                                        onSelect = { row ->
+                                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            viewModel.togglePosition(row.positionKey())
+                                        },
+                                    )
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight()
+                                        .background(colors.surface)
+                                        .border(1.dp, colors.border),
+                                ) {
+                                    if (selectedRow != null) {
+                                        PositionDetailPane(
+                                            row = selectedRow,
+                                            showYield = currentPerDay != null && (selectedRow.expiry == null || selectedRow.expiry > nowSec),
+                                            onClose = { viewModel.togglePosition(selectedRow.positionKey()) },
+                                            maxHeight = androidx.compose.ui.unit.Dp.Infinity,
+                                        )
+                                    } else {
+                                        YieldInsightPane(
+                                            state = ui.state,
+                                            currentPerDay = currentPerDay,
+                                        )
+                                    }
+                                }
+                            }
                         } else {
-                            YieldInsightPane(
-                                state = ui.state,
-                                currentPerDay = currentPerDay,
+                            PositionsView(
+                                rows = ui.state.rows,
+                                selectedKey = ui.selectedPositionKey,
+                                showYield = currentPerDay != null,
+                                nowSec = nowSec,
+                                onSelect = { row ->
+                                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    viewModel.togglePosition(row.positionKey())
+                                },
                             )
                         }
                     }
+                    DbtopView.WATCHLIST -> WatchlistView(
+                        items = watchlistItems,
+                    )
+                    DbtopView.CHARTS -> ChartsView(
+                        netWorth = ui.state.netWorth,
+                        currentPerDay = currentPerDay,
+                        curve = ui.state.curve,
+                        daily = ui.state.daily,
+                        spending = ui.spending,
+                        spendByDay = ui.spending?.byDay ?: emptyMap(),
+                        cap = ui.state.cap.takeIf { it > 0 } ?: ui.state.rows.sumOf { it.cap }.takeIf { it > 0 } ?: ui.state.netWorth,
+                        apr = ui.state.apr,
+                    )
+                    DbtopView.SPENDING -> SpendingView(
+                        spending = ui.spending,
+                        moneyDisplay = ui.moneyDisplay,
+                    )
                 }
-            } else {
-                // Layout chuẩn cho màn hình ngoài / màn hình hẹp
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                ) {
-                    when (ui.selectedView) {
-                        DbtopView.CHARTS -> ChartsView(
-                            netWorth = ui.state.netWorth,
-                            currentPerDay = currentPerDay,
-                            curve = ui.state.curve,
-                            daily = ui.state.daily,
-                            spending = ui.spending,
-                            spendByDay = ui.spending?.byDay ?: emptyMap(),
-                            cap = ui.state.cap.takeIf { it > 0 } ?: ui.state.rows.sumOf { it.cap }.takeIf { it > 0 } ?: ui.state.netWorth,
-                            apr = ui.state.apr,
-                        )
-                        DbtopView.WATCHLIST -> WatchlistView(
-                            items = watchlistItems,
-                        )
-                        DbtopView.SPENDING -> SpendingView(
-                            spending = ui.spending,
-                            moneyDisplay = ui.moneyDisplay,
-                        )
-                        DbtopView.POSITIONS -> PositionsView(
-                            rows = ui.state.rows,
-                            selectedKey = ui.selectedPositionKey,
-                            showYield = currentPerDay != null,
-                            nowSec = nowSec,
-                            onSelect = { row ->
-                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                viewModel.togglePosition(row.positionKey())
-                            },
-                        )
-                    }
-                }
+            }
 
-                // Man hep: detail la BOTTOM SHEET (user doi 27/8 tu popup giua
-                // man): van scrim mo + tap ra ngoai de dong, nhung khung nam
-                // sat day — tay voi toi de hon va hop thao tac vuot.
-                if (ui.selectedView == DbtopView.POSITIONS) {
-                    selectedRow?.let { row ->
-                        val dismiss = { viewModel.togglePosition(row.positionKey()) }
-                        // Do inset navbar O TANG MAN HINH (composition nay inset
-                        // luon dung — ca man dang ne navbar bang no) roi truyen
-                        // dp cung vao sheet: inset doc BEN TRONG cua so Dialog
-                        // tra 0 tren may that, da lam sheet lem 2 lan (26-27/8).
-                        com.jossephus.chuchu.ui.components.KohiBottomSheet(onDismiss = dismiss) {
-                            PositionDetailPane(
-                                row = row,
-                                showYield = currentPerDay != null && (row.expiry == null || row.expiry > nowSec),
-                                onClose = dismiss,
-                                maxHeight = 560.dp,
-                            )
-                        }
+            // Màn hẹp: detail là BOTTOM SHEET (user đòi 27/8 từ popup giữa màn)
+            if (!wide && ui.selectedView == DbtopView.POSITIONS) {
+                selectedRow?.let { row ->
+                    val dismiss = { viewModel.togglePosition(row.positionKey()) }
+                    com.jossephus.chuchu.ui.components.KohiBottomSheet(onDismiss = dismiss) {
+                        PositionDetailPane(
+                            row = row,
+                            showYield = currentPerDay != null && (row.expiry == null || row.expiry > nowSec),
+                            onClose = dismiss,
+                            maxHeight = 560.dp,
+                        )
                     }
                 }
             }

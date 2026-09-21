@@ -1,7 +1,11 @@
 package com.jossephus.chuchu.ui
 
+import android.app.Activity
 import android.app.Application
+import android.content.Context
+import android.content.ContextWrapper
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -64,12 +68,32 @@ private val MAIN_TAB_ROUTES = setOf("servers", "web", "dashboard", "queue")
 private fun sessionQueueRoute(pane: String?): String =
     if (pane != null) "session-queue?pane=${Uri.encode(pane)}" else "session-queue"
 
+private fun Context.findActivity(): Activity? {
+    var ctx = this
+    while (ctx is ContextWrapper) {
+        if (ctx is Activity) return ctx
+        ctx = ctx.baseContext
+    }
+    return null
+}
+
 @Composable
 fun ApplicationNavController() {
     val navController = rememberNavController()
     val context = LocalContext.current
     val application = context.applicationContext as Application
     val lifecycleOwner = LocalLifecycleOwner.current
+
+    // Các tab chính (Servers, Files, Dashboard, Queue) là ngang hàng:
+    // Back từ gốc của bất kỳ tab nào đều thoát app trực tiếp, không nhảy vòng về Servers.
+    val onExitApp: () -> Unit = {
+        val activity = context.findActivity()
+        if (activity != null) {
+            if (!activity.moveTaskToBack(true)) {
+                activity.finish()
+            }
+        }
+    }
     var appUnlocked by rememberSaveable { mutableStateOf(false) }
     var unlockPromptRequested by rememberSaveable { mutableStateOf(false) }
     var appLockBlockedUntilToggle by rememberSaveable { mutableStateOf(false) }
@@ -252,6 +276,7 @@ fun ApplicationNavController() {
             },
         ) {
         composable("servers") {
+            BackHandler(onBack = onExitApp)
             val vm: ServerListViewModel = viewModel(factory = ServerListViewModel.factory(application))
             val settingsRepo = SettingsRepository.getInstance(application)
             val requireAuthOnConnect by settingsRepo.requireAuthOnConnect.collectAsStateWithLifecycle()
@@ -305,7 +330,7 @@ fun ApplicationNavController() {
         }
         composable("dashboard") {
             DbtopScreen(
-                onClose = { navController.popBackStack() },
+                onClose = onExitApp,
             )
         }
         composable(
@@ -319,7 +344,7 @@ fun ApplicationNavController() {
             QueueDestination(
                 sharedQueueVm = sharedQueueVm,
                 initialPane = backStackEntry.arguments?.getString("pane"),
-                onBack = { navController.popBackStack() },
+                onBack = onExitApp,
             )
         }
 
@@ -345,7 +370,7 @@ fun ApplicationNavController() {
             val webUrl by settingsRepo.webPortalUrl.collectAsStateWithLifecycle()
             com.jossephus.chuchu.ui.screens.Web.WebPortalScreen(
                 url = webUrl,
-                onClose = { navController.popBackStack() },
+                onClose = onExitApp,
             )
         }
         composable("settings") {
@@ -516,6 +541,7 @@ private fun QueueDestination(
         onMachineVisible = sharedQueueVm::setMachinePolling,
         onUsageVisible = sharedQueueVm::setQuotaWanted,
         onRefreshUsage = sharedQueueVm::requestQuotaRefresh,
+        onSwitchAgyAccount = sharedQueueVm::switchAgyAccount,
         chat = sharedQueueVm.chat.collectAsStateWithLifecycle().value,
         chatSeen = sharedQueueVm.chatSeen.collectAsStateWithLifecycle().value,
         onOpenChat = sharedQueueVm::openChat,

@@ -21,6 +21,10 @@ import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -95,6 +99,7 @@ fun QueueScreen(
     onMachineVisible: (Boolean) -> Unit = {},
     onUsageVisible: (Boolean) -> Unit = {},
     onRefreshUsage: () -> Unit = {},
+    onSwitchAgyAccount: (String) -> Unit = {},
     // Màn CHAT của agent (16/9): xem transcript Claude Code ngay trong Queue.
     chat: ChatUiState = ChatUiState(),
     chatSeen: Map<String, String> = emptyMap(),
@@ -129,28 +134,90 @@ fun QueueScreen(
     // Khai báo sớm vì BackHandler bên dưới cần bật mode/đóng bảng khi đóng chat.
     var mode by rememberSaveable { mutableStateOf(QueueMode.Timeline) }
     var tasksOpen by rememberSaveable { mutableStateOf(false) }
-    // Back khi đang mở chat = về Queue, không thoát màn.
+
+    // HorizontalPager: vuốt trái/phải siêu mượt giữa TIMELINE ↔ CONVERSATIONS (đồng bộ Dashboard)
+    val pagerState = rememberPagerState(
+        initialPage = if (mode == QueueMode.Threads) 1 else 0,
+        pageCount = { 2 },
+    )
+    val pagerScope = rememberCoroutineScope()
+    val haptics = LocalHapticFeedback.current
+
+    LaunchedEffect(pagerState.currentPage) {
+        val targetMode = if (pagerState.currentPage == 1) QueueMode.Threads else QueueMode.Timeline
+        if (targetMode != mode) {
+            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            tasksOpen = false
+            mode = targetMode
+        }
+    }
+
+    // Đồng bộ pager theo mode CHỈ KHI pager đang trong composition (chat mở là pager bị thay
+    // bằng màn chat — cuộn một state chưa gắn layout là vô nghĩa). Đóng chat xong effect chạy
+    // lại nhờ key chatOpen, lúc đó mới cuộn tới trang đúng.
+    LaunchedEffect(mode, chatOpen) {
+        if (chatOpen) return@LaunchedEffect
+        val targetPage = if (mode == QueueMode.Threads) 1 else 0
+        if (targetPage != pagerState.currentPage && !pagerState.isScrollInProgress) {
+            pagerState.animateScrollToPage(targetPage)
+        }
+    }
+    var configOpen by remember { mutableStateOf(false) }
+    var setupPromptDismissed by remember { mutableStateOf(false) }
+    // WHY: chi giu ID thay vi object — poller co the cap nhat/xoa task giua luc
+    // dialog mo; resolve lai tu ui.state.tasks moi lan recompose de dialog luon
+    // hien trang thai moi nhat thay vi snapshot dong bang luc mo.
+    var inspectedTaskId by remember { mutableStateOf<Int?>(null) }
+    val inspectedTask = inspectedTaskId?.let { id -> ui.state.tasks.firstOrNull { it.id == id } }
+
+    // Ghi nhớ mode trước khi vào chat để khi back từ chat ra thì về đúng màn đó (mặc định Threads)
+    var modeBeforeChat by rememberSaveable { mutableStateOf(QueueMode.Threads) }
+    // Khoảng lặng nuốt cú back dội (debounce cử chỉ)
     var swallowBackUntil by remember { mutableLongStateOf(0L) }
-    // MỘT handler duy nhất, LUÔN bật khi màn Queue hiện — thay cho hai handler
-    // bật/tắt so le của bản 1.61.8. Bản cũ có khe chết: ngay sau cú back đóng
-    // chat, handler chat đã tắt còn handler nuốt chưa kịp bật (chờ recompose +
-    // LaunchedEffect) — cú back rơi đúng khe đó xuyên thẳng ra NavController →
-    // popBackStack → về home (user báo 16/9 tối, vẫn còn 17/9). Giờ tự quyết
-    // theo [queueBackAction] — logic thuần, có test riêng.
+    // BackHandler điều phối phân cấp chuẩn:
+    // 1. Nuốt cú dội cử chỉ nếu trong cửa sổ debounce.
+    // 2. inspectedTask (TaskDetailDialog) -> đóng dialog.
+    // 3. configOpen -> đóng dialog cấu hình.
+    // 4. chatOpen -> đóng chat, khôi phục modeBeforeChat, kích hoạt debounce window.
+    // 5. tasksOpen -> đóng bảng [TASKS], về lại trang hiện tại.
+    // 6. Đang ở HỘI THOẠI (page 1) -> lùi về DÒNG THỜI GIAN (page 0), KHÔNG thoát app.
+    // 7. Chỉ khi ở DÒNG THỜI GIAN (page 0) và sạch overlay -> mới gọi onBack() (onExitApp / popBackStack).
     BackHandler(enabled = true) {
         val now = System.currentTimeMillis()
-        when (queueBackAction(chatOpen, now, swallowBackUntil)) {
+        val isAtRoot = (pagerState.currentPage == 0 && mode == QueueMode.Timeline)
+        when (queueBackAction(
+            chatOpen = chatOpen,
+            tasksOpen = tasksOpen,
+            configOpen = configOpen,
+            inspectedTask = inspectedTaskId != null,
+            isAtRootPage = isAtRoot,
+            nowMs = now,
+            swallowUntilMs = swallowBackUntil,
+        )) {
             QueueBackAction.CloseChat -> {
                 swallowBackUntil = now + BACK_SWALLOW_MS
-                // Back ra khỏi chat LUÔN đáp xuống HỘI THOẠI (user chốt 17/9): chat được
-                // mở từ danh sách này nên đích quay về tự nhiên là nó, không phải về lại
-                // dòng thời gian rồi mới tìm lại session. Kèm đóng bảng VIỆC — nó đang đè
-                // danh sách hội thoại.
-                mode = QueueMode.Threads
+                mode = modeBeforeChat
                 tasksOpen = false
                 onCloseChat()
             }
-            QueueBackAction.Swallow -> Unit // cú dội của cùng cử chỉ — ở lại Queue
+            QueueBackAction.CloseTasks -> {
+                tasksOpen = false
+            }
+            QueueBackAction.DismissConfig -> {
+                configOpen = false
+                setupPromptDismissed = true
+            }
+            QueueBackAction.DismissTaskDetail -> {
+                inspectedTaskId = null
+            }
+            QueueBackAction.GoToTimeline -> {
+                swallowBackUntil = now + BACK_SWALLOW_MS
+                mode = QueueMode.Timeline
+                pagerScope.launch {
+                    pagerState.animateScrollToPage(0)
+                }
+            }
+            QueueBackAction.Swallow -> Unit
             QueueBackAction.Leave -> onBack()
         }
     }
@@ -179,13 +246,6 @@ fun QueueScreen(
         onDispose { onMachineVisible(false) }
     }
 
-    var configOpen by remember { mutableStateOf(false) }
-    var setupPromptDismissed by remember { mutableStateOf(false) }
-    // WHY: chi giu ID thay vi object — poller co the cap nhat/xoa task giua luc
-    // dialog mo; resolve lai tu ui.state.tasks moi lan recompose de dialog luon
-    // hien trang thai moi nhat thay vi snapshot dong bang luc mo.
-    var inspectedTaskId by remember { mutableStateOf<Int?>(null) }
-    val inspectedTask = inspectedTaskId?.let { id -> ui.state.tasks.firstOrNull { it.id == id } }
     // Composer da cham vao la GIU focus mai; sheet detail la cua so Dialog
     // rieng, dong lai thi cua so app lay lai focus va Android tu dung IME cho
     // o dang focus — "back khoi detail la ban phim doi len" (user 28/8). Xoa
@@ -392,7 +452,15 @@ fun QueueScreen(
                 mode = mode,
                 threadsCount = agents.size,
                 // Đổi chế độ thì đóng bảng VIỆC: hai thứ cùng chiếm thân màn.
-                onSelect = { picked -> tasksOpen = false; mode = picked },
+                onSelect = { picked ->
+                    tasksOpen = false
+                    if (mode != picked) {
+                        mode = picked
+                        pagerScope.launch {
+                            pagerState.animateScrollToPage(if (picked == QueueMode.Threads) 1 else 0)
+                        }
+                    }
+                },
             )
 
             // Bảng VIỆC (lớp cũ): luôn là toàn chuồng — bỏ lọc theo chip khi xoá rail
@@ -405,36 +473,32 @@ fun QueueScreen(
                 )
             }
 
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    // (17/9) Vuốt trái/phải trên thân màn đổi giữa DÒNG THỜI GIAN ↔
-                    // HỘI THOẠI như app chat: vuốt trái = sang HỘI THOẠI, vuốt phải =
-                    // về DÒNG THỜI GIAN. LazyColumn chỉ ăn hướng dọc nên vuốt ngang
-                    // tới được đây; bảng VIỆC mở thì vuốt cũng đổi mode (đóng bảng),
-                    // khớp đúng hành vi chạm nút đổi chế độ.
-                    .pointerInput(Unit) {
-                        var acc = 0f
-                        val threshold = 90.dp.toPx()
-                        detectHorizontalDragGestures(
-                            onDragStart = { acc = 0f },
-                            onDragEnd = {
-                                val next = when {
-                                    acc <= -threshold -> QueueMode.Threads
-                                    acc >= threshold -> QueueMode.Timeline
-                                    else -> null
-                                }
-                                if (next != null && next != mode) {
-                                    tasksOpen = false
-                                    mode = next
-                                }
-                            },
-                        ) { _, dx -> acc += dx }
-                    },
-            ) {
-                when {
-                    tasksOpen -> when {
+            if (tasksOpen) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        // Bảng VIỆC mở thì vuốt ngang cũng đổi mode (đóng bảng)
+                        .pointerInput(Unit) {
+                            var acc = 0f
+                            val threshold = 90.dp.toPx()
+                            detectHorizontalDragGestures(
+                                onDragStart = { acc = 0f },
+                                onDragEnd = {
+                                    val next = when {
+                                        acc <= -threshold -> QueueMode.Threads
+                                        acc >= threshold -> QueueMode.Timeline
+                                        else -> null
+                                    }
+                                    if (next != null) {
+                                        tasksOpen = false
+                                        mode = next
+                                    }
+                                },
+                            ) { _, dx -> acc += dx }
+                        },
+                ) {
+                    when {
                         visibleTasks.isEmpty() && ui.everLoaded -> EmptyQueueInspector(
                             agent = null,
                             scopeLabel = "ALL AGENTS",
@@ -481,27 +545,45 @@ fun QueueScreen(
                             }
                         }
                     }
-                    mode == QueueMode.Timeline -> QueueFeedView(
-                        feed = feed,
-                        onPick = { m ->
-                            // Chạm tin = nhắm phiên đó cho ô gõ ngay dưới (user chốt 17/9):
-                            // ở lại dòng thời gian, gõ request luôn tại chỗ.
-                            selectedPane = m.pane
-                        },
-                        listState = feedListState,
-                        pinned = feedPinned,
-                        onPinnedChange = { feedPinned = it },
-                        anchorKey = feedAnchorKey,
-                        onAnchorChange = { feedAnchorKey = it },
-                    )
-                    else -> QueueConversationList(
-                        agents = agents,
-                        selectedPane = pane,
-                        chatSeen = chatSeen,
-                        // Mở chat cũng nhớ phiên đó làm đích ô gõ khi quay lại (17/9).
-                        onOpenChat = { p -> selectedPane = p; onOpenChat(p) },
-                        onSelect = { p -> selectedPane = p },
-                    )
+                }
+            } else {
+                // HorizontalPager: vuốt trái/phải siêu mượt giữa DÒNG THỜI GIAN ↔ HỘI THOẠI (đồng bộ Dashboard)
+                // Không compose sẵn trang kề (mặc định 0): trang được compose ngay khi bắt đầu
+                // kéo nên vẫn mượt, mà không phải recompose cả hai danh sách mỗi lần state đổi.
+                HorizontalPager(
+                    state = pagerState,
+                    key = { page -> if (page == 0) "timeline" else "threads" },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                ) { page ->
+                    when (page) {
+                        0 -> QueueFeedView(
+                            feed = feed,
+                            onPick = { m ->
+                                // Chạm tin = nhắm phiên đó cho ô gõ ngay dưới (user chốt 17/9):
+                                // ở lại dòng thời gian, gõ request luôn tại chỗ.
+                                selectedPane = m.pane
+                            },
+                            listState = feedListState,
+                            pinned = feedPinned,
+                            onPinnedChange = { feedPinned = it },
+                            anchorKey = feedAnchorKey,
+                            onAnchorChange = { feedAnchorKey = it },
+                        )
+                        1 -> QueueConversationList(
+                            agents = agents,
+                            selectedPane = pane,
+                            chatSeen = chatSeen,
+                            // Mở chat cũng nhớ phiên đó làm đích ô gõ khi quay lại (17/9) và lưu mode trước khi vào chat.
+                            onOpenChat = { p ->
+                                selectedPane = p
+                                modeBeforeChat = mode
+                                onOpenChat(p)
+                            },
+                            onSelect = { p -> selectedPane = p },
+                        )
+                    }
                 }
             }
             }
@@ -516,8 +598,14 @@ fun QueueScreen(
             // vào focus là panel bị khoá vĩnh viễn (bản .28, user báo 4/9).
             // Thứ thật sự tranh chỗ với panel là bàn phím, và chỉ nó.
             val imeUp = WindowInsets.ime.getBottom(LocalDensity.current) > 0
-            MachineStrip(machine, onUsageVisible = onUsageVisible, onRefreshUsage = onRefreshUsage,
-                collapse = imeUp)
+            MachineStrip(
+                machine,
+                onUsageVisible = onUsageVisible,
+                onRefreshUsage = onRefreshUsage,
+                onSwitchAgyAccount = onSwitchAgyAccount,
+                collapse = imeUp,
+                preview = chatOpen,
+            )
 
             // (17/9 revert) Hàng chip ⏳ sát ô gõ đã GỠ — "như cũ" ở đây là KHÔNG có
             // hàng chip nào (pending chỉ còn trong bảng VIỆC); hai dòng cuối transcript
@@ -664,20 +752,44 @@ private fun queueStatusText(ui: QueueUiState): String {
 
 private const val FEEDBACK_TTL_MS = 3_200L
 
-/** Hai chạm vào cùng agent trong khoảng này = mở chat. */
-/** Khoảng lặng nuốt cú back dội ngay sau khi back đóng chat (không xuyên qua Queue). */
-private const val BACK_SWALLOW_MS = 450L
+/** Khoảng lặng nuốt cú back dội ngay sau khi back (debounce tránh double-gesture). */
+private const val BACK_SWALLOW_MS = 300L
 
 /** Việc cần làm với một cú back khi đang ở màn Queue. */
-internal enum class QueueBackAction { CloseChat, Swallow, Leave }
+internal enum class QueueBackAction {
+    DismissTaskDetail,
+    DismissConfig,
+    CloseChat,
+    CloseTasks,
+    GoToTimeline,
+    Leave,
+    Swallow,
+}
 
 /**
- * Luật back của màn Queue, tách khỏi Compose để test được: chat đang mở thì đóng;
- * cú back dội trong [swallowUntilMs] sau khi đóng chat thì nuốt (ở lại Queue);
- * còn lại mới nhường cho nav (popBackStack).
+ * Luật back phân cấp của màn Queue, tách khỏi Compose để test được:
+ * 1. Cú back dội trong [swallowUntilMs] thì nuốt (Swallow).
+ * 2. Đang mở dialog xem task thì đóng dialog (DismissTaskDetail).
+ * 3. Đang mở dialog config thì đóng dialog (DismissConfig).
+ * 4. Đang mở chat thì đóng chat (CloseChat).
+ * 5. Đang mở bảng việc [TASKS] thì đóng bảng (CloseTasks).
+ * 6. Đang ở trang Hội thoại (page 1) thì cuộn về Dòng thời gian (GoToTimeline).
+ * 7. Chỉ khi ở gốc Dòng thời gian (page 0) và không có overlay mới nhường cho nav (Leave).
  */
-internal fun queueBackAction(chatOpen: Boolean, nowMs: Long, swallowUntilMs: Long): QueueBackAction = when {
+internal fun queueBackAction(
+    chatOpen: Boolean,
+    tasksOpen: Boolean = false,
+    configOpen: Boolean = false,
+    inspectedTask: Boolean = false,
+    isAtRootPage: Boolean = true,
+    nowMs: Long = 0L,
+    swallowUntilMs: Long = 0L,
+): QueueBackAction = when {
+    inspectedTask -> QueueBackAction.DismissTaskDetail
+    configOpen -> QueueBackAction.DismissConfig
     chatOpen -> QueueBackAction.CloseChat
     nowMs < swallowUntilMs -> QueueBackAction.Swallow
+    tasksOpen -> QueueBackAction.CloseTasks
+    !isAtRootPage -> QueueBackAction.GoToTimeline
     else -> QueueBackAction.Leave
 }
