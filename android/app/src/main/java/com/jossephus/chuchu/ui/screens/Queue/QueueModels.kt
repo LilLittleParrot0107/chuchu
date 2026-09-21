@@ -93,6 +93,8 @@ data class QueueAgent(
     val preview: String = "",
     /** Giờ ISO UTC của tin cuối (qsrv /state preview_ts); "" = không có. */
     val previewTs: String = "",
+    /** Thư mục làm việc hiện tại (working directory) của session agent. */
+    val cwd: String = "",
 ) {
     /**
      * Thứ tự trên roster — số nhỏ lên trên (user chốt 4/9): thứ cần TAY người
@@ -112,11 +114,15 @@ data class QueueAgent(
 }
 
 /**
- * Sắp theo [QueueAgent.priority], giữ nguyên thứ tự server (= thứ tự herdr)
- * trong cùng một hạng — sortedBy là stable — để hai agent cùng đang chạy không
- * đổi chỗ nhau mỗi lần poll.
+ * Sắp theo [QueueAgent.priority]. Trong nhóm ĐÃ XONG / RẢNH, session có hoạt động gần nhất
+ * (previewTs mới nhất) lên trước (18/9). Nhóm cần duyệt / đang chạy GIỮ thứ tự server
+ * (= thứ tự herdr, sortedWith là stable): agent vừa nói mà nhảy lên đầu thì hàng đảo liên tục
+ * khi nhiều agent cùng chạy — đúng cái đã cố tình tránh từ 4/9.
  */
-fun List<QueueAgent>.byPriority(): List<QueueAgent> = sortedBy { it.priority }
+fun List<QueueAgent>.byPriority(): List<QueueAgent> = sortedWith(
+    compareBy<QueueAgent> { it.priority }
+        .thenByDescending { if (it.priority >= 2) it.previewTs else "" }
+)
 
 data class QueueBanner(
     val tone: QueueTone,
@@ -263,6 +269,7 @@ data class QueueState(
             agent = o.optString("agent").takeIf { it.isNotBlank() && it != "null" },
             preview = o.optString("preview"),
             previewTs = o.optString("preview_ts"),
+            cwd = o.optString("cwd"),
         )
 
         private fun parseTask(o: JSONObject) = QueueTask(

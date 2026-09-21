@@ -1,6 +1,7 @@
 package com.jossephus.chuchu.ui.screens.Queue
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -212,6 +213,24 @@ class QueueModelsTest {
     }
 
     @Test
+    fun `session vua xong hoac co previewTs moi nhat xep ngay duoi dang chay`() {
+        val s = QueueState.parse("""{"agents":[
+            {"pane":"wM:p3","name":"ancient-idle","label":"idle","preview_ts":"2026-09-16T07:58:52Z"},
+            {"pane":"wD:pP","name":"working-agent","label":"working","preview_ts":"2026-09-17T20:04:02Z"},
+            {"pane":"wM:p2","name":"just-finished","label":"done","preview_ts":"2026-09-17T20:05:00Z"},
+            {"pane":"wH:pF","name":"recent-idle","label":"idle","preview_ts":"2026-09-17T20:00:00Z"}
+        ],"tasks":[]}""")
+        // working đứng đầu (wD:pP) -> vừa xong đứng ngay dưới (wM:p2) -> idle mới hơn (wH:pF) -> idle cũ (wM:p3)
+        assertEquals(listOf("wD:pP", "wM:p2", "wH:pF", "wM:p3"), s.agents.map { it.pane })
+        // Nhóm ĐANG CHẠY giữ thứ tự server dù previewTs khác nhau — không đảo hàng khi agent nói.
+        val w = QueueState.parse("""{"agents":[
+            {"pane":"a","label":"working","preview_ts":"2026-09-17T20:00:00Z"},
+            {"pane":"b","label":"working","preview_ts":"2026-09-17T21:00:00Z"}
+        ],"tasks":[]}""")
+        assertEquals(listOf("a", "b"), w.agents.map { it.pane })
+    }
+
+    @Test
     fun `agent without a unique pane is omitted`() {
         val state = QueueState.parse(
             """{"agents":[
@@ -222,6 +241,14 @@ class QueueModelsTest {
         )
 
         assertEquals(listOf("first"), state.agents.map(QueueAgent::name))
+    }
+
+    @Test
+    fun `doc duoc cwd cua agent`() {
+        val state = QueueState.parse(
+            """{"agents":[{"pane":"w3:p1","name":"agy-1","cwd":"/home/a/aividstudio"}]}""",
+        )
+        assertEquals("/home/a/aividstudio", state.agents.single().cwd)
     }
 
     @Test
@@ -242,6 +269,35 @@ class QueueModelsTest {
         val normalized = normalizeQueueFeedbackText("a".repeat(200), "fallback")
         assertEquals(160, normalized.length)
         assertTrue(normalized.endsWith("…"))
+    }
+
+    @Test
+    fun `tin ngan tren timeline khong bi thu gon`() {
+        val short = "Hoàn thành kiểm tra đơn vị."
+        assertEquals(false, shouldCollapseFeed(short))
+        assertEquals(short, truncateFeedText(short))
+    }
+
+    @Test
+    fun `tin vuot qua 260 ky tu bi danh dau thu gon va cat tai ranh tu`() {
+        val long = "Từ những ngày đầu phát triển Chuchu, nhóm luôn hướng đến một trải nghiệm terminal client mượt mà, tối giản nhưng mạnh mẽ trên thiết bị di động. Các tính năng từ hội thoại, hàng đợi cho đến dòng thời gian đều được thiết kế tỉ mỉ để lập trình viên có thể theo dõi và tương tác mọi lúc mọi nơi."
+        assertTrue(long.length > FEED_MAX_CHARS)
+        assertTrue(shouldCollapseFeed(long))
+        val truncated = truncateFeedText(long)
+        assertTrue(truncated.length <= FEED_MAX_CHARS + 1)
+        assertTrue(truncated.endsWith("…"))
+        assertFalse(truncated.contains("  "))
+    }
+
+    @Test
+    fun `tin vuot qua 5 dong bi thu gon ve 5 dong kem dau ba cham`() {
+        val linesText = (1..10).joinToString("\n") { "Dòng thứ $it" }
+        assertTrue(shouldCollapseFeed(linesText))
+        val truncated = truncateFeedText(linesText)
+        assertEquals(5, truncated.lines().size)
+        assertTrue(truncated.endsWith("…"))
+        assertTrue(truncated.startsWith("Dòng thứ 1"))
+        assertFalse(truncated.contains("Dòng thứ 6"))
     }
 
     @Test

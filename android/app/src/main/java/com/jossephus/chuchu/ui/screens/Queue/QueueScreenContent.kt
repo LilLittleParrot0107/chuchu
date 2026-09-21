@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.sp
 import com.jossephus.chuchu.ui.components.ChuButton
 import com.jossephus.chuchu.ui.components.ChuButtonVariant
 import com.jossephus.chuchu.ui.components.ChuText
+import com.jossephus.chuchu.ui.components.noRippleClickable
 import com.jossephus.chuchu.ui.components.KohiCompactAction
 import com.jossephus.chuchu.ui.components.KohiSectionBand
 import com.jossephus.chuchu.ui.components.KohiSelectableRow
@@ -72,6 +73,57 @@ internal const val ALL_AGENTS = "ALL"
  */
 internal fun stripPreviewMarkdown(text: String): String =
     text.replace("**", "").replace("`", "").replace('\n', ' ').trim()
+
+/**
+ * Giới hạn hiển thị tin trên DÒNG THỜI GIAN (user đòi 18/9): tin dài chỉ hiện
+ * tối đa ~260 ký tự hoặc 5 dòng, có nút "· xem thêm ▾" / "▴ thu gọn".
+ * TUYỆT ĐỐI KHÔNG bung 100% hay xoá bỏ [ParasFold] — chỉ thu gọn tin nhắn cuối
+ * (m.text), các tin/đoạn trước (m.paras) vẫn giữ gập độc lập.
+ */
+internal const val FEED_MAX_CHARS = 260
+internal const val FEED_MAX_LINES = 5
+
+internal fun shouldCollapseFeed(
+    text: String,
+    maxChars: Int = FEED_MAX_CHARS,
+    maxLines: Int = FEED_MAX_LINES,
+): Boolean {
+    if (text.length > maxChars) return true
+    var lines = 1
+    for (i in text.indices) {
+        if (text[i] == '\n') {
+            lines++
+            if (lines > maxLines) return true
+        }
+    }
+    return false
+}
+
+internal fun truncateFeedText(
+    text: String,
+    maxChars: Int = FEED_MAX_CHARS,
+    maxLines: Int = FEED_MAX_LINES,
+): String {
+    if (!shouldCollapseFeed(text, maxChars, maxLines)) return text
+    val rawLines = text.lines()
+    val limitedByLines = if (rawLines.size > maxLines) {
+        rawLines.take(maxLines).joinToString("\n")
+    } else {
+        text
+    }
+    val cut = if (limitedByLines.length > maxChars) {
+        val sub = limitedByLines.substring(0, maxChars)
+        val lastWs = sub.lastIndexOfAny(charArrayOf(' ', '\n', '\t'))
+        if (lastWs >= maxChars - 40) {
+            sub.substring(0, lastWs)
+        } else {
+            sub
+        }
+    } else {
+        limitedByLines
+    }
+    return cut.trimEnd().trimEnd('.', ',', ';', ':', '!', '?', '-', '`', '*') + "…"
+}
 
 /**
  * Dot chi the hien RUNTIME STATUS cua agent — tuyet doi khong dung de bieu thi
@@ -145,7 +197,7 @@ private fun QueueModeTab(
     val colors = ChuColors.current
     val type = ChuTypography.current
     Row(
-        modifier = Modifier.clickable(onClick = onClick),
+        modifier = Modifier.noRippleClickable(onClick = onClick),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // Tab to hơn labelSmall (user chốt 17/9: "tăng kích thước timeline vs
@@ -276,11 +328,14 @@ private fun FeedRow(m: FeedMessage, onPick: (FeedMessage) -> Unit, bodySize: Tex
     val type = ChuTypography.current
     val kind = AgentKind.of(m.agent)
     val tone = remember(kind) { kind.chatTone() }
+    val needsCollapse = remember(m.text) { shouldCollapseFeed(m.text) }
+    var expanded by remember(m.key) { mutableStateOf(false) }
+    val displayText = if (needsCollapse && !expanded) truncateFeedText(m.text) else m.text
     // ② + tint (chốt 18/9): TEM NGOÀI KHỐI + khối tô màu không viền. Agent = tem
     // "● tên · [chấm status] giờ" phía trên, thân 10% màu agent; anh = khối accent
     // 12% lề phải, không tem, giờ trong khối. Timeline giữ tem tên vì trộn phiên.
     when (m.role) {
-        "user" -> Column(Modifier.fillMaxWidth().clickable { onPick(m) }) {
+        "user" -> Column(Modifier.fillMaxWidth().noRippleClickable { onPick(m) }) {
             // Tem người nhận (user đòi 18/9 — timeline trộn phiên, tin của anh phải
             // nêu GỬI ĐẾN đâu): lề phải, cùng công thức tem agent "● tên · giờ",
             // màu theo LOẠI agent của phiên nhận.
@@ -303,10 +358,21 @@ private fun FeedRow(m: FeedMessage, onPick: (FeedMessage) -> Unit, bodySize: Tex
                 ChuText(chatClock(m.ts), style = type.labelSmall, color = colors.textMuted)
             }
             TintBox(fillColor = colors.accent.copy(alpha = 0.12f), fraction = 0.88f, alignEnd = true) {
-                LinkifiedText(m.text, style = type.body, color = colors.textPrimary, modifier = Modifier.fillMaxWidth())
+                LinkifiedText(displayText, style = type.body, color = colors.textPrimary, modifier = Modifier.fillMaxWidth())
+                if (needsCollapse) {
+                    ChuText(
+                        text = if (expanded) "▴ show less" else "· show more ▾",
+                        style = type.labelSmall,
+                        color = colors.textMuted,
+                        modifier = Modifier
+                            .align(Alignment.End)
+                            .noRippleClickable { expanded = !expanded }
+                            .padding(top = 4.dp, bottom = 2.dp),
+                    )
+                }
             }
         }
-        else -> Column(Modifier.fillMaxWidth().clickable { onPick(m) }) {
+        else -> Column(Modifier.fillMaxWidth().noRippleClickable { onPick(m) }) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.padding(bottom = 3.dp),
@@ -331,7 +397,17 @@ private fun FeedRow(m: FeedMessage, onPick: (FeedMessage) -> Unit, bodySize: Tex
             }
             TintBox(fillColor = kind.rosterColor().copy(alpha = 0.10f), fraction = 0.96f) {
                 ParasFold(m.key, m.paras, bodySize, tone)
-                MiniMarkdownText(m.text, fontSize = bodySize, tone = tone)
+                MiniMarkdownText(displayText, fontSize = bodySize, tone = tone)
+                if (needsCollapse) {
+                    ChuText(
+                        text = if (expanded) "▴ show less" else "· show more ▾",
+                        style = type.labelSmall,
+                        color = colors.textMuted,
+                        modifier = Modifier
+                            .noRippleClickable { expanded = !expanded }
+                            .padding(top = 4.dp, bottom = 2.dp),
+                    )
+                }
             }
         }
     }
@@ -360,81 +436,71 @@ internal fun QueueConversationList(
     }
     LazyColumn(
         modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(vertical = 2.dp),
+        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         items(agents, key = QueueAgent::pane) { agent ->
             val hasNew = agent.chatRev != null && agent.chatRev != chatSeen[agent.pane]
-            // ② (chốt 18/9): hàng PHẲNG không hộp — tem "glyph trạng thái + tên
-            // (màu roster)" + giờ/chấm chưa đọc dạt phải, preview một dòng underneath,
-            // hairline ngăn cách. Không tô gì cho session đang mở (chốt 17/9).
+            // ③ Gutter Rail + Tint Strip (chốt 18/9): Cột gutter 22dp căn thẳng glyph;
+            // thân phải là TintStrip bo 4dp (10% màu agent) đồng bộ với TintBox của Chat.
+            // TUYỆT ĐỐI KHÔNG làm sáng vàng cho session đã truy cập và back ra.
             val kColor = AgentKind.of(agent.agent).rosterColor()
-            Column(
-                Modifier
+            Row(
+                modifier = Modifier
                     .fillMaxWidth()
-                    .clickable {
+                    .noRippleClickable {
                         // Có transcript thì chạm là mở thread; chưa có thì chỉ chọn (ô gõ nhắm vào nó).
                         if (agent.chatRev != null) onOpenChat(agent.pane) else onSelect(agent.pane)
-                    }
-                    .padding(start = 10.dp, end = 10.dp, top = 9.dp, bottom = 9.dp)
-                    .drawBehind {
-                        val stroke = 1.dp.toPx()
-                        drawLine(
-                            // Fix 18/9 (soi screenshot): hairline .4 thành "vây" khi
-                            // ngồi cạnh hàng hai dòng — hạ xuống nét mờ vừa đủ phân ô.
-                            colors.border.copy(alpha = 0.22f),
-                            Offset(0f, size.height - stroke / 2f),
-                            Offset(size.width, size.height - stroke / 2f),
-                            stroke,
-                        )
                     },
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    // MỘT glyph duy nhất cho trạng thái: ● chạy · ○ rảnh · ▲ kẹt.
+                // Rãnh Gutter 22dp: căn giữa glyph runtime (●/○/▲), mắt quét thẳng trục
+                ChuText(
+                    runtimeDot(agent),
+                    style = type.labelSmall.copy(textAlign = TextAlign.Center),
+                    color = sessionStatusColor(agent),
+                    modifier = Modifier.width(22.dp),
+                )
+                // Thân TintStrip: Khối bo 4dp không viền, nền 10% màu agent (khớp TintBox của Chat)
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .background(kColor.copy(alpha = 0.10f), BoxShape)
+                        .padding(horizontal = 10.dp, vertical = 7.dp),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        ChuText(
+                            agent.name,
+                            style = type.label.copy(fontWeight = FontWeight.Bold),
+                            color = kColor,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (hasNew) {
+                            Spacer(Modifier.width(6.dp))
+                            ChuText("●", style = type.labelSmall.copy(fontSize = 7.5.sp), color = colors.accent)
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        ChuText(
+                            chatWhen(agent.previewTs),
+                            style = type.labelSmall.copy(textAlign = TextAlign.End),
+                            color = colors.textSecondary,
+                            maxLines = 1,
+                        )
+                    }
+                    val preview = agent.preview.ifBlank {
+                        if (agent.chatRev != null) "no messages yet" else "no transcript"
+                    }
                     ChuText(
-                        runtimeDot(agent),
-                        style = type.labelSmall.copy(textAlign = TextAlign.Center),
-                        color = sessionStatusColor(agent),
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    ChuText(
-                        agent.name,
-                        style = type.label.copy(fontWeight = FontWeight.Bold),
-                        color = kColor,
+                        stripPreviewMarkdown(preview),
+                        style = type.bodySmall,
+                        color = colors.textPrimary.copy(alpha = 0.88f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f),
-                    )
-                    // Fix 18/9 (soi screenshot): unread dạt vào CẠNH TÊN — chấm vàng
-                    // đứng trước giờ làm mép phải rối như nhiễu sóng.
-                    if (hasNew) {
-                        Spacer(Modifier.width(6.dp))
-                        ChuText("●", style = type.labelSmall.copy(fontSize = 8.sp), color = colors.accent)
-                    }
-                    Spacer(Modifier.width(8.dp))
-                    // Giờ vào CỘT CỐ ĐỊNH 42dp căn phải: tên cắt ngắn dài khác nhau mà
-                    // giờ trôi theo thì cột phải không thành nhịp (fix 18/9).
-                    ChuText(
-                        chatWhen(agent.previewTs),
-                        style = type.labelSmall.copy(textAlign = TextAlign.End),
-                        // textMuted quá chìm trên nền tím (fix tương phản 18/9).
-                        color = colors.textSecondary,
-                        maxLines = 1,
-                        modifier = Modifier.width(42.dp),
+                        modifier = Modifier.padding(top = 2.dp),
                     )
                 }
-                val preview = agent.preview.ifBlank {
-                    if (agent.chatRev != null) "no messages yet" else "no transcript"
-                }
-                ChuText(
-                    stripPreviewMarkdown(preview),
-                    style = type.bodySmall,
-                    // Preview là nội dung chính của hàng — textSecondary bị nhạt nhoà
-                    // so với tên (fix tương phản 18/9).
-                    color = colors.textPrimary.copy(alpha = 0.88f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
             }
         }
     }
@@ -531,6 +597,9 @@ internal fun EmptyQueueInspector(
             )
         }
         InspectorRow("STATUS", agent?.label?.uppercase() ?: "—", colors.textSecondary)
+        if (agent != null && agent.cwd.isNotBlank()) {
+            InspectorRow("CWD", agent.cwd.replace("/home/a", "~"), colors.textSecondary)
+        }
         InspectorRow(
             "QUEUE",
             "$pending QUEUED · $done DONE",
