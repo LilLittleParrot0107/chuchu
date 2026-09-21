@@ -30,7 +30,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.jossephus.chuchu.ui.components.ChuText
@@ -71,11 +79,14 @@ internal fun QueueChatView(
     /** Loại agent của phiên — tin của agent tô màu như terminal từng tool (user chốt 16/9, 2B). */
     kind: AgentKind = AgentKind.OTHER,
     listState: LazyListState = rememberLazyListState(),
+    /** Thẻ NEEDS YOU (21/9): chạm một lựa chọn của prompt đang chặn pane. */
+    onAnswerBlocked: (BlockedOption) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val colors = ChuColors.current
     val type = ChuTypography.current
     val tone = remember(kind) { kind.chatTone() }
+    val blocked = chat.blocked
     val textSize = if (fontSizeSp > 0f) fontSizeSp.sp else type.body.fontSize
     // Như terminal: cỡ chữ Settings, dãn dòng tự nhiên của font, không thêm leading.
     val bodyStyle = type.body.copy(fontSize = textSize, lineHeight = TextUnit.Unspecified)
@@ -90,15 +101,17 @@ internal fun QueueChatView(
     }
     // Bản gộp giữ key ĐẦU của lượt để không đổi chỗ, nên phải theo cả ts (đổi mỗi
     // đoạn mới về) thì tin mới của đúng lượt cuối vẫn kéo được đáy đang ghim.
-    LaunchedEffect(messages.lastOrNull()?.key, messages.lastOrNull()?.ts, messages.size) {
-        if (messages.isNotEmpty() && pinnedToBottom) listState.scrollToItem(messages.size)
+    // Thẻ NEEDS YOU là item cuối (sau tin cuối) — hiện ra cũng kéo đáy như một tin mới.
+    val lastIndex = messages.size + (if (blocked != null) 1 else 0)
+    LaunchedEffect(messages.lastOrNull()?.key, messages.lastOrNull()?.ts, messages.size, blocked?.signature) {
+        if (lastIndex > 0 && pinnedToBottom) listState.scrollToItem(lastIndex)
     }
 
     Box(modifier = modifier.fillMaxSize()) {
         when {
             chat.loading && messages.isEmpty() -> Center("LOADING CHAT…")
             chat.error != null && messages.isEmpty() -> Center("▌ ${chat.error}")
-            messages.isEmpty() -> Center("no messages yet")
+            messages.isEmpty() && blocked == null -> Center("no messages yet")
             else -> LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize(),
@@ -128,9 +141,144 @@ internal fun QueueChatView(
                         else -> Unit
                     }
                 }
+                if (blocked != null) item(key = "blocked") {
+                    BlockedCard(
+                        prompt = blocked,
+                        answered = chat.answered,
+                        answering = chat.answering,
+                        textSize = textSize,
+                        onAnswer = onAnswerBlocked,
+                    )
+                }
             }
         }
     }
+}
+
+/**
+ * Thẻ NEEDS YOU (prototype kohi-chat-blocked-prototype.html, user duyệt 21/9): viền/nền đỏ
+ * nhạt như chấm trạng thái, tiêu đề + loại prompt, lệnh trong khung xám, câu hỏi, rồi ĐÚNG
+ * các lựa chọn Claude đưa với số y như terminal. Lựa chọn Claude đang trỏ viền vàng nhạt;
+ * chạm = gõ số đó vào pane; ô vừa gửi đổi xanh và thẻ khoá tới khi prompt đổi. "Type
+ * something" / "Chat about this" viền đứt: gửi số xong câu trả lời gõ ở ô dưới.
+ */
+@Composable
+private fun BlockedCard(
+    prompt: BlockedPrompt,
+    answered: Int?,
+    answering: Boolean,
+    textSize: TextUnit,
+    onAnswer: (BlockedOption) -> Unit,
+) {
+    val colors = ChuColors.current
+    val type = ChuTypography.current
+    val locked = answering || answered != null
+    Column(
+        Modifier
+            .fillMaxWidth(0.96f)
+            .background(colors.error.copy(alpha = 0.07f), BoxShape)
+            .border(1.dp, colors.error.copy(alpha = 0.55f), BoxShape)
+            .padding(start = 10.dp, end = 10.dp, top = 8.dp, bottom = 9.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            ChuText("● NEEDS YOU", style = type.labelSmall.copy(fontWeight = FontWeight.Bold), color = colors.error)
+            Spacer(Modifier.width(8.dp))
+            ChuText(
+                prompt.title,
+                style = type.labelSmall,
+                color = colors.textPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            ChuText(prompt.kind, style = type.labelSmall, color = colors.textMuted)
+        }
+        if (prompt.detail.isNotEmpty()) {
+            BasicText(
+                text = prompt.detail.joinToString("\n"),
+                style = type.labelSmall.copy(color = colors.textSecondary),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 6.dp)
+                    .background(colors.surfaceVariant, RoundedCornerShape(3.dp))
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+            )
+        }
+        if (prompt.question.isNotBlank()) {
+            ChuText(
+                prompt.question,
+                style = type.body.copy(fontSize = textSize, lineHeight = TextUnit.Unspecified),
+                color = colors.textPrimary,
+                modifier = Modifier.padding(top = 6.dp),
+            )
+        }
+        Column(Modifier.padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            prompt.options.forEach { opt ->
+                BlockedOptionRow(opt, sent = answered == opt.n, enabled = !locked, onClick = { onAnswer(opt) })
+            }
+        }
+        val foot = when {
+            answered != null -> "sent $answered · waiting for the agent…"
+            answering -> "sending…"
+            else -> "tap = answer on the pane" + prompt.hint.takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty()
+        }
+        ChuText(
+            foot,
+            style = type.labelSmall,
+            color = colors.textMuted,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 7.dp),
+        )
+    }
+}
+
+@Composable
+private fun BlockedOptionRow(opt: BlockedOption, sent: Boolean, enabled: Boolean, onClick: () -> Unit) {
+    val colors = ChuColors.current
+    val type = ChuTypography.current
+    val borderColor = when {
+        sent -> colors.success
+        opt.selected -> colors.accent.copy(alpha = 0.6f)
+        else -> colors.border
+    }
+    val desc = opt.desc.ifBlank { if (opt.opensComposer) "type in the box below" else "" }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .background(if (sent) colors.success.copy(alpha = 0.10f) else colors.surfaceVariant, BoxShape)
+            .then(if (opt.opensComposer && !sent) Modifier.dashedBorder(borderColor) else Modifier.border(1.dp, borderColor, BoxShape))
+            .noRippleClickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        ChuText(
+            "${opt.n}",
+            style = type.label.copy(fontWeight = FontWeight.Bold),
+            color = if (sent) colors.success else colors.accent,
+            modifier = Modifier.width(18.dp),
+        )
+        BasicText(
+            text = buildAnnotatedString {
+                append(opt.label)
+                if (desc.isNotBlank()) {
+                    withStyle(SpanStyle(color = colors.textMuted, fontSize = type.labelSmall.fontSize)) { append("  — $desc") }
+                }
+            },
+            style = type.body.copy(color = colors.textPrimary),
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+/** Viền đứt 1dp bo 4dp (lựa chọn "gõ tiếp") — Compose không có border kiểu dashed sẵn. */
+private fun Modifier.dashedBorder(color: Color): Modifier = drawBehind {
+    val stroke = 1.dp.toPx()
+    drawRoundRect(
+        color = color,
+        cornerRadius = CornerRadius(4.dp.toPx()),
+        style = Stroke(width = stroke, pathEffect = PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 4.dp.toPx()))),
+    )
 }
 
 @Composable

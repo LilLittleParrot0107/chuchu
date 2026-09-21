@@ -19,6 +19,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -650,6 +652,8 @@ internal fun QueueComposer(
     /** Màn CHAT truyền "Reply to <agent>…"; null = "Describe the task…" như cũ. */
     placeholder: String? = null,
     sendLabel: String = "[SEND]",
+    /** Thẻ NEEDS YOU chọn "Type something" → xin focus ô gõ để trả lời ngay (21/9). */
+    focusRequester: FocusRequester? = null,
     /** Nút đứng GIỮA ô gõ và nút gửi (màn CHAT: ⊕ đính file). null = không có. */
     trailing: (@Composable () -> Unit)? = null,
 ) {
@@ -719,6 +723,7 @@ internal fun QueueComposer(
                 keyboardActions = KeyboardActions(onSend = { if (canSend) onSend() }),
                 modifier = Modifier.weight(1f)
                     .padding(vertical = 10.dp)
+                    .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
                     // Chạm vào ô gõ = bàn phím sắp chiếm nửa màn -> panel máy
                     // phải hạ xuống, không thì nó chắn mất chỗ gõ (user 3/9).
                     .onFocusChanged { onFocusChanged(it.isFocused) },

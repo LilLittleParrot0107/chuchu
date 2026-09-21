@@ -167,6 +167,49 @@ class QueueClient(
         return send("/chat/send", payload)
     }
 
+    sealed interface BlockedFetch {
+        /** [prompt] null = không bóc được prompt nào dù herdr có thể vẫn báo kẹt. */
+        data class Ok(val blocked: Boolean, val prompt: BlockedPrompt?) : BlockedFetch
+        data class Failed(val message: String, val needsAuth: Boolean = false) : BlockedFetch
+    }
+
+    /**
+     * `GET /blocked?pane=` (21/9): qsrv đọc màn hình pane NGAY LÚC GỌI (không cache) và bóc
+     * prompt đang chặn — chỉ gọi khi agent kẹt, và thưa (xem QueueViewModel.syncBlockedPolling).
+     */
+    fun blocked(pane: String): BlockedFetch = try {
+        val (code, body) = request("/blocked?pane=" + URLEncoder.encode(pane, "UTF-8"), null)
+        when (code) {
+            HttpURLConnection.HTTP_OK -> {
+                val o = JSONObject(body)
+                BlockedFetch.Ok(o.optBoolean("blocked", false), BlockedPrompt.parse(o.optJSONObject("prompt")))
+            }
+            HttpURLConnection.HTTP_NOT_FOUND -> BlockedFetch.Failed(
+                runCatching { JSONObject(body).optString("error") }.getOrNull()?.takeIf { it.isNotBlank() }
+                    ?: "This qsrv has no /blocked yet — update qsrv on the host",
+            )
+            HttpURLConnection.HTTP_UNAUTHORIZED -> BlockedFetch.Failed("The token is invalid or has changed", needsAuth = true)
+            HttpURLConnection.HTTP_FORBIDDEN -> BlockedFetch.Failed("Access denied (403) — open Tailscale and verify the account", needsAuth = true)
+            else -> BlockedFetch.Failed("qsrv /blocked $code")
+        }
+    } catch (e: IOException) {
+        BlockedFetch.Failed(offlineMessage(e))
+    } catch (e: Exception) {
+        BlockedFetch.Failed("Could not read the prompt (${e.javaClass.simpleName})")
+    }
+
+    /**
+     * `POST /blocked/answer {pane, n}`: qsrv đọc lại màn hình rồi gõ đúng MỘT chữ số (Claude Code
+     * nhận số là chọn, không cần Enter). Prompt đã đổi → 409 [Act.Conflict], không gõ gì.
+     */
+    fun blockedAnswer(pane: String, n: Int): Act = send(
+        "/blocked/answer",
+        JSONObject().apply {
+            put("pane", pane)
+            put("n", n)
+        },
+    )
+
     sealed interface FocusFetch {
         /** Pane herdr đang được nhìn: tên agent + thư mục làm việc (null nếu herdr không biết). */
         data class Ok(val name: String, val cwd: String?) : FocusFetch
@@ -366,7 +409,8 @@ class QueueClient(
                 Act.Failed("The token is invalid or has changed", needsAuth = true)
             HttpURLConnection.HTTP_FORBIDDEN ->
                 Act.Failed("Access denied — the request did not come through the tailnet", needsAuth = true)
-            else -> Act.Failed("Queue command failed ($code)")
+            // qsrv kèm `error` đọc được (vd "prompt hien tai khong co lua chon 5") — hơn mã số trần.
+            else -> Act.Failed(o?.optString("error")?.takeIf { it.isNotBlank() } ?: "Queue command failed ($code)")
         }
     } catch (e: IOException) {
         Act.Failed(offlineMessage(e))

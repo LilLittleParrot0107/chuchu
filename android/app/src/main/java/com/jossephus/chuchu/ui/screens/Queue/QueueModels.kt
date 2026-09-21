@@ -504,3 +504,64 @@ fun collapseFeedTurns(messages: List<FeedMessage>): List<FeedMessage> {
     }
     return out
 }
+
+/**
+ * Prompt đang chặn một pane — qsrv `GET /blocked` bóc từ màn hình pane (21/9): Claude Code
+ * xin quyền chạy lệnh (`permission`), AskUserQuestion (`question`) hay menu lạ (`generic`).
+ * Thẻ NEEDS YOU cuối chat vẽ từ đây; chạm lựa chọn = `POST /blocked/answer {pane, n}`.
+ */
+data class BlockedPrompt(
+    val kind: String,
+    val title: String,
+    val question: String,
+    /** Lệnh + mô tả (prompt xin quyền) — hiện trong khung xám trên câu hỏi. */
+    val detail: List<String>,
+    val options: List<BlockedOption>,
+    /** Chân prompt nguyên văn ("Esc to cancel · Tab to amend"). */
+    val hint: String,
+) {
+    /** Đổi khi prompt đổi — để biết số vừa gửi đã "ăn" (prompt biến mất/đổi) hay chưa. */
+    val signature: String
+        get() = "$kind|$title|$question|" + options.joinToString("|") { "${it.n}:${it.label}" }
+
+    companion object {
+        /** null = pane không có prompt bóc được (hoặc không có lựa chọn nào — không có gì để chạm). */
+        fun parse(o: JSONObject?): BlockedPrompt? {
+            if (o == null) return null
+            val options = ArrayList<BlockedOption>()
+            o.optJSONArray("options")?.let { arr ->
+                for (i in 0 until arr.length()) {
+                    val x = arr.optJSONObject(i) ?: continue
+                    val n = x.optInt("n", -1)
+                    if (n < 1) continue
+                    options += BlockedOption(n, x.optString("label"), x.optString("desc"), x.optBoolean("selected", false))
+                }
+            }
+            if (options.isEmpty()) return null
+            val detail = ArrayList<String>()
+            o.optJSONArray("detail")?.let { arr ->
+                for (i in 0 until arr.length()) arr.optString(i).takeIf { it.isNotBlank() }?.let(detail::add)
+            }
+            return BlockedPrompt(
+                kind = o.optString("kind").ifBlank { "generic" },
+                title = o.optString("title"),
+                question = o.optString("question"),
+                detail = detail,
+                options = options,
+                hint = o.optString("hint"),
+            )
+        }
+    }
+}
+
+data class BlockedOption(
+    val n: Int,
+    val label: String,
+    val desc: String = "",
+    /** Lựa chọn Claude đang trỏ (❯) trên terminal. */
+    val selected: Boolean = false,
+) {
+    /** "Type something." / "Chat about this": gửi số xong, câu trả lời gõ ở ô dưới đi thẳng vào pane. */
+    val opensComposer: Boolean
+        get() = label.trim().trimEnd('.', '…').lowercase().let { it == "type something" || it == "chat about this" }
+}

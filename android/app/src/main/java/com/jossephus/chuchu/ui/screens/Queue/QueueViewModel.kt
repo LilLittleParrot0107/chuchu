@@ -13,6 +13,8 @@ import com.jossephus.chuchu.ui.screens.Files.MachineUiState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -43,6 +45,11 @@ data class ChatUiState(
     val uploading: Boolean = false,
     val error: String? = null,
     val updatedAt: Long = 0L,
+    /** Prompt đang chặn pane (thẻ NEEDS YOU, 21/9) — null = không có hoặc chưa hỏi. */
+    val blocked: BlockedPrompt? = null,
+    /** Lựa chọn vừa gửi: ô đó xanh, thẻ khoá tới khi prompt đổi (hoặc hết BLOCKED_LOCK_MS). */
+    val answered: Int? = null,
+    val answering: Boolean = false,
 )
 
 data class QueueUiState(
@@ -82,9 +89,20 @@ class QueueViewModel(
     private val _chatSeen = MutableStateFlow<Map<String, String>>(settings.allChatSeenRevs())
     val chatSeen: StateFlow<Map<String, String>> = _chatSeen.asStateFlow()
     private var chatJob: Job? = null
+    private var blockedJob: Job? = null
 
     // ── Dòng thời gian (UI G1): chỉ chạy khi chế độ DÒNG THỜI GIAN đang hiện ──────
     private val _feed = MutableStateFlow(FeedUiState())
+
+    init {
+        // Thẻ NEEDS YOU: bật/tắt hỏi /blocked theo cặp (pane đang chat, trạng thái agent đó trên
+        // /state) — đổi một trong hai mới tính lại, không đụng mỗi lần roster nhấp nháy.
+        viewModelScope.launch {
+            combine(_ui, _chat) { u, c ->
+                c.pane to c.pane?.let { p -> u.state.agents.firstOrNull { it.pane == p }?.state }
+            }.distinctUntilChanged().collect { syncBlockedPolling() }
+        }
+    }
     val feed: StateFlow<FeedUiState> = _feed.asStateFlow()
     private var feedJob: Job? = null
     private var feedWanted = false
@@ -233,10 +251,12 @@ class QueueViewModel(
         val name = _ui.value.state.agents.firstOrNull { it.pane == pane }?.name ?: pane
         _chat.value = ChatUiState(pane = pane, name = name, loading = true)
         syncChatPolling()
+        syncBlockedPolling()
     }
 
     fun closeChat() {
         chatJob?.cancel(); chatJob = null
+        blockedJob?.cancel(); blockedJob = null
         _chat.value = ChatUiState()
     }
 
@@ -253,6 +273,77 @@ class QueueViewModel(
                 backoff = if (failed) minOf(maxOf(backoff * 2, FOREGROUND_POLL_MS), MAX_FOREGROUND_BACKOFF_MS) else 0L
                 val elapsed = System.currentTimeMillis() - t0
                 delay(maxOf(backoff, MIN_GAP_MS - elapsed))
+            }
+        }
+    }
+
+    /**
+     * Thẻ NEEDS YOU (21/9): chỉ hỏi `/blocked` khi phiên đang chat KẸT theo nhãn /state — mỗi lần
+     * hỏi là qsrv đọc màn hình pane, nên lúc agent chạy bình thường không hỏi. Kẹt thì đọc lại
+     * mỗi [BLOCKED_POLL_MS]: prompt đổi theo giây (trả lời xong có thể ra ngay prompt kế).
+     */
+    private fun syncBlockedPolling() {
+        val pane = _chat.value.pane
+        val agent = pane?.let { p -> _ui.value.state.agents.firstOrNull { it.pane == p } }
+        val wanted = pane != null && isAppActive && isQueueVisible && agent?.state == AgentState.Blocked
+        if (!wanted) {
+            blockedJob?.cancel(); blockedJob = null
+            if (_chat.value.blocked != null || _chat.value.answered != null) {
+                _chat.update { it.copy(blocked = null, answered = null) }
+            }
+            return
+        }
+        if (blockedJob?.isActive == true) return
+        blockedJob = viewModelScope.launch {
+            while (isActive && _chat.value.pane == pane) {
+                blockedRefreshOnce(pane)
+                delay(BLOCKED_POLL_MS)
+            }
+        }
+    }
+
+    private suspend fun blockedRefreshOnce(pane: String) {
+        val c = client() ?: return
+        val r = withContext(Dispatchers.IO) { c.blocked(pane) }
+        if (_chat.value.pane != pane) return
+        // Lỗi tạm (herdr bận, mạng): giữ thẻ đang xem, lần poll sau đọc lại.
+        if (r !is QueueClient.BlockedFetch.Ok) return
+        _chat.update { cur ->
+            // Prompt đổi hay biến mất sau khi đã trả lời → câu trả lời đã "ăn", mở khoá thẻ.
+            val answered = cur.answered?.takeIf { r.prompt?.signature == cur.blocked?.signature }
+            cur.copy(blocked = r.prompt, answered = answered)
+        }
+    }
+
+    /** Chạm một lựa chọn trên thẻ NEEDS YOU: qsrv gõ đúng MỘT chữ số vào pane (không Enter). */
+    fun answerBlocked(n: Int) {
+        val cur = _chat.value
+        val pane = cur.pane ?: return
+        if (cur.answering || cur.answered != null || cur.blocked?.options?.none { it.n == n } != false) return
+        _chat.update { it.copy(answering = true) }
+        viewModelScope.launch {
+            val r = try {
+                val c = client() ?: return@launch
+                withContext(Dispatchers.IO) { c.blockedAnswer(pane, n) }.also { persistAuthRecovery(c) }
+            } finally {
+                if (_chat.value.pane == pane) _chat.update { it.copy(answering = false) }
+            }
+            if (_chat.value.pane != pane) return@launch
+            when (r) {
+                is QueueClient.Act.Ok -> {
+                    _chat.update { it.copy(answered = n) }
+                    // Prompt vẫn y nguyên sau một lúc (số không ăn?) → mở khoá cho chạm lại.
+                    delay(BLOCKED_LOCK_MS)
+                    _chat.update { if (it.answered == n) it.copy(answered = null) else it }
+                }
+                is QueueClient.Act.Conflict -> {
+                    postFeedback("", "Prompt changed — reread", QueueFeedbackTone.Warning)
+                    blockedRefreshOnce(pane)
+                }
+                is QueueClient.Act.Failed -> {
+                    if (r.needsAuth) _ui.update { it.copy(needsSetup = true) }
+                    postFeedback(r.message, "Answer failed", QueueFeedbackTone.Error)
+                }
             }
         }
     }
@@ -431,6 +522,7 @@ class QueueViewModel(
         isAppActive = active
         syncPollingMode()
         syncChatPolling()
+        syncBlockedPolling()
         syncFeedPolling()
         // Cả poll /machine lẫn ý muốn làm mới quota đều dừng khi app xuống nền:
         // trang USAGE còn mở trong túi quần không được kéo theo claude 380MB/30s.
@@ -443,6 +535,7 @@ class QueueViewModel(
         isQueueVisible = visible
         syncPollingMode()
         syncChatPolling()
+        syncBlockedPolling()
         syncFeedPolling()
     }
 
@@ -759,6 +852,9 @@ class QueueViewModel(
         private const val LONGPOLL_S = 25
         /** Số tin mỗi trang màn CHAT. */
         private const val CHAT_PAGE = 50
+        /** Thẻ NEEDS YOU: đọc lại màn hình pane mỗi 3 s khi agent kẹt; khoá thẻ 3 s sau khi trả lời. */
+        private const val BLOCKED_POLL_MS = 3_000L
+        private const val BLOCKED_LOCK_MS = 3_000L
         private const val MIN_GAP_MS = 1_000L
         private const val AMBIENT_MIN_GAP_MS = 2_000L
         private const val FOREGROUND_POLL_MS = 2_000L

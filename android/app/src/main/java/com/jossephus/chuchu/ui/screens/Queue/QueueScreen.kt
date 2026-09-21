@@ -56,6 +56,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -103,6 +105,8 @@ fun QueueScreen(
     onCloseChat: () -> Unit = {},
     onLoadOlderChat: () -> Unit = {},
     onSendChat: (String) -> Unit = {},
+    /** Thẻ NEEDS YOU trong chat (21/9): chạm lựa chọn n → qsrv gõ số đó vào pane. */
+    onAnswerBlocked: (Int) -> Unit = {},
     // Hàng HỘI THOẠI gửi tới chip đang chọn mà không cần mở chat (UI G1, 16/9).
     onSendToPane: (String, String) -> Unit = { _, _ -> },
     // DÒNG THỜI GIAN (UI G1): dữ liệu /feed + bật/tắt poll. Bỏ lọc theo chip 17/9 —
@@ -199,6 +203,9 @@ fun QueueScreen(
     val focusManager = LocalFocusManager.current
     // Ô gõ đang được focus -> dải máy tự thu lại.
     var composerFocused by remember { mutableStateOf(false) }
+    // "Type something" trên thẻ NEEDS YOU: gửi số xong nhảy vào ô gõ, bàn phím lên luôn.
+    val composerFocus = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
     LaunchedEffect(inspectedTaskId) {
         if (inspectedTaskId != null) focusManager.clearFocus()
     }
@@ -379,6 +386,13 @@ fun QueueScreen(
                     fontSizeSp = chatFontSizeSp,
                     kind = AgentKind.of(chatAgent?.agent),
                     listState = chatListState,
+                    onAnswerBlocked = { opt ->
+                        onAnswerBlocked(opt.n)
+                        if (opt.opensComposer) {
+                            composerFocus.requestFocus()
+                            keyboard?.show()
+                        }
+                    },
                     modifier = Modifier.fillMaxWidth().weight(1f),
                 )
             } else {
@@ -559,6 +573,7 @@ fun QueueScreen(
                     else -> pane != ALL_AGENTS && QueueOperationKey.chatSend(pane) in ui.busyOps
                 },
                 onFocusChanged = { composerFocused = it },
+                focusRequester = composerFocus,
                 placeholder = when {
                     chatOpen -> "Reply to ${chat.name}…"
                     selectedAgent != null -> "Queue / reply to ${selectedAgent.name}…"
