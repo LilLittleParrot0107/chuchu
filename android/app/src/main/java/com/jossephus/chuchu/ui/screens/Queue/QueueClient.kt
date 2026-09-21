@@ -83,15 +83,14 @@ class QueueClient(
     }
 
     /**
-     * `GET /feed` (UI G1, 16/9): tin cuối các session đang động gộp theo giờ. [pane] null =
-     * tất cả (server tự lọc session "động"); [pane] cụ thể xem được cả session đang rảnh.
+     * `GET /feed` (UI G1, 16/9): tin cuối các session đang động gộp theo giờ, luôn của cả
+     * chuồng (lọc theo pane bỏ 17/9 — server vẫn nhận `?pane=` nếu sau này cần lại).
      * [sinceRev] + [waitSec] = long-poll như /chat; rev của /feed gồm chat_rev nên tin mới
      * đánh thức được (rev_now của /state thì không).
      */
-    fun feed(pane: String?, limit: Int = 40, sinceRev: String? = null, waitSec: Int = 0): FeedFetch {
+    fun feed(limit: Int = 40, sinceRev: String? = null, waitSec: Int = 0): FeedFetch {
         val wait = if (sinceRev.isNullOrEmpty()) 0 else waitSec.coerceIn(0, 25)
         val q = StringBuilder("/feed?limit=").append(limit)
-        if (!pane.isNullOrEmpty()) q.append("&pane=").append(URLEncoder.encode(pane, "UTF-8"))
         if (!sinceRev.isNullOrEmpty()) {
             q.append("&since=").append(URLEncoder.encode(sinceRev, "UTF-8"))
             if (wait > 0) q.append("&wait=").append(wait)

@@ -9,8 +9,6 @@ import com.jossephus.chuchu.data.network.InboxUploader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import com.jossephus.chuchu.data.model.machine.MachineSnapshot
-import com.jossephus.chuchu.data.model.machine.derive
 import com.jossephus.chuchu.ui.screens.Files.MachineUiState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -67,7 +65,6 @@ data class FeedUiState(
     val rev: String = "",
     val loading: Boolean = false,
     val error: String? = null,
-    val pane: String? = null,
     val updatedAt: Long = 0L,
 )
 
@@ -298,14 +295,6 @@ class QueueViewModel(
         syncFeedPolling()
     }
 
-    /** Chip session đổi lọc: rev cũ không còn nghĩa → xoá để lần tới lấy trọn trang. */
-    fun setFeedPane(pane: String?) {
-        val normalized = pane?.takeIf { it.isNotBlank() }
-        if (_feed.value.pane == normalized) return
-        _feed.update { it.copy(pane = normalized, rev = "", messages = emptyList(), loading = true, error = null) }
-        syncFeedPolling()
-    }
-
     private fun syncFeedPolling() {
         val shouldRun = feedWanted && isAppActive && isQueueVisible
         if (!shouldRun) { feedJob?.cancel(); feedJob = null; return }
@@ -327,9 +316,8 @@ class QueueViewModel(
         val c = client() ?: run { _feed.update { it.copy(loading = false, error = "Queue is not configured yet") }; return true }
         val cur = _feed.value
         val since = cur.rev.takeIf { it.isNotBlank() }
-        val result = withContext(Dispatchers.IO) { c.feed(cur.pane, sinceRev = since, waitSec = waitSec) }
+        val result = withContext(Dispatchers.IO) { c.feed(sinceRev = since, waitSec = waitSec) }
         persistAuthRecovery(c)
-        if (_feed.value.pane != cur.pane) return false
         return when (val r = result) {
             is QueueClient.FeedFetch.Fresh -> {
                 _feed.update { it.copy(messages = r.page.messages, rev = r.page.rev, loading = false, error = null, updatedAt = System.currentTimeMillis()) }
@@ -411,7 +399,7 @@ class QueueViewModel(
         val key = QueueOperationKey.chatSend(pane)
         if (key in _ui.value.busyOps) return
         val agent = _ui.value.state.agents.firstOrNull { it.pane == pane }
-        if (agent != null && agent.label.trim().lowercase() in CHAT_QUEUE_WHEN) {
+        if (agent?.state == AgentState.Working) {
             addTask(text, pane, null)
             return
         }
@@ -771,8 +759,6 @@ class QueueViewModel(
         private const val LONGPOLL_S = 25
         /** Số tin mỗi trang màn CHAT. */
         private const val CHAT_PAGE = 50
-        /** Nhãn agent mà tin từ chat đi qua hàng đợi thay vì gõ thẳng. */
-        private val CHAT_QUEUE_WHEN = setOf("working", "busy", "sending", "running")
         private const val MIN_GAP_MS = 1_000L
         private const val AMBIENT_MIN_GAP_MS = 2_000L
         private const val FOREGROUND_POLL_MS = 2_000L

@@ -548,12 +548,11 @@ fun QueueScreen(
             // Một ô nhập cho cả ba ngữ cảnh: VIỆC (xếp hàng đợi) · HỘI THOẠI và
             // DÒNG THỜI GIAN (gửi tới phiên đang nhắm, agent bận thì xếp — sendToPane)
             // · CHAT (gõ thẳng vào pane).
-            val chatAgentForComposer = if (chatOpen) agents.firstOrNull { it.pane == chat.pane } else selectedAgent
             QueueComposer(
                 modifier = Modifier.onSizeChanged { composerHeightPx = it.height },
                 value = prompt,
                 onValueChange = { prompt = it },
-                agent = chatAgentForComposer,
+                agent = if (chatOpen) chatAgent else selectedAgent,
                 sending = when {
                     chatOpen -> chat.sending
                     tasksOpen -> isAdding

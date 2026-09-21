@@ -2,7 +2,6 @@ package com.jossephus.chuchu.ui.screens.Queue
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -27,7 +26,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -42,9 +40,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -52,8 +48,6 @@ import com.jossephus.chuchu.ui.components.ChuButton
 import com.jossephus.chuchu.ui.components.ChuButtonVariant
 import com.jossephus.chuchu.ui.components.ChuText
 import com.jossephus.chuchu.ui.components.noRippleClickable
-import com.jossephus.chuchu.ui.components.KohiCompactAction
-import com.jossephus.chuchu.ui.components.KohiSectionBand
 import com.jossephus.chuchu.ui.components.KohiSelectableRow
 import com.jossephus.chuchu.ui.components.LinkifiedText
 import com.jossephus.chuchu.ui.components.MiniMarkdownText
@@ -131,17 +125,12 @@ internal fun truncateFeedText(
  * glyph server ('●' cho working, '·' cho idle) lam agent dang chay nhin giong
  * dang duoc chon.
  */
-private fun runtimeDot(agent: QueueAgent): String = when (agent.label.lowercase()) {
-    "working", "busy", "sending" -> "●"
-    "idle", "done" -> "○"
+private fun runtimeDot(agent: QueueAgent): String = when (agent.state) {
     // Kẹt/chờ duyệt = chấm ĐỎ như sidebar herdr (user chốt 21/9), không còn tam giác vàng.
-    "needs approval", "blocked" -> "●"
+    AgentState.Working, AgentState.Blocked -> "●"
+    AgentState.Idle, AgentState.Done -> "○"
     else -> agent.glyph.ifBlank { "?" }   // unsure '?' giữ nguyên
 }
-
-/** Nhãn "cần tay người" của qsrv — herdr gọi là blocked. */
-private fun isBlockedLabel(label: String): Boolean =
-    label.trim().lowercase() in setOf("needs approval", "blocked")
 
 /** Hai chế độ của màn Queue (user chốt G1, 16/9): đọc dòng thời gian ↔ quản hội thoại. */
 internal enum class QueueMode { Timeline, Threads }
@@ -229,10 +218,6 @@ private fun QueueModeTab(
     }
 }
 
-/** Session đang chạy (theo label) — dùng cho chấm trạng thái, không phải selection. */
-private fun sessionWorking(agent: QueueAgent): Boolean =
-    agent.label.trim().lowercase() in setOf("working", "busy", "sending", "running")
-
 /**
  * Chấm trạng thái một session (user chốt 17/9: "để cho t mấy chấm show status thanh lịch"):
  * đỏ/vàng khi CẦN ANH, accent khi đang chạy, xanh khi vừa xong, xám khi rảnh — thay hẳn
@@ -241,9 +226,9 @@ private fun sessionWorking(agent: QueueAgent): Boolean =
 @Composable
 private fun sessionStatusColor(agent: QueueAgent): Color {
     val colors = ChuColors.current
-    return when {
-        isBlockedLabel(agent.label) -> colors.error      // đỏ, khớp herdr
-        sessionWorking(agent) -> colors.accent
+    return when (agent.state) {
+        AgentState.Blocked -> colors.error      // đỏ, khớp herdr
+        AgentState.Working -> colors.accent
         else -> agent.tone.color()
     }
 }
@@ -310,7 +295,7 @@ internal fun QueueFeedView(
             feedRestoreIndex(messages.map(FeedMessage::key), pinned, anchorKey)
         )
     }
-    LaunchedEffect(messages.lastOrNull()?.key, messages.lastOrNull()?.ts, messages.size, feed.pane) {
+    LaunchedEffect(messages.lastOrNull()?.key, messages.lastOrNull()?.ts, messages.size) {
         if (messages.isNotEmpty() && pinned) listState.scrollToItem(messages.size)
     }
     Box(modifier = modifier.fillMaxSize()) {
@@ -400,7 +385,7 @@ private fun FeedRow(m: FeedMessage, onPick: (FeedMessage) -> Unit, bodySize: Tex
                 Spacer(Modifier.width(6.dp))
                 // Nhãn chữ ("working"/"done"…) thu thành một chấm màu (user 17/9).
                 if (m.label.isNotBlank()) {
-                    ChuText("●", style = type.labelSmall, color = if (isBlockedLabel(m.label)) colors.error else m.tone.color())
+                    ChuText("●", style = type.labelSmall, color = if (AgentState.of(m.label) == AgentState.Blocked) colors.error else m.tone.color())
                     Spacer(Modifier.width(6.dp))
                 }
                 ChuText(chatClock(m.ts), style = type.labelSmall, color = colors.textMuted)

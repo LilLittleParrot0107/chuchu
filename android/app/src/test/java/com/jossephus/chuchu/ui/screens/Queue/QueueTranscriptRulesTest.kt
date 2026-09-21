@@ -3,7 +3,7 @@ package com.jossephus.chuchu.ui.screens.Queue
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-/** Luật dọn "response thừa" tầng đọc (17/9): gộp lượt, ẩn think, dedup chip pending. */
+/** Luật dọn "response thừa" tầng đọc (17/9): gộp lượt, ẩn think. */
 class QueueTranscriptRulesTest {
     private fun msg(role: String, off: Long, text: String = "t", ts: String = "2026-09-17T00:00:0${off}.000Z") =
         ChatMessage(role = role, uuid = "u$off", ts = ts, text = text, offset = off)
@@ -11,10 +11,6 @@ class QueueTranscriptRulesTest {
     private fun feed(pane: String, off: Long, role: String = "assistant", text: String = "t") =
         FeedMessage(pane = pane, name = pane, agent = null, label = "working", tone = QueueTone.Dim,
             role = role, ts = "2026-09-17T00:00:0$off.000Z", text = text, uuid = "u$off", offset = off)
-
-    private fun task(id: Int, target: String, text: String, state: String) =
-        QueueTask(id = id, target = target, text = text, state = state, glyph = "•",
-            tone = QueueTone.Dim, stateLabel = state, sub = "", actions = emptyList())
 
     @Test
     fun mergesConsecutiveAssistantIntoOneBubble() {
@@ -63,18 +59,5 @@ class QueueTranscriptRulesTest {
         assertEquals(listOf("t"), merged.paras) // gộp 2 đoạn pA liên tiếp, giữ key tin đầu
         assertEquals("pB", out[2].pane)
         assertEquals(5L, out[3].offset)
-    }
-
-    @Test
-    fun pendingChipsHideOnceEchoedInTranscript() {
-        val messages = listOf(msg("user", 1, "  sửa báo cáo  "))
-        val tasks = listOf(
-            task(10, "wH:p1", "sửa báo cáo", "sent"),      // đã vào transcript → ẩn
-            task(11, "wH:p1", "việc khác", "pending"),     // còn xếp hàng → hiện chip
-            task(12, "wH:p1", "done rồi", "done"),         // hoàn thành → không phải chip
-            task(13, "wH:p2", "lẫn pane", "pending"),      // (QueueScreen đã lọc theo pane trước)
-        )
-        val chips = pendingChipTasks(tasks, messages)
-        assertEquals(listOf(11, 13), chips.map { it.id })
     }
 }

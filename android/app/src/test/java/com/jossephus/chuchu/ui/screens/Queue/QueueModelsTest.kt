@@ -11,20 +11,20 @@ import java.util.TimeZone
 
 class QueueModelsTest {
 
-    /** Bản chụp thật từ `curl /state?view=app` ngày 20/8. */
+    /** Bản chụp `curl /state?view=app` (20/8), nhãn theo qsrv hiện tại: T_VIEW / A_VIEW / _OP_LABEL. */
     private val realPayload = """
     {"rev":"1787218211.571-0","paused":false,"banner":null,
-     "summary":"1 dang cho · 1 xong",
-     "global_actions":[{"op":"pause","label":"Tam dung","needs_rev":false,"danger":false}],
-     "agents":[{"pane":"w3:p1","name":"lovely-agent","glyph":"●","tone":"ok","label":"ranh"}],
+     "summary":"1 waiting · 1 done",
+     "global_actions":[{"op":"pause","label":"Pause","needs_rev":false,"danger":false}],
+     "agents":[{"pane":"w3:p1","name":"lovely-agent","glyph":"●","tone":"ok","label":"idle"}],
      "tasks":[
        {"id":3,"text":"chay test","state":"pending","glyph":"○","tone":"dim",
-        "state_label":"dang cho","sub":"w3:p1 · lovely-agent · 5 phut truoc",
-        "actions":[{"op":"top","label":"Len dau","needs_rev":true,"danger":false},
-                   {"op":"del","label":"Xoa","needs_rev":false,"danger":true}]},
+        "state_label":"waiting","sub":"w3:p1 · lovely-agent · 5m ago",
+        "actions":[{"op":"top","label":"Move first","needs_rev":true,"danger":false},
+                   {"op":"del","label":"Delete","needs_rev":false,"danger":true}]},
        {"id":4,"text":"da xong","state":"done","glyph":"✓","tone":"ok",
-        "state_label":"xong","sub":"w3:p2 · chuchu · 2 gio truoc",
-        "actions":[{"op":"del","label":"Xoa","needs_rev":false,"danger":true}]}]}
+        "state_label":"done","sub":"w3:p2 · chuchu · 2h ago",
+        "actions":[{"op":"del","label":"Delete","needs_rev":false,"danger":true}]}]}
     """.trimIndent()
 
     @Test
@@ -112,8 +112,8 @@ class QueueModelsTest {
     @Test
     fun `doc duoc banner va trang thai tam dung`() {
         val s = QueueState.parse(
-            """{"paused":true,"banner":{"tone":"warn","text":"Hang doi dang tam dung"},
-                "global_actions":[{"op":"resume","label":"Chay tiep"}]}"""
+            """{"paused":true,"banner":{"tone":"warn","text":"Queue is paused"},
+                "global_actions":[{"op":"resume","label":"Resume"}]}"""
         )
         assertTrue(s.paused)
         assertEquals(QueueTone.Warn, s.banner!!.tone)
@@ -206,10 +206,16 @@ class QueueModelsTest {
         ],"tasks":[]}""")
         // 16/9 user chốt: vừa xong (done) đứng NGAY DƯỚI đang chạy, trên idle; unknown sau idle.
         assertEquals(listOf("p3", "p2", "p5", "p8", "p1", "p7", "p4", "p6"), s.agents.map { it.pane })
-        // Nhan tieng Viet cua qsrv cu cung xep dung sau khi dich.
-        val v = QueueState.parse("""{"rev":1,"agents":[
-            {"pane":"x","label":"ranh"},{"pane":"y","label":"cho duyet"}],"tasks":[]}""")
-        assertEquals(listOf("y", "x"), v.agents.map { it.pane })
+    }
+
+    @Test
+    fun `trang thai agent doc tu nhan qsrv o mot cho duy nhat`() {
+        assertEquals(AgentState.Blocked, AgentState.of("needs approval"))
+        assertEquals(AgentState.Working, AgentState.of(" Busy "))
+        assertEquals(AgentState.Done, AgentState.of("done"))
+        assertEquals(AgentState.Idle, AgentState.of("idle"))
+        assertEquals(AgentState.Unknown, AgentState.of("unknown"))
+        assertEquals(AgentState.Other, AgentState.of("gone"))
     }
 
     @Test
@@ -305,8 +311,8 @@ class QueueModelsTest {
         // qsrv chuyển nguyên field `agent` của herdr (16/9) — app tô màu tên theo loại.
         val s = QueueState.parse(
             """{"agents":[{"pane":"w1:p1","name":"OC | build","glyph":"●","tone":"ok",
-                "label":"ranh","word":"","agent":"opencode","chat_rev":"12.3"},
-               {"pane":"w1:p2","name":"agy","glyph":"○","tone":"dim","label":"ranh","word":""}]}"""
+                "label":"idle","word":"","agent":"opencode","chat_rev":"12.3"},
+               {"pane":"w1:p2","name":"agy","glyph":"○","tone":"dim","label":"idle","word":""}]}"""
         )
         assertEquals("opencode", s.agents[0].agent)
         assertEquals("12.3", s.agents[0].chatRev)
@@ -319,7 +325,7 @@ class QueueModelsTest {
     fun `doc duoc preview tin cuoi cua agent`() {
         val s = QueueState.parse(
             """{"agents":[{"pane":"w1:p1","name":"OC | build","glyph":"●","tone":"ok",
-                "label":"ranh","preview":"xong rồi anh","preview_ts":"2026-09-16T05:04:31.123Z"}]}"""
+                "label":"idle","preview":"xong rồi anh","preview_ts":"2026-09-16T05:04:31.123Z"}]}"""
         )
         val a = s.agents.single()
         assertEquals("xong rồi anh", a.preview)
@@ -342,9 +348,9 @@ class QueueModelsTest {
     fun `feed page doc duoc trang that`() {
         val page = FeedPage.parse(
             """{"rev":"7-ab12cd34","pane":null,"messages":[
-               {"pane":"w1:p1","name":"OC | build","agent":"opencode","label":"dang chay","tone":"accent",
+               {"pane":"w1:p1","name":"OC | build","agent":"opencode","label":"working","tone":"accent",
                 "role":"assistant","ts":"2026-09-16T05:04:31.123Z","text":"đang sửa","uuid":"u1","off":100},
-               {"pane":"w1:p2","name":"claude","agent":"claude","label":"ranh","tone":"dim",
+               {"pane":"w1:p2","name":"claude","agent":"claude","label":"idle","tone":"dim",
                 "role":"user","ts":"2026-09-16T05:05:00.000Z","text":"gửi việc","uuid":"","off":9}]}"""
         )
         assertEquals("7-ab12cd34", page.rev)

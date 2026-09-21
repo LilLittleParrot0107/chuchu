@@ -96,32 +96,41 @@ data class QueueAgent(
     /** Thư mục làm việc hiện tại (working directory) của session agent. */
     val cwd: String = "",
 ) {
-    /**
-     * Thứ tự trên roster — số nhỏ lên trên (user chốt 4/9): thứ cần TAY người
-     * (đang hỏi duyệt) trên cùng, rồi thứ đang chạy, rồi thứ chưa rõ, còn rảnh
-     * xuống đáy. Đọc theo NHÃN đã dịch của qsrv (A_VIEW) chứ không theo tone:
-     * tone chỉ là màu, hai trạng thái khác nhau có thể cùng màu.
-     */
-    // User chốt 16/9: vừa xong (done) kéo xuống NGAY DƯỚI các agent đang chạy, trên idle.
-    val priority: Int get() = when (label.trim().lowercase()) {
-        "needs approval", "blocked" -> 0
-        "working", "busy", "sending", "running" -> 1
-        "done" -> 2
-        "idle" -> 3
-        "unknown" -> 4
-        else -> 5                                  // down/gone/nhãn lạ: cuối
+    /** Trạng thái runtime đọc từ nhãn qsrv — xem [AgentState]. */
+    val state: AgentState get() = AgentState.of(label)
+}
+
+/**
+ * Trạng thái runtime của một session, đọc từ NHÃN đã dịch của qsrv (A_VIEW) chứ không theo
+ * tone: tone chỉ là màu, hai trạng thái khác nhau có thể cùng màu. MỘT chỗ duy nhất cho
+ * roster, chấm trạng thái, màu tên và ô gõ — trước 21/9 bốn nơi tự liệt kê nhãn, lệch nhau.
+ * Thứ tự khai báo = thứ tự roster (user chốt 4/9, 16/9): cần TAY người trên cùng, rồi đang
+ * chạy, vừa xong NGAY DƯỚI đang chạy, rảnh, chưa rõ; nhãn lạ (down/gone) xuống đáy.
+ */
+enum class AgentState {
+    Blocked, Working, Done, Idle, Unknown, Other;
+
+    companion object {
+        fun of(label: String): AgentState = when (label.trim().lowercase()) {
+            "needs approval", "blocked" -> Blocked
+            "working", "busy" -> Working
+            "done" -> Done
+            "idle" -> Idle
+            "unknown" -> Unknown
+            else -> Other
+        }
     }
 }
 
 /**
- * Sắp theo [QueueAgent.priority]. Trong nhóm ĐÃ XONG / RẢNH, session có hoạt động gần nhất
+ * Sắp theo [AgentState]. Trong nhóm ĐÃ XONG / RẢNH, session có hoạt động gần nhất
  * (previewTs mới nhất) lên trước (18/9). Nhóm cần duyệt / đang chạy GIỮ thứ tự server
  * (= thứ tự herdr, sortedWith là stable): agent vừa nói mà nhảy lên đầu thì hàng đảo liên tục
  * khi nhiều agent cùng chạy — đúng cái đã cố tình tránh từ 4/9.
  */
 fun List<QueueAgent>.byPriority(): List<QueueAgent> = sortedWith(
-    compareBy<QueueAgent> { it.priority }
-        .thenByDescending { if (it.priority >= 2) it.previewTs else "" }
+    compareBy<QueueAgent> { it.state }
+        .thenByDescending { if (it.state >= AgentState.Done) it.previewTs else "" }
 )
 
 data class QueueBanner(
@@ -164,42 +173,9 @@ internal fun QueueFeedbackTone.color(): Color {
 }
 
 private val queueFeedbackWhitespace = Regex("\\s+")
-private val justNowLegacy = Regex("\\bvua xong\\b", RegexOption.IGNORE_CASE)
-private val minutesAgoLegacy = Regex("\\b(\\d+) phut truoc\\b", RegexOption.IGNORE_CASE)
-private val hoursAgoLegacy = Regex("\\b(\\d+) gio truoc\\b", RegexOption.IGNORE_CASE)
-private val daysAgoLegacy = Regex("\\b(\\d+) ngay truoc\\b", RegexOption.IGNORE_CASE)
-
-/** Keep legacy qsrv payloads from leaking Vietnamese labels into the app. */
-private fun englishQueueLabel(raw: String): String = when (raw.trim().lowercase()) {
-    "dang cho" -> "waiting"
-    "dang gui" -> "sending"
-    "da gui", "dang chay" -> "running"
-    "xong" -> "done"
-    "that bai" -> "failed"
-    "khong ro", "chua ro" -> "unknown"
-    "con job" -> "busy"
-    "cho duyet", "can anh" -> "needs approval"
-    "ranh" -> "idle"
-    "hang doi dang tam dung" -> "Queue is paused"
-    else -> raw
-}
-
-private fun englishQueueActionLabel(op: String): String = when (op.lowercase()) {
-    "top" -> "Move first"
-    "up" -> "Move up"
-    "del", "delete", "rm" -> "Delete"
-    "retry" -> "Retry"
-    "pause" -> "Pause"
-    "resume" -> "Resume"
-    "cancel" -> "Cancel"
-    else -> op.replace('_', ' ').ifBlank { "Action" }
-}
-
-private fun englishQueueSub(raw: String): String = raw
-    .replace(justNowLegacy, "just now")
-    .replace(minutesAgoLegacy, "$1m ago")
-    .replace(hoursAgoLegacy, "$1h ago")
-    .replace(daysAgoLegacy, "$1d ago")
+/** org.json trả chuỗi "null" cho optString của giá trị null — quy về null thật, rỗng cũng vậy. */
+private fun JSONObject.optStringOrNull(key: String): String? =
+    optString(key).takeIf { it.isNotBlank() && it != "null" }
 
 /** Keep transient feedback compact; full details remain in logs/responses. */
 internal fun normalizeQueueFeedbackText(raw: String, fallback: String): String {
@@ -232,7 +208,7 @@ data class QueueState(
             rev = o.optString("rev"),
             paused = o.optBoolean("paused", false),
             banner = o.optJSONObject("banner")?.let {
-                QueueBanner(QueueTone.from(it.optString("tone")), englishQueueLabel(it.optString("text")))
+                QueueBanner(QueueTone.from(it.optString("tone")), it.optString("text"))
             },
             globalActions = o.optJSONArray("global_actions").mapObjects(::parseAction),
             agents = o.optJSONArray("agents")
@@ -251,22 +227,26 @@ data class QueueState(
                 .distinctBy(QueueTask::id),
         )
 
-        private fun parseAction(o: JSONObject) = QueueAction(
-            op = o.optString("op"),
-            label = englishQueueActionLabel(o.optString("op")),
-            needsRev = o.optBoolean("needs_rev", false),
-            danger = o.optBoolean("danger", false),
-        )
+        private fun parseAction(o: JSONObject): QueueAction {
+            val op = o.optString("op")
+            return QueueAction(
+                op = op,
+                // qsrv gửi sẵn nhãn (_OP_LABEL); thiếu thì lấy tên op cho nút khỏi trống.
+                label = o.optString("label").ifBlank { op.replace('_', ' ').replaceFirstChar(Char::uppercase) },
+                needsRev = o.optBoolean("needs_rev", false),
+                danger = o.optBoolean("danger", false),
+            )
+        }
 
         private fun parseAgent(o: JSONObject) = QueueAgent(
             pane = o.optString("pane"),
             name = o.optString("name").ifEmpty { o.optString("pane") },
             glyph = o.optString("glyph").ifEmpty { "•" },
             tone = QueueTone.from(o.optString("tone")),
-            label = englishQueueLabel(o.optString("label")),
-            word = englishQueueLabel(o.optString("word")),
-            chatRev = o.optString("chat_rev").takeIf { it.isNotBlank() && it != "null" },
-            agent = o.optString("agent").takeIf { it.isNotBlank() && it != "null" },
+            label = o.optString("label"),
+            word = o.optString("word"),
+            chatRev = o.optStringOrNull("chat_rev"),
+            agent = o.optStringOrNull("agent"),
             preview = o.optString("preview"),
             previewTs = o.optString("preview_ts"),
             cwd = o.optString("cwd"),
@@ -280,8 +260,8 @@ data class QueueState(
             glyph = o.optString("glyph").ifEmpty { "•" },
             tone = QueueTone.from(o.optString("tone")),
             // Preserve an unknown raw state instead of silently looking pending.
-            stateLabel = englishQueueLabel(o.optString("state_label").ifEmpty { o.optString("state") }),
-            sub = englishQueueSub(o.optString("sub")),
+            stateLabel = o.optString("state_label").ifEmpty { o.optString("state") },
+            sub = o.optString("sub"),
             actions = o.optJSONArray("actions").mapObjects(::parseAction),
             hasResp = o.optBoolean("has_resp", false),
         )
@@ -436,8 +416,8 @@ data class FeedPage(
                 out += FeedMessage(
                     pane = m.optString("pane"),
                     name = m.optString("name"),
-                    agent = m.optString("agent").takeIf { it.isNotBlank() && it != "null" },
-                    label = englishQueueLabel(m.optString("label")),
+                    agent = m.optStringOrNull("agent"),
+                    label = m.optString("label"),
                     tone = QueueTone.from(m.optString("tone")),
                     role = role,
                     ts = m.optString("ts"),
@@ -448,7 +428,7 @@ data class FeedPage(
             }
             return FeedPage(
                 rev = o.optString("rev"),
-                pane = o.optString("pane").takeIf { it.isNotBlank() && it != "null" },
+                pane = o.optStringOrNull("pane"),
                 messages = out,
             )
         }
@@ -523,15 +503,4 @@ fun collapseFeedTurns(messages: List<FeedMessage>): List<FeedMessage> {
         }
     }
     return out
-}
-
-/**
- * Tin gửi từ ô gõ hiện CẢ HAI: pending task (vừa xếp) và user message (khi agent
- * kịp đọc vào transcript). Việc nào text đã xuất hiện trong transcript thì ẩn chip,
- * hết tranh chỗ — đó chính là mục dedup của thoả thuận 17/9.
- */
-fun pendingChipTasks(tasks: List<QueueTask>, messages: List<ChatMessage>): List<QueueTask> {
-    val echoed = HashSet<String>()
-    for (m in messages) if (m.role == "user") echoed.add(m.text.trim())
-    return tasks.filter { !it.isCompleted && !it.isFailed && it.text.trim() !in echoed }
 }
