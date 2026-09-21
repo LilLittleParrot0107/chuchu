@@ -134,8 +134,14 @@ internal fun truncateFeedText(
 private fun runtimeDot(agent: QueueAgent): String = when (agent.label.lowercase()) {
     "working", "busy", "sending" -> "●"
     "idle", "done" -> "○"
-    else -> agent.glyph.ifBlank { "?" }   // blocked '▲', unsure '?' giữ nguyên
+    // Kẹt/chờ duyệt = chấm ĐỎ như sidebar herdr (user chốt 21/9), không còn tam giác vàng.
+    "needs approval", "blocked" -> "●"
+    else -> agent.glyph.ifBlank { "?" }   // unsure '?' giữ nguyên
 }
+
+/** Nhãn "cần tay người" của qsrv — herdr gọi là blocked. */
+private fun isBlockedLabel(label: String): Boolean =
+    label.trim().lowercase() in setOf("needs approval", "blocked")
 
 /** Hai chế độ của màn Queue (user chốt G1, 16/9): đọc dòng thời gian ↔ quản hội thoại. */
 internal enum class QueueMode { Timeline, Threads }
@@ -235,7 +241,11 @@ private fun sessionWorking(agent: QueueAgent): Boolean =
 @Composable
 private fun sessionStatusColor(agent: QueueAgent): Color {
     val colors = ChuColors.current
-    return if (sessionWorking(agent)) colors.accent else agent.tone.color()
+    return when {
+        isBlockedLabel(agent.label) -> colors.error      // đỏ, khớp herdr
+        sessionWorking(agent) -> colors.accent
+        else -> agent.tone.color()
+    }
 }
 
 /**
@@ -390,7 +400,7 @@ private fun FeedRow(m: FeedMessage, onPick: (FeedMessage) -> Unit, bodySize: Tex
                 Spacer(Modifier.width(6.dp))
                 // Nhãn chữ ("working"/"done"…) thu thành một chấm màu (user 17/9).
                 if (m.label.isNotBlank()) {
-                    ChuText("●", style = type.labelSmall, color = m.tone.color())
+                    ChuText("●", style = type.labelSmall, color = if (isBlockedLabel(m.label)) colors.error else m.tone.color())
                     Spacer(Modifier.width(6.dp))
                 }
                 ChuText(chatClock(m.ts), style = type.labelSmall, color = colors.textMuted)
@@ -585,7 +595,7 @@ internal fun EmptyQueueInspector(
     Column(modifier = modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (agent != null) {
-                ChuText(runtimeDot(agent), style = type.label, color = agent.tone.color())
+                ChuText(runtimeDot(agent), style = type.label, color = sessionStatusColor(agent))
                 Spacer(Modifier.width(6.dp))
             }
             ChuText(
