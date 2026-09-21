@@ -1032,8 +1032,8 @@ fun TerminalScreen(
                                 // luong TCP, khong hoi dap tung goi nhu SFTP, khong can tab SSH dang
                                 // noi va khong chen vao vong doc terminal. SFTP giu lam du phong
                                 // khi PUT khong thanh; nut import trong tab Files van SFTP nhu cu.
-                                val inboxHttp = if (toInbox) vm.inboxHttpTarget() else null
-                                val uploader = inboxHttp?.let { InboxUploader(it.first) }
+                                // (uploader, thư mục đích trên host) — null khi không đi đường inbox.
+                                val inbox = if (toInbox) vm.inboxHttpTarget()?.let { (base, dir) -> InboxUploader(base) to dir } else null
                                 // Khong bao gio de dich upload roi ve "/": mo file o goc
                                 // chac chan bi tu choi, va thong bao loi thi mu mit.
                                 // Do LUOI: chi hoi SFTP (realpath/list/mkdir) khi that su can.
@@ -1074,7 +1074,8 @@ fun TerminalScreen(
                                                 else 0L
                                             } ?: 0L
                                     try {
-                                        if (uploader != null && inboxHttp != null) {
+                                        if (inbox != null) {
+                                            val (uploader, inboxDir) = inbox
                                             val r = context.contentResolver.openInputStream(uri)?.use { input ->
                                                 vm.setUploadProgress(
                                                     UploadProgress(
@@ -1092,7 +1093,7 @@ fun TerminalScreen(
                                                 }
                                             } ?: InboxUploader.Result.Failed("Cannot open file")
                                             if (r is InboxUploader.Result.Ok) {
-                                                uploadedPaths += "${inboxHttp.second}/$fileName"
+                                                uploadedPaths += "$inboxDir/$fileName"
                                                 success++
                                                 return@forEachIndexed
                                             }

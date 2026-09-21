@@ -41,8 +41,9 @@ class TailscaleStatusChecker(
     }
 
     private fun isTailnetIp(addr: InetAddress): Boolean {
-        if (addr.isLoopbackAddress || !addr.hostAddress.startsWith("100.")) return false
-        val octets = addr.hostAddress.split(".")
+        val host = addr.hostAddress ?: return false
+        if (addr.isLoopbackAddress || !host.startsWith("100.")) return false
+        val octets = host.split(".")
         if (octets.size != 4) return false
         val second = octets.getOrNull(1)?.toIntOrNull() ?: return false
         // 100.64.0.0/10 means second octet must be in [64, 127]
