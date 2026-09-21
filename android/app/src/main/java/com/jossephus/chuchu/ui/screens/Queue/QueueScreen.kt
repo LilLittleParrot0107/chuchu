@@ -1,16 +1,16 @@
 package com.jossephus.chuchu.ui.screens.Queue
 
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.snapshotFlow
 import com.jossephus.chuchu.ui.components.ChuButtonVariant
 import com.jossephus.chuchu.ui.components.ChuButton
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.rememberLauncherForActivityResult
 import android.provider.OpenableColumns
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.drop
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -19,7 +19,6 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -39,14 +38,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -131,35 +127,25 @@ fun QueueScreen(
     var feedPinned by rememberSaveable { mutableStateOf(true) }
     var feedAnchorKey by rememberSaveable { mutableStateOf<String?>(null) }
     // G1 (user chốt 16/9): mặc định mở ở DÒNG THỜI GIAN; bảng VIỆC là lớp riêng đè lên.
-    // Khai báo sớm vì BackHandler bên dưới cần bật mode/đóng bảng khi đóng chat.
-    var mode by rememberSaveable { mutableStateOf(QueueMode.Timeline) }
     var tasksOpen by rememberSaveable { mutableStateOf(false) }
 
-    // HorizontalPager: vuốt trái/phải siêu mượt giữa TIMELINE ↔ CONVERSATIONS (đồng bộ Dashboard)
-    val pagerState = rememberPagerState(
-        initialPage = if (mode == QueueMode.Threads) 1 else 0,
-        pageCount = { 2 },
-    )
+    // HorizontalPager: vuốt trái/phải giữa DÒNG THỜI GIAN (0) ↔ HỘI THOẠI (1), đồng bộ Dashboard.
+    // Trang pager LÀ chế độ màn — nguồn sự thật duy nhất (21/9). Trước đây còn biến `mode`
+    // chạy song song rồi hai effect đồng bộ qua lại + `modeBeforeChat` để nhớ đường về;
+    // thực ra rememberPagerState tự lưu qua xoay màn, còn mở chat / bảng VIỆC chỉ tháo
+    // pager khỏi cây UI chứ không mất trang — đóng lại là đứng đúng chỗ cũ.
+    val pagerState = rememberPagerState(pageCount = { QueueMode.entries.size })
+    val mode = QueueMode.entries[pagerState.currentPage]
     val pagerScope = rememberCoroutineScope()
     val haptics = LocalHapticFeedback.current
-
-    LaunchedEffect(pagerState.currentPage) {
-        val targetMode = if (pagerState.currentPage == 1) QueueMode.Threads else QueueMode.Timeline
-        if (targetMode != mode) {
-            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-            tasksOpen = false
-            mode = targetMode
-        }
+    fun goTo(target: QueueMode) {
+        tasksOpen = false   // bảng VIỆC và pager cùng chiếm thân màn
+        pagerScope.launch { pagerState.animateScrollToPage(target.ordinal) }
     }
-
-    // Đồng bộ pager theo mode CHỈ KHI pager đang trong composition (chat mở là pager bị thay
-    // bằng màn chat — cuộn một state chưa gắn layout là vô nghĩa). Đóng chat xong effect chạy
-    // lại nhờ key chatOpen, lúc đó mới cuộn tới trang đúng.
-    LaunchedEffect(mode, chatOpen) {
-        if (chatOpen) return@LaunchedEffect
-        val targetPage = if (mode == QueueMode.Threads) 1 else 0
-        if (targetPage != pagerState.currentPage && !pagerState.isScrollInProgress) {
-            pagerState.animateScrollToPage(targetPage)
+    // Rung nhẹ khi sang trang; bỏ giá trị đầu để mở màn không rung.
+    LaunchedEffect(Unit) {
+        snapshotFlow { pagerState.currentPage }.drop(1).collect {
+            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
         }
     }
     var configOpen by remember { mutableStateOf(false) }
@@ -170,54 +156,14 @@ fun QueueScreen(
     var inspectedTaskId by remember { mutableStateOf<Int?>(null) }
     val inspectedTask = inspectedTaskId?.let { id -> ui.state.tasks.firstOrNull { it.id == id } }
 
-    // Ghi nhớ mode trước khi vào chat để khi back từ chat ra thì về đúng màn đó (mặc định Threads)
-    var modeBeforeChat by rememberSaveable { mutableStateOf(QueueMode.Threads) }
-    // Khoảng lặng nuốt cú back dội (debounce cử chỉ)
-    var swallowBackUntil by remember { mutableLongStateOf(0L) }
-    // BackHandler điều phối phân cấp chuẩn:
-    // 1. Nuốt cú dội cử chỉ nếu trong cửa sổ debounce.
-    // 2. inspectedTask (TaskDetailDialog) -> đóng dialog.
-    // 3. configOpen -> đóng dialog cấu hình.
-    // 4. chatOpen -> đóng chat, khôi phục modeBeforeChat, kích hoạt debounce window.
-    // 5. tasksOpen -> đóng bảng [TASKS], về lại trang hiện tại.
-    // 6. Đang ở HỘI THOẠI (page 1) -> lùi về DÒNG THỜI GIAN (page 0), KHÔNG thoát app.
-    // 7. Chỉ khi ở DÒNG THỜI GIAN (page 0) và sạch overlay -> mới gọi onBack() (onExitApp / popBackStack).
-    BackHandler(enabled = true) {
-        val now = System.currentTimeMillis()
-        val isAtRoot = (pagerState.currentPage == 0 && mode == QueueMode.Timeline)
-        when (queueBackAction(
-            chatOpen = chatOpen,
-            tasksOpen = tasksOpen,
-            configOpen = configOpen,
-            inspectedTask = inspectedTaskId != null,
-            isAtRootPage = isAtRoot,
-            nowMs = now,
-            swallowUntilMs = swallowBackUntil,
-        )) {
-            QueueBackAction.CloseChat -> {
-                swallowBackUntil = now + BACK_SWALLOW_MS
-                mode = modeBeforeChat
-                tasksOpen = false
-                onCloseChat()
-            }
-            QueueBackAction.CloseTasks -> {
-                tasksOpen = false
-            }
-            QueueBackAction.DismissConfig -> {
-                configOpen = false
-                setupPromptDismissed = true
-            }
-            QueueBackAction.DismissTaskDetail -> {
-                inspectedTaskId = null
-            }
-            QueueBackAction.GoToTimeline -> {
-                swallowBackUntil = now + BACK_SWALLOW_MS
-                mode = QueueMode.Timeline
-                pagerScope.launch {
-                    pagerState.animateScrollToPage(0)
-                }
-            }
-            QueueBackAction.Swallow -> Unit
+    // Back hệ thống bóc từng lớp (xem queueBackAction). Dialog task/CFG là cửa sổ riêng,
+    // tự ăn back nên không có cấp ở đây; manifest đã tắt predictive back nên mỗi cử chỉ
+    // là đúng một sự kiện — không cần cửa sổ "nuốt cú dội" như trước.
+    BackHandler {
+        when (queueBackAction(chatOpen, tasksOpen, mode)) {
+            QueueBackAction.CloseChat -> onCloseChat()
+            QueueBackAction.CloseTasks -> tasksOpen = false
+            QueueBackAction.GoToTimeline -> goTo(QueueMode.Timeline)
             QueueBackAction.Leave -> onBack()
         }
     }
@@ -452,15 +398,7 @@ fun QueueScreen(
                 mode = mode,
                 threadsCount = agents.size,
                 // Đổi chế độ thì đóng bảng VIỆC: hai thứ cùng chiếm thân màn.
-                onSelect = { picked ->
-                    tasksOpen = false
-                    if (mode != picked) {
-                        mode = picked
-                        pagerScope.launch {
-                            pagerState.animateScrollToPage(if (picked == QueueMode.Threads) 1 else 0)
-                        }
-                    }
-                },
+                onSelect = { picked -> goTo(picked) },
             )
 
             // Bảng VIỆC (lớp cũ): luôn là toàn chuồng — bỏ lọc theo chip khi xoá rail
@@ -490,10 +428,7 @@ fun QueueScreen(
                                         acc >= threshold -> QueueMode.Timeline
                                         else -> null
                                     }
-                                    if (next != null) {
-                                        tasksOpen = false
-                                        mode = next
-                                    }
+                                    if (next != null) goTo(next)
                                 },
                             ) { _, dx -> acc += dx }
                         },
@@ -575,10 +510,9 @@ fun QueueScreen(
                             agents = agents,
                             selectedPane = pane,
                             chatSeen = chatSeen,
-                            // Mở chat cũng nhớ phiên đó làm đích ô gõ khi quay lại (17/9) và lưu mode trước khi vào chat.
+                            // Mở chat cũng nhớ phiên đó làm đích ô gõ khi quay lại (17/9).
                             onOpenChat = { p ->
                                 selectedPane = p
-                                modeBeforeChat = mode
                                 onOpenChat(p)
                             },
                             onSelect = { p -> selectedPane = p },
@@ -752,44 +686,18 @@ private fun queueStatusText(ui: QueueUiState): String {
 
 private const val FEEDBACK_TTL_MS = 3_200L
 
-/** Khoảng lặng nuốt cú back dội ngay sau khi back (debounce tránh double-gesture). */
-private const val BACK_SWALLOW_MS = 300L
-
 /** Việc cần làm với một cú back khi đang ở màn Queue. */
-internal enum class QueueBackAction {
-    DismissTaskDetail,
-    DismissConfig,
-    CloseChat,
-    CloseTasks,
-    GoToTimeline,
-    Leave,
-    Swallow,
-}
+internal enum class QueueBackAction { CloseChat, CloseTasks, GoToTimeline, Leave }
 
 /**
- * Luật back phân cấp của màn Queue, tách khỏi Compose để test được:
- * 1. Cú back dội trong [swallowUntilMs] thì nuốt (Swallow).
- * 2. Đang mở dialog xem task thì đóng dialog (DismissTaskDetail).
- * 3. Đang mở dialog config thì đóng dialog (DismissConfig).
- * 4. Đang mở chat thì đóng chat (CloseChat).
- * 5. Đang mở bảng việc [TASKS] thì đóng bảng (CloseTasks).
- * 6. Đang ở trang Hội thoại (page 1) thì cuộn về Dòng thời gian (GoToTimeline).
- * 7. Chỉ khi ở gốc Dòng thời gian (page 0) và không có overlay mới nhường cho nav (Leave).
+ * Luật back của màn Queue, tách khỏi Compose để test được. Bóc lớp từ trên xuống:
+ * chat toàn màn → bảng VIỆC → trang HỘI THOẠI lùi về DÒNG THỜI GIAN → ở gốc mới
+ * nhường cho nav (thu app / popBackStack, tuỳ nơi gọi). Dialog là cửa sổ riêng,
+ * tự xử lý back nên không nằm trong luật này.
  */
-internal fun queueBackAction(
-    chatOpen: Boolean,
-    tasksOpen: Boolean = false,
-    configOpen: Boolean = false,
-    inspectedTask: Boolean = false,
-    isAtRootPage: Boolean = true,
-    nowMs: Long = 0L,
-    swallowUntilMs: Long = 0L,
-): QueueBackAction = when {
-    inspectedTask -> QueueBackAction.DismissTaskDetail
-    configOpen -> QueueBackAction.DismissConfig
+internal fun queueBackAction(chatOpen: Boolean, tasksOpen: Boolean, mode: QueueMode): QueueBackAction = when {
     chatOpen -> QueueBackAction.CloseChat
-    nowMs < swallowUntilMs -> QueueBackAction.Swallow
     tasksOpen -> QueueBackAction.CloseTasks
-    !isAtRootPage -> QueueBackAction.GoToTimeline
+    mode != QueueMode.Timeline -> QueueBackAction.GoToTimeline
     else -> QueueBackAction.Leave
 }
