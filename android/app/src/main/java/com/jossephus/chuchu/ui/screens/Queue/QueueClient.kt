@@ -76,6 +76,12 @@ class QueueClient(
         data class Failed(val message: String, val needsAuth: Boolean = false) : FeedFetch
     }
 
+    sealed interface SwitchAccountResult {
+        /** Server trả ngay `{ok, acc}`; việc làm mới quota chạy nền phía server. */
+        data class Ok(val acc: String) : SwitchAccountResult
+        data class Failed(val message: String, val needsAuth: Boolean = false) : SwitchAccountResult
+    }
+
     /**
      * `GET /feed` (UI G1, 16/9): tin cuối các session đang động gộp theo giờ. [pane] null =
      * tất cả (server tự lọc session "động"); [pane] cụ thể xem được cả session đang rảnh.
@@ -303,6 +309,48 @@ class QueueClient(
             FetchResponse.Failed(offlineMessage(e))
         } catch (e: Exception) {
             FetchResponse.Failed("Could not read the response")
+        }
+    }
+
+    /**
+     * `POST /agy/switch`: đổi tài khoản Antigravity sang [target]. [reloadSessions] mặc định TẮT:
+     * bật là server gõ `/exit` + `agy --conversation` vào mọi pane agy "xong" không được nhìn —
+     * quá mạnh tay để làm ngầm từ một nút trên điện thoại.
+     */
+    fun switchAgyAccount(target: String, reloadSessions: Boolean = false): SwitchAccountResult {
+        val payload = JSONObject().apply {
+            put("target", target)
+            put("reload_sessions", reloadSessions)
+        }
+        return try {
+            val (code, body) = request("/agy/switch", payload.toString().toByteArray(Charsets.UTF_8), readTimeout = 15000)
+            val o = runCatching { JSONObject(body) }.getOrNull()
+            when (code) {
+                HttpURLConnection.HTTP_OK -> {
+                    if (o != null && !o.optBoolean("ok", true)) {
+                        val err = o.optString("error").takeIf { it.isNotBlank() } ?: "Switch failed"
+                        SwitchAccountResult.Failed(err)
+                    } else {
+                        SwitchAccountResult.Ok(o?.optString("acc").orEmpty().ifBlank { target })
+                    }
+                }
+                HttpURLConnection.HTTP_UNAUTHORIZED ->
+                    SwitchAccountResult.Failed("The token is invalid or has changed", needsAuth = true)
+                HttpURLConnection.HTTP_FORBIDDEN ->
+                    SwitchAccountResult.Failed("Access denied (403)", needsAuth = true)
+                else -> {
+                    val err = o?.optString("error")?.takeIf { it.isNotBlank() } ?: "Switch failed ($code)"
+                    SwitchAccountResult.Failed(err)
+                }
+            }
+        } catch (e: SocketTimeoutException) {
+            SwitchAccountResult.Failed("Switch request timed out")
+        } catch (e: UnknownHostException) {
+            SwitchAccountResult.Failed("Host not found — check Tailscale VPN/DNS")
+        } catch (e: IOException) {
+            SwitchAccountResult.Failed(offlineMessage(e))
+        } catch (e: Exception) {
+            SwitchAccountResult.Failed("Could not switch account (${e.javaClass.simpleName})")
         }
     }
 

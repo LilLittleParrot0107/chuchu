@@ -69,6 +69,47 @@ class MachineModelsTest {
     }
 
     @Test
+    fun agyAccount_EffectivePct_TakesBottleneckOf5hAndWeek() {
+        val acc1 = AgyAccount("acc1", "a1@gmail.com", true, null, pct5h = 100.0, pctWeek = 53.7)
+        val acc2 = AgyAccount("acc2", "a2@gmail.com", true, null, pct5h = 55.1, pctWeek = 72.4)
+        val acc3 = AgyAccount("acc3", "a3@gmail.com", true, null, pct5h = 100.0, pctWeek = 94.2)
+        val acc4 = AgyAccount("acc4", "a4@gmail.com", true, null, pct5h = 73.1, pctWeek = 45.5)
+
+        assertEquals(53.7, acc1.effectivePct!!, 0.01)
+        assertEquals(55.1, acc2.effectivePct!!, 0.01)
+        assertEquals(94.2, acc3.effectivePct!!, 0.01)
+        assertEquals(45.5, acc4.effectivePct!!, 0.01)
+
+        // acc3 is highest, then acc2, then acc1, then acc4
+        val sorted = listOf(acc1, acc2, acc3, acc4).sortedByDescending { it.effectivePct }
+        assertEquals(listOf("acc3", "acc2", "acc1", "acc4"), sorted.map { it.id })
+
+        val only5h = AgyAccount("accX", null, true, null, pct5h = 80.0, pctWeek = null)
+        assertEquals(80.0, only5h.effectivePct!!, 0.01)
+
+        val unconfigured = AgyAccount("accY", null, false, null, pct5h = null, pctWeek = null)
+        assertNull(unconfigured.effectivePct)
+    }
+
+    @Test
+    fun betterAgyAccount_OnlyWhenClearlyBetter_NeverTogglesAway() {
+        val acc1 = AgyAccount("acc1", null, true, null, pct5h = 100.0, pctWeek = 53.7)
+        val acc2 = AgyAccount("acc2", null, true, null, pct5h = 55.1, pctWeek = 72.4)
+        val acc3 = AgyAccount("acc3", null, true, null, pct5h = 100.0, pctWeek = 94.2)
+        val all = listOf(acc1, acc2, acc3)
+        // Đang ở acc1 (53,7%) → acc3 (94,2%) tốt hơn rõ.
+        assertEquals("acc3", com.jossephus.chuchu.ui.screens.Queue.betterAgyAccount(all, acc1)!!.id)
+        // Đang ở acc3 (tốt nhất) → null: nút phải là "✓", không được toggle sang acc kém hơn.
+        assertNull(com.jossephus.chuchu.ui.screens.Queue.betterAgyAccount(all, acc3))
+        // Hơn không đáng kể (< 5 điểm) → giữ nguyên.
+        val acc4 = AgyAccount("acc4", null, true, null, pct5h = 57.0, pctWeek = 57.0)
+        assertNull(com.jossephus.chuchu.ui.screens.Queue.betterAgyAccount(listOf(acc2, acc4), acc2))
+        // Chưa có tài khoản hiện tại → lấy khả dụng nhất.
+        assertEquals("acc3", com.jossephus.chuchu.ui.screens.Queue.betterAgyAccount(all, null)!!.id)
+        assertNull(com.jossephus.chuchu.ui.screens.Queue.betterAgyAccount(emptyList(), null))
+    }
+
+    @Test
     fun parse_MissingBlocksAreNullNotCrash() {
         val s = parseMachineSnapshot("""{"ts": 1, "host": "vps", "cpu": {"total_s": 5.0}}""")
         assertEquals("vps", s.host)

@@ -98,7 +98,20 @@ class QueueViewModel(
     // Đứng ở Queue là lúc quyết giao việc, nên bốn số cần là RAM/CPU ("máy còn
     // tải nổi không") và quota 5H/tuần ("còn lượt không") — user chốt 3/9.
     // Poller /machine dùng chung với Terminal; chỉ chạy khi app foreground (P4).
-    private val machinePoller = MachinePoller(viewModelScope, { client() }, { if (quotaWanted) "1" else null })
+    @Volatile private var lastQuotaRequestTs = 0L
+
+    private val machinePoller = MachinePoller(
+        viewModelScope,
+        { client() },
+        {
+            val now = System.currentTimeMillis()
+            val needAutoRefresh = (now - lastQuotaRequestTs >= QUOTA_AUTO_REFRESH_MS)
+            if (quotaWanted || needAutoRefresh) {
+                lastQuotaRequestTs = now
+                "1"
+            } else null
+        },
+    )
     val machine: StateFlow<MachineUiState> get() = machinePoller.state
     private var machineJob: Job? = null
 
@@ -109,29 +122,6 @@ class QueueViewModel(
 
     /** True khi dải máy còn muốn số (màn Queue đang hiện). */
     private var machineWanted = false
-    private var quotaTickerJob: Job? = null
-
-    /**
-     * Tự làm mới số quota mỗi 10 phút khi màn Queue đang hiện (user chốt 17/9):
-     * trước đây quota chỉ được làm mới lúc trang USAGE mở, nên đứng ở DÒNG THỜI
-     * GIAN cả buổi là số cũ dần mà không ai hay. ĐÁ `quota=1` (không phải force):
-     * server thấy cache quá 30s thì gọi script làm mới, còn mỗi script tự chặn
-     * thêm (claude TTL 600s, bai tối thiểu 60s/lần). Chỉ chạy khi app
-     * FOREGROUND và Queue đang hiện, như mọi poll khác — bỏ túi là dừng.
-     */
-    private fun syncQuotaAutoRefresh() {
-        if (!isAppActive || !machineWanted) {
-            quotaTickerJob?.cancel(); quotaTickerJob = null
-            return
-        }
-        if (quotaTickerJob?.isActive == true) return
-        quotaTickerJob = viewModelScope.launch(Dispatchers.IO) {
-            while (isActive) {
-                delay(QUOTA_AUTO_REFRESH_MS)
-                client()?.machine("1")
-            }
-        }
-    }
 
     /**
      * Nút ⟳ trên trang USAGE: bắn một phát `quota=force` ngay, không đợi nhịp
@@ -139,14 +129,45 @@ class QueueViewModel(
      * theo nhịp poll kế tiếp về, cái cần ở đây chỉ là ĐÁ cho server làm mới.
      */
     fun requestQuotaRefresh() {
+        lastQuotaRequestTs = System.currentTimeMillis()
         viewModelScope.launch(Dispatchers.IO) { client()?.machine("force") }
+    }
+
+    private val switchMutex = Mutex()
+
+    /**
+     * Chuyển tài khoản Antigravity (agy) sang [target] — chỉ đổi token, KHÔNG reload phiên
+     * nào (server có thể gõ /exit vào pane agy rảnh, quá mạnh tay để làm từ một nút). Xong
+     * thì đá làm mới quota để dải USAGE đổi số.
+     */
+    fun switchAgyAccount(target: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            if (!switchMutex.tryLock()) return@launch // Chống spam double-tap
+            try {
+                val c = client()
+                if (c == null) {
+                    postFeedback("", "No Queue URL in Settings", QueueFeedbackTone.Error)
+                    return@launch
+                }
+                when (val res = c.switchAgyAccount(target, reloadSessions = false)) {
+                    is QueueClient.SwitchAccountResult.Ok -> {
+                        postFeedback("", "Switched to ${res.acc}", QueueFeedbackTone.Success)
+                        requestQuotaRefresh()
+                    }
+                    is QueueClient.SwitchAccountResult.Failed -> {
+                        postFeedback(res.message, "Switch failed", QueueFeedbackTone.Error)
+                    }
+                }
+            } finally {
+                switchMutex.unlock()
+            }
+        }
     }
 
     /** Bật khi màn Queue hiện, tắt khi rời — không poll sau lưng người dùng. */
     fun setMachinePolling(active: Boolean) {
         machineWanted = active
         machinePoller.setWanted("queue", active)
-        syncQuotaAutoRefresh()
     }
 
     val ambientSummary: StateFlow<QueueAmbientSummary> = _ambientSummary.asStateFlow()
@@ -427,7 +448,6 @@ class QueueViewModel(
         // trang USAGE còn mở trong túi quần không được kéo theo claude 380MB/30s.
         machinePoller.setAppActive(active)
         if (!active) quotaWanted = false
-        syncQuotaAutoRefresh()
     }
 
     /** Select foreground cadence only while the Queue destination is composed. */

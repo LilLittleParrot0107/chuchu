@@ -13,8 +13,12 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -183,11 +187,26 @@ fun KohiNoticeBand(
     }
 }
 
+private val FeedbackShape = RoundedCornerShape(4.dp)
+
 /**
- * Transient feedback sau mot user action. Caller quyet dinh cach hien thi:
- * Queue dung nhu OVERLAY dap len vung band agents (fade ra theo TTL) de
- * layout danh sach khong nhuc chuyen; nen giu nen surface dac + vien mau
- * tone de doc duoc khi de chong len noi dung ben duoi.
+ * clickable KHÔNG ripple — ngôn ngữ TUI của Queue/Dashboard (chốt 18/9). Một chỗ định nghĩa
+ * thay vì lặp `indication = null + interactionSource = remember { … }` ở từng nơi bấm.
+ */
+@Composable
+fun Modifier.noRippleClickable(enabled: Boolean = true, onClick: () -> Unit): Modifier =
+    clickable(
+        enabled = enabled,
+        indication = null,
+        interactionSource = remember { MutableInteractionSource() },
+        onClick = onClick,
+    )
+
+/**
+ * Transient feedback sau user action (gửi tin nhắn, copy prompt, v.v.).
+ * Đồng bộ với ngôn ngữ hình khối Queue: floating card lùi lề 14dp, bo góc 4dp,
+ * nền surfaceVariant đục kết hợp viền mờ 0.25f, glyph trạng thái căn thẳng,
+ * nút đóng nhẹ nhàng không viền thô (user chốt 18/9).
  */
 @Composable
 fun KohiFeedbackBand(
@@ -198,38 +217,48 @@ fun KohiFeedbackBand(
 ) {
     val colors = ChuColors.current
     val type = ChuTypography.current
-    Row(
+    val glyph = when (color) {
+        colors.success -> "✓"
+        colors.error -> "▲"
+        else -> "●"
+    }
+    Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(IntrinsicSize.Min)
-            .background(colors.surface)
-            .border(1.dp, color.copy(alpha = 0.4f)),
-        verticalAlignment = Alignment.CenterVertically,
+            .padding(horizontal = 14.dp, vertical = 6.dp),
     ) {
-        Box(
+        Row(
             modifier = Modifier
-                .fillMaxHeight()
-                .width(3.dp)
-                .background(color),
-        )
-        ChuText(
-            text = text,
-            style = type.labelSmall.copy(fontWeight = FontWeight.Bold),
-            color = color,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier
-                .weight(1f)
-                .padding(horizontal = 10.dp, vertical = 6.dp),
-        )
-        ChuButton(
-            onClick = onDismiss,
-            variant = ChuButtonVariant.Ghost,
-            bracketed = true,
-            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-            minHeight = 24.dp,
+                .fillMaxWidth()
+                .background(colors.surfaceVariant.copy(alpha = 0.96f), FeedbackShape)
+                .border(1.dp, color.copy(alpha = 0.25f), FeedbackShape)
+                .padding(horizontal = 12.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            ChuText("×", style = type.labelSmall, color = colors.textMuted)
+            ChuText(
+                glyph,
+                style = type.labelSmall.copy(fontWeight = FontWeight.Bold),
+                color = color,
+            )
+            Spacer(Modifier.width(8.dp))
+            ChuText(
+                text = text,
+                style = type.bodySmall.copy(fontWeight = FontWeight.Medium),
+                color = colors.textPrimary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            Spacer(Modifier.width(8.dp))
+            ChuText(
+                "×",
+                style = type.labelSmall,
+                color = colors.textMuted,
+                // Vùng chạm ≥ 32dp cho nút đóng (chữ × chỉ ~10dp).
+                modifier = Modifier
+                    .noRippleClickable(onClick = onDismiss)
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+            )
         }
     }
 }

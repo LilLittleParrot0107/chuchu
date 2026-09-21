@@ -61,7 +61,11 @@ data class AgyAccount(
     /** Epoch giây lúc cửa sổ reset — từ `resetTime` ISO-8601 của agy; null nếu thiếu/hỏng. */
     val reset5h: Long? = null,
     val resetWeek: Long? = null,
-)
+) {
+    /** Dung lượng khả dụng thực tế: bị giới hạn bởi cửa sổ thắt nút nhỏ nhất giữa 5h và 1 tuần. */
+    val effectivePct: Double?
+        get() = listOfNotNull(pct5h, pctWeek).minOrNull()
+}
 
 /** Quota Antigravity — [pct5h]/[pctWeek] la phan tram CON LAI, khong phai da dung. */
 data class AgyQuota(val current: String, val accounts: List<AgyAccount>, val cacheTs: Long)

@@ -1,7 +1,9 @@
 package com.jossephus.chuchu.ui.screens.Queue
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxSize
@@ -35,7 +37,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jossephus.chuchu.data.model.machine.MachineReadout
+import com.jossephus.chuchu.data.model.machine.AgyAccount
 import com.jossephus.chuchu.ui.components.ChuText
+import com.jossephus.chuchu.ui.components.noRippleClickable
 import com.jossephus.chuchu.ui.screens.Files.MachineUiState
 import com.jossephus.chuchu.ui.theme.CHU_HAIRLINE_ALPHA
 import com.jossephus.chuchu.ui.theme.ChuColors
@@ -59,6 +63,7 @@ internal fun MachineStrip(
     modifier: Modifier = Modifier,
     onUsageVisible: (Boolean) -> Unit = {},
     onRefreshUsage: () -> Unit = {},
+    onSwitchAgyAccount: (String) -> Unit = {},
     collapse: Boolean = false,
     /**
      * Chỉ xem nhanh: không caret, không bấm, không bao giờ bung panel (dải
@@ -76,6 +81,8 @@ internal fun MachineStrip(
     }
     val s = readout.snapshot
     var expanded by remember { mutableStateOf(false) }
+    // Sang chế độ preview (chat đang mở) thì thu panel — làm trong effect, không ghi state lúc compose.
+    LaunchedEffect(preview) { if (preview) expanded = false }
     // Panel mở CHỈ KHI người dùng muốn VÀ bàn phím đang đóng. Bản trước chỉ thu
     // lại đúng lúc [collapse] đổi giá trị, nên mở panel trong khi đang gõ thì nó
     // cứ thế bung ra: cột dọc không cuộn được, panel + ô nhập cao hơn phần màn
@@ -83,6 +90,11 @@ internal fun MachineStrip(
     // Giữ nguyên ý định của người dùng trong [expanded] để đóng bàn phím là
     // panel trở lại như cũ, không phải mở tay lần nữa.
     val open = expanded && !collapse && !preview
+
+    // Back khi panel đang mở thì thu panel lại, không thoát màn hình
+    BackHandler(enabled = open) {
+        expanded = false
+    }
 
     // Tuổi tính theo đồng hồ chạy 5s, không theo lúc compose: đường lỗi copy(error=…)
     // trùng giá trị thì StateFlow không emit, dải hiện "3s" alpha đầy mãi dù qsrv đã
@@ -108,7 +120,7 @@ internal fun MachineStrip(
 
     Column(modifier = modifier.fillMaxWidth()) {
         AnimatedVisibility(visible = open) {
-            MachineStripPages(readout, alpha, onRefreshUsage) { page -> onUsageVisible(page == 1) }
+            MachineStripPages(readout, alpha, onRefreshUsage, onSwitchAgyAccount) { page -> onUsageVisible(page == 0) }
         }
         // Thu gọn thì thôi luôn: không ai nhìn USAGE nữa.
         if (!open) LaunchedEffect(Unit) { onUsageVisible(false) }
@@ -202,6 +214,7 @@ private fun MachineStripPages(
     readout: MachineReadout,
     alpha: Float,
     onRefreshUsage: () -> Unit,
+    onSwitchAgyAccount: (String) -> Unit,
     onPageChange: (Int) -> Unit,
 ) {
     val colors = ChuColors.current
@@ -234,16 +247,11 @@ private fun MachineStripPages(
                 Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = PAGE_PAD_DP.dp),
                 verticalArrangement = Arrangement.Center,
             ) {
-                if (page == 0) MachinePage(readout, alpha) else UsagePage(readout, alpha)
+                if (page == 0) UsagePage(readout, alpha) else MachinePage(readout, alpha)
             }
         }
-        // Chấm trang nằm ĐÚNG giữa, nút làm mới ép sát mép phải. Trước đây cả
-        // hai xếp chung một hàng canh giữa nên nút lơ lửng giữa chừng, và mỗi
-        // lần đổi trang nó xuất hiện/biến mất là chấm bị kéo lệch theo.
-        // Chân trang KHOÁ CỨNG chiều cao (15/9, user chê "hai bảng lệch nhau"):
-        // trước đây Box ôm nội dung — trang MACHINE chỉ có chấm 5dp, trang USAGE
-        // có thêm chữ "42m ⟳" 16dp — nên cả dải cao thêm 15dp khi lướt sang USAGE,
-        // khối chi tiết phía trên bị co lại và chấm trang nhảy lên 7dp.
+        // Chấm trang nằm ĐÚNG giữa, nút làm mới và chuyển acc ép sát mép phải.
+        // Chân trang KHOÁ CỨNG chiều cao FOOTER_HEIGHT_DP (20dp).
         Box(Modifier.fillMaxWidth().height(FOOTER_HEIGHT_DP.dp)) {
             Row(Modifier.align(Alignment.Center)) {
                 repeat(2) { i ->
@@ -253,25 +261,113 @@ private fun MachineStripPages(
                     )
                 }
             }
-            // Trang USAGE có nút làm mới THẤY ĐƯỢC, kèm tuổi của số quota —
-            // trước đây trigger chạy ngầm nên không ai biết nó có ăn hay không.
-            if (pager.currentPage == 1) {
-                val qts = readout.snapshot.claude?.dataTs ?: 0L
-                val qAge = if (qts > 0) System.currentTimeMillis() / 1000 - qts else -1
-                var tapped by remember { mutableStateOf(false) }
-                LaunchedEffect(tapped) { if (tapped) { kotlinx.coroutines.delay(6000); tapped = false } }
-                ChuText(
-                    if (tapped) "refreshing…" else "${quotaAge(qAge)} ⟳",
-                    style = type.labelSmall,
-                    color = colors.accent,
+            if (pager.currentPage == 0) {
+                UsageFooterActions(
+                    readout = readout,
+                    onRefreshUsage = onRefreshUsage,
+                    onSwitchAgyAccount = onSwitchAgyAccount,
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
-                        .clickable { tapped = true; onRefreshUsage() }
-                        .padding(horizontal = 10.dp, vertical = 2.dp),
+                        .padding(end = 8.dp),
                 )
             }
         }
     }
+}
+
+@Composable
+private fun UsageFooterActions(
+    readout: MachineReadout,
+    onRefreshUsage: () -> Unit,
+    onSwitchAgyAccount: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = ChuColors.current
+    val type = ChuTypography.current
+    val s = readout.snapshot
+    val agy = s.agy
+    val configuredAccs = agy?.accounts?.filter { it.configured } ?: emptyList()
+    val curAcc = configuredAccs.firstOrNull { it.id == agy?.current }
+    // Tài khoản đáng chuyển sang: quota khả dụng (min của 5h và tuần) cao hơn tài khoản hiện
+    // tại rõ rệt. Hoà hoặc hơn không đáng kể thì giữ nguyên — đổi tài khoản là reload phiên.
+    val switchTo = betterAgyAccount(configuredAccs, curAcc)
+
+    val qts = readout.snapshot.claude?.dataTs ?: 0L
+    val qAge = if (qts > 0) System.currentTimeMillis() / 1000 - qts else -1
+    var refreshTapped by remember { mutableStateOf(false) }
+    var switchTapped by remember { mutableStateOf(false) }
+
+    LaunchedEffect(refreshTapped) {
+        if (refreshTapped) {
+            kotlinx.coroutines.delay(6000)
+            refreshTapped = false
+        }
+    }
+    LaunchedEffect(switchTapped) {
+        if (switchTapped) {
+            kotlinx.coroutines.delay(3000)
+            switchTapped = false
+        }
+    }
+
+    val monoStyle = type.labelSmall.copy(
+        fontFamily = FontFamily.Monospace,
+        fontFeatureSettings = "tnum",
+        fontSize = 11.sp,
+    )
+
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        // Hai trạng thái rõ: tài khoản hiện tại đã tốt nhất → "acc2 ✓" mờ, KHÔNG bấm được
+        // (bản trước bấm vào là gửi toggle mù → nhảy sang tài khoản kém hơn); có tài khoản
+        // tốt hơn → "→ acc3 72%" vàng, bấm là chuyển đúng tới nó.
+        if (curAcc != null || switchTo != null) {
+            when {
+                switchTapped -> ChuText("switching…", style = monoStyle, color = colors.accent)
+                switchTo != null -> {
+                    val pct = switchTo.effectivePct?.toInt()
+                    ChuText(
+                        text = if (pct != null && pct >= 0) "→ ${switchTo.id} $pct%" else "→ ${switchTo.id}",
+                        style = monoStyle,
+                        color = colors.accent,
+                        modifier = Modifier.noRippleClickable {
+                            switchTapped = true
+                            onSwitchAgyAccount(switchTo.id)
+                        },
+                    )
+                }
+                else -> ChuText("${curAcc?.id ?: ""} ✓", style = monoStyle, color = colors.textMuted)
+            }
+            ChuText("·", style = monoStyle, color = colors.border)
+        }
+
+        ChuText(
+            text = if (refreshTapped) "refreshing…" else "${quotaAge(qAge)} ⟳",
+            style = monoStyle,
+            color = colors.accent,
+            modifier = Modifier.noRippleClickable(enabled = !refreshTapped) {
+                refreshTapped = true
+                onRefreshUsage()
+            },
+        )
+    }
+}
+
+/**
+ * Tài khoản agy đáng chuyển sang, hoặc null nếu tài khoản hiện tại đã tốt nhất (hoặc chưa
+ * có gì để so). "Tốt hơn" = quota khả dụng ([AgyAccount.effectivePct], cửa sổ thắt nút giữa
+ * 5h và tuần) cao hơn hiện tại ít nhất [minGainPct] điểm — đổi tài khoản là reload phiên, không
+ * đáng vì vài phần trăm. Không có tài khoản hiện tại thì lấy tài khoản khả dụng nhất.
+ */
+internal fun betterAgyAccount(configured: List<AgyAccount>, current: AgyAccount?, minGainPct: Double = 5.0): AgyAccount? {
+    val best = configured.filter { it.effectivePct != null }.maxByOrNull { it.effectivePct!! } ?: return null
+    if (current == null) return best
+    if (best.id == current.id) return null
+    val cur = current.effectivePct ?: -1.0
+    return if (best.effectivePct!! >= cur + minGainPct) best else null
 }
 
 @Composable
@@ -347,7 +443,7 @@ private fun UsagePage(readout: MachineReadout, alpha: Float) {
     // sắp cạn", không phải sáu con số.
     s.agy?.accounts?.filter { it.configured }?.forEach { a ->
         // agy trả sẵn phần CÒN LẠI — đúng chiều, không phải đổi.
-        val left = listOfNotNull(a.pct5h, a.pctWeek).minOrNull() ?: return@forEach
+        val left = a.effectivePct ?: return@forEach
         // Cửa sổ căng nhất là cửa sổ đang đếm ngược — cùng cách đọc với dòng
         // Claude (user chốt 4/9); không có mốc thì ghi tên cửa sổ như trước.
         val weekBinds = a.pctWeek != null && (a.pct5h == null || a.pctWeek <= a.pct5h)

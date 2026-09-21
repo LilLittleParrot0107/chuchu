@@ -120,6 +120,26 @@ class QueueClientTest {
         }
     }
 
+    @Test
+    fun `switchAgyAccount gui dung payload va doc phan hoi thanh cong`() {
+        val requests = Collections.synchronizedList(mutableListOf<RecordedHttpRequest>())
+        withServer(handler = { request ->
+            requests += request
+            StubHttpResponse(200, """{"ok":true,"acc":"acc1"}""")
+        }) { baseUrl ->
+            val client = QueueClient(baseUrl, "", 1_000, 1_000)
+            val result = client.switchAgyAccount("acc1")
+
+            assertTrue(result is QueueClient.SwitchAccountResult.Ok)
+            assertEquals("acc1", (result as QueueClient.SwitchAccountResult.Ok).acc)
+            assertEquals(1, requests.size)
+            assertEquals("/agy/switch", requests[0].path)
+            assertTrue(requests[0].body.contains("\"target\":\"acc1\""))
+            // Mặc định KHÔNG reload phiên agy — server có thể gõ /exit vào pane rảnh.
+            assertTrue(requests[0].body.contains("\"reload_sessions\":false"))
+        }
+    }
+
     private fun withServer(
         handler: (RecordedHttpRequest) -> StubHttpResponse,
         block: (String) -> Unit,
