@@ -16,6 +16,8 @@ enum class AgentKind {
     CLAUDE,
     OPENCODE,
     AGY,
+    /** Codex CLI (23/9): herdr báo agent = "codex". */
+    CODEX,
     OTHER;
 
     companion object {
@@ -23,6 +25,7 @@ enum class AgentKind {
             "claude" -> CLAUDE
             "opencode" -> OPENCODE
             "agy", "antigravity" -> AGY
+            "codex" -> CODEX
             else -> OTHER
         }
     }
@@ -38,8 +41,27 @@ fun AgentKind.rosterColor(): Color = when (this) {
     AgentKind.CLAUDE -> ChuColors.current.warning
     AgentKind.OPENCODE -> ChuColors.current.accentSecondary
     AgentKind.AGY -> ChuColors.current.success
+    AgentKind.CODEX -> codexColor()
     AgentKind.OTHER -> ChuColors.current.textPrimary
 }
+
+/**
+ * Họ màu của Codex (23/9): palette theme chỉ có ba màu họ (warning / accentSecondary / success) đã
+ * chia cho ba con kia, nên Codex lấy TÔNG XA CẢ BA (cùng cách [distinctHue] của bọt anh) ở độ rực
+ * của accent — tự đổi theo theme, không ghim mã màu. Bọt của anh né thêm cả tông này.
+ */
+@Composable
+@ReadOnlyComposable
+fun codexColor(): Color {
+    val c = ChuColors.current
+    val acc = rgbToHsl(c.accent.red, c.accent.green, c.accent.blue)
+    val rgb = hslToRgb(distinctHue(familyHues(c)), maxOf(acc[1], 0.45f), acc[2].coerceIn(0.45f, 0.75f))
+    return Color(rgb[0], rgb[1], rgb[2])
+}
+
+/** Tông (0–360) của ba họ màu có sẵn trong theme: Claude, opencode, agy. */
+private fun familyHues(c: ChuColorPalette): List<Float> =
+    listOf(c.warning, c.accentSecondary, c.success).map { rgbToHsl(it.red, it.green, it.blue)[0] }
 
 // ── Sắc riêng của từng phiên trong họ màu của loại agent (user chốt 22/9: băm tên, 8 nấc,
 // tông ±20°, sáng −20% … +35% — user đổi từ ±20% sang lệch về phía sáng cho dễ phân biệt trên
@@ -137,7 +159,8 @@ fun distinctHue(familyHues: List<Float>, spread: Float = SESSION_SHADE_HUE_DEG):
 @ReadOnlyComposable
 fun userColor(): Color {
     val c = ChuColors.current
-    val fams = listOf(c.warning, c.accentSecondary, c.success).map { rgbToHsl(it.red, it.green, it.blue)[0] }
+    // Né cả tông Codex (tính từ ba họ kia) để bốn con + anh không đụng nhau.
+    val fams = familyHues(c).let { it + distinctHue(it) }
     val bgL = rgbToHsl(c.background.red, c.background.green, c.background.blue)[2]
     val l = (if (bgL < 0.5f) bgL + USER_BUBBLE_LIFT else bgL - USER_BUBBLE_LIFT).coerceIn(0.04f, 0.96f)
     val rgb = hslToRgb(distinctHue(fams), USER_BUBBLE_SAT, l)
@@ -205,6 +228,11 @@ fun AgentKind.chatTone(): ChatTone = when (this) {
         link = Color(0xFF268BD2),
         meta = Color(0xFF93A1A1),
         toolName = Color(0xFF839496),
+    )
+
+    AgentKind.CODEX -> ChatTone(
+        code = Color(0xFFA6E3A1),
+        meta = Color(0xFF9AA0A6),
     )
 
     AgentKind.OTHER -> ChatTone()

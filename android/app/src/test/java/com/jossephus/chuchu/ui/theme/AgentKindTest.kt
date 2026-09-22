@@ -21,7 +21,9 @@ class AgentKindTest {
         // Lạ/thiếu thì giữ mặc định, KHÔNG đoán (bài học ghép transcript 16/9).
         assertEquals(AgentKind.OTHER, AgentKind.of(null))
         assertEquals(AgentKind.OTHER, AgentKind.of("  "))
-        assertEquals(AgentKind.OTHER, AgentKind.of("codex"))
+        assertEquals(AgentKind.OTHER, AgentKind.of("gemini"))
+        // 23/9: Codex CLI có họ riêng
+        assertEquals(AgentKind.CODEX, AgentKind.of("codex"))
     }
 
     @Test
