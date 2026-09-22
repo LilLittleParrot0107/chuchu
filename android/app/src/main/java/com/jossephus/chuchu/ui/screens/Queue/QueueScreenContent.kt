@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -314,11 +315,13 @@ internal fun QueueFeedView(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    // Trong một chặng các khối cách 8dp; sang chặng mới vạch giờ đứng cách chặng trước
+                    // 22dp (user 22/9: "giữa mỗi chặng cách rộng hơn để mắt hiểu là hai chặng khác nhau").
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    items(items, key = { it.key }) { item ->
+                    itemsIndexed(items, key = { _, it -> it.key }) { index, item ->
                         when (item) {
-                            is FeedItem.Hour -> FeedHourDivider(epochClock(item.startSec))
+                            is FeedItem.Hour -> FeedHourDivider(epochClock(item.startSec), gapTop = if (index == 0) 0.dp else 22.dp)
                             is FeedItem.New -> FeedNewDivider("new · since " + epochClock(item.sinceSec))
                             is FeedItem.Block -> FeedBlockView(item.block, onPick = onPick, bodySize = type.body.fontSize)
                         }
@@ -344,10 +347,10 @@ internal fun QueueFeedView(
 }
 
 @Composable
-private fun FeedHourDivider(text: String) {
+private fun FeedHourDivider(text: String, gapTop: androidx.compose.ui.unit.Dp) {
     val colors = ChuColors.current
     val type = ChuTypography.current
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(top = gapTop, bottom = 2.dp)) {
         Box(Modifier.weight(1f).height(1.dp).background(colors.border.copy(alpha = 0.7f)))
         ChuText(text, style = type.labelSmall, color = colors.textMuted, modifier = Modifier.padding(horizontal = 8.dp))
         Box(Modifier.weight(1f).height(1.dp).background(colors.border.copy(alpha = 0.7f)))
