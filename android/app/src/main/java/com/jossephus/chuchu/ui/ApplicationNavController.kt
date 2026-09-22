@@ -549,6 +549,7 @@ private fun QueueDestination(
         onLoadOlderChat = sharedQueueVm::loadOlderChat,
         onSendChat = sharedQueueVm::sendChat,
         onAnswerBlocked = sharedQueueVm::answerBlocked,
+        onSubmitBlocked = sharedQueueVm::answerBlockedMulti,
         // UI G1 (16/9): hàng HỘI THOẠI gửi tới chip đang chọn; DÒNG THỜI GIAN
         // đọc /feed (chỉ long-poll khi màn đó hiện) + lọc theo chip.
         onSendToPane = { pane, text -> sharedQueueVm.sendToPane(pane, text) },

@@ -107,6 +107,7 @@ fun QueueScreen(
     onSendChat: (String) -> Unit = {},
     /** Thẻ NEEDS YOU trong chat (21/9): chạm lựa chọn n → qsrv gõ số đó vào pane. */
     onAnswerBlocked: (Int) -> Unit = {},
+    onSubmitBlocked: (List<Int>) -> Unit = {},
     // Hàng HỘI THOẠI gửi tới chip đang chọn mà không cần mở chat (UI G1, 16/9).
     onSendToPane: (String, String) -> Unit = { _, _ -> },
     // DÒNG THỜI GIAN (UI G1): dữ liệu /feed + bật/tắt poll. Bỏ lọc theo chip 17/9 —
@@ -393,6 +394,7 @@ fun QueueScreen(
                             keyboard?.show()
                         }
                     },
+                    onSubmitBlocked = onSubmitBlocked,
                     modifier = Modifier.fillMaxWidth().weight(1f),
                 )
             } else {

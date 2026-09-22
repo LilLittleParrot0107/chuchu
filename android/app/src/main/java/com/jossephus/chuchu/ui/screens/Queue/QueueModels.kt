@@ -519,6 +519,8 @@ data class BlockedPrompt(
     val options: List<BlockedOption>,
     /** Chân prompt nguyên văn ("Esc to cancel · Tab to amend"). */
     val hint: String,
+    /** Form AskUserQuestion chọn NHIỀU (23/9): ô "[ ]", tích rồi SUBMIT = `POST /blocked/answer {pane, ns}`. */
+    val multi: Boolean = false,
 ) {
     /** Đổi khi prompt đổi — để biết số vừa gửi đã "ăn" (prompt biến mất/đổi) hay chưa. */
     val signature: String
@@ -534,7 +536,10 @@ data class BlockedPrompt(
                     val x = arr.optJSONObject(i) ?: continue
                     val n = x.optInt("n", -1)
                     if (n < 1) continue
-                    options += BlockedOption(n, x.optString("label"), x.optString("desc"), x.optBoolean("selected", false))
+                    options += BlockedOption(
+                        n, x.optString("label"), x.optString("desc"), x.optBoolean("selected", false),
+                        checkbox = x.optBoolean("checkbox", false), checked = x.optBoolean("checked", false),
+                    )
                 }
             }
             if (options.isEmpty()) return null
@@ -549,10 +554,14 @@ data class BlockedPrompt(
                 detail = detail,
                 options = options,
                 hint = o.optString("hint"),
+                multi = o.optBoolean("multi", false),
             )
         }
     }
 }
+
+/** `answered` của thẻ khi đã SUBMIT một bộ ô tích (không phải một số lựa chọn). */
+const val BLOCKED_MULTI_SENT = -1
 
 data class BlockedOption(
     val n: Int,
@@ -560,6 +569,9 @@ data class BlockedOption(
     val desc: String = "",
     /** Lựa chọn Claude đang trỏ (❯) trên terminal. */
     val selected: Boolean = false,
+    /** Ô tích của form chọn nhiều ("[ ] apple"); `checked` = đang tích trên terminal. */
+    val checkbox: Boolean = false,
+    val checked: Boolean = false,
 ) {
     /**
      * Lựa chọn "gõ tiếp": gửi số xong, câu trả lời gõ ở ô dưới đi thẳng vào pane. Claude Code:

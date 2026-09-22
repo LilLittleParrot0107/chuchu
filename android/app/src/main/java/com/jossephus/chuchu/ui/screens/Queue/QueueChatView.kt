@@ -82,6 +82,7 @@ internal fun QueueChatView(
     listState: LazyListState = rememberLazyListState(),
     /** Thẻ NEEDS YOU (21/9): chạm một lựa chọn của prompt đang chặn pane. */
     onAnswerBlocked: (BlockedOption) -> Unit = {},
+    onSubmitBlocked: (List<Int>) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val colors = ChuColors.current
@@ -150,6 +151,7 @@ internal fun QueueChatView(
                         answering = chat.answering,
                         textSize = textSize,
                         onAnswer = onAnswerBlocked,
+                        onSubmit = onSubmitBlocked,
                     )
                 }
             }
@@ -163,6 +165,8 @@ internal fun QueueChatView(
  * các lựa chọn Claude đưa với số y như terminal. Chạm = gõ số đó vào pane; ô vừa gửi đổi
  * xanh và thẻ khoá tới khi prompt đổi (ô con trỏ terminal KHÔNG tô — user 21/9). "Type
  * something" / "Chat about this" viền đứt: gửi số xong câu trả lời gõ ở ô dưới.
+ * Form chọn NHIỀU (23/9): ô "[ ]" chạm là tích/bỏ tại chỗ (chưa gửi gì), nút ✔ SUBMIT mới
+ * gửi cả bộ; "Type something" của form này không chạm được (mở ô nhập trong terminal).
  */
 @Composable
 private fun BlockedCard(
@@ -171,10 +175,13 @@ private fun BlockedCard(
     answering: Boolean,
     textSize: TextUnit,
     onAnswer: (BlockedOption) -> Unit,
+    onSubmit: (List<Int>) -> Unit = {},
 ) {
     val colors = ChuColors.current
     val type = ChuTypography.current
     val locked = answering || answered != null
+    // Bộ ô đang tích (form chọn nhiều): khởi từ trạng thái terminal, đổi tại chỗ khi chạm.
+    var picked by remember(prompt.signature) { mutableStateOf(prompt.options.filter { it.checked }.map { it.n }.toSet()) }
     Column(
         Modifier
             .fillMaxWidth(0.96f)
@@ -216,12 +223,39 @@ private fun BlockedCard(
         }
         Column(Modifier.padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             prompt.options.forEach { opt ->
-                BlockedOptionRow(opt, sent = answered == opt.n, enabled = !locked, onClick = { onAnswer(opt) })
+                val box = prompt.multi && opt.checkbox
+                val writeIn = box && opt.opensComposer
+                BlockedOptionRow(
+                    opt,
+                    sent = if (box) answered == BLOCKED_MULTI_SENT && opt.n in picked else answered == opt.n,
+                    enabled = !locked && !writeIn,
+                    tick = if (box && !writeIn) opt.n in picked else null,
+                    onClick = {
+                        if (box) picked = if (opt.n in picked) picked - opt.n else picked + opt.n
+                        else onAnswer(opt)
+                    },
+                )
+            }
+        }
+        if (prompt.multi) {
+            val can = picked.isNotEmpty() && !locked
+            Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.End) {
+                ChuText(
+                    "✔ SUBMIT" + if (picked.isEmpty()) "" else " · ${picked.size}",
+                    style = type.label.copy(fontWeight = FontWeight.Bold),
+                    color = if (can) colors.success else colors.textMuted,
+                    modifier = Modifier
+                        .border(1.dp, if (can) colors.success else colors.border, BoxShape)
+                        .noRippleClickable(enabled = can) { onSubmit(picked.sorted()) }
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                )
             }
         }
         val foot = when {
+            answered == BLOCKED_MULTI_SENT -> "submitted ${picked.size} · waiting for the agent…"
             answered != null -> "sent $answered · waiting for the agent…"
             answering -> "sending…"
+            prompt.multi -> "tap = tick · SUBMIT = send" + prompt.hint.takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty()
             else -> "tap = answer on the pane" + prompt.hint.takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty()
         }
         ChuText(
@@ -236,14 +270,27 @@ private fun BlockedCard(
 }
 
 @Composable
-private fun BlockedOptionRow(opt: BlockedOption, sent: Boolean, enabled: Boolean, onClick: () -> Unit) {
+private fun BlockedOptionRow(
+    opt: BlockedOption,
+    sent: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    /** null = không phải ô tích; true/false = ô tích của form chọn nhiều, vẽ "[✔]"/"[ ]" trước nhãn. */
+    tick: Boolean? = null,
+) {
     val colors = ChuColors.current
     val type = ChuTypography.current
     // Không tô ô con trỏ terminal đang đứng (opt.selected): trên máy thật viền vàng nhìn như
     // "đã chọn" dù chưa chạm (user 21/9). Chỉ ô ĐÃ GỬI mới đổi xanh; cờ selected vẫn giữ
     // trong model vì qsrv cần nó để điều hướng ←/→ ↑/↓.
     val borderColor = if (sent) colors.success else colors.border
-    val desc = opt.desc.ifBlank { if (opt.opensComposer) "type in the box below" else "" }
+    val desc = opt.desc.ifBlank {
+        when {
+            opt.opensComposer && !enabled && opt.checkbox -> "type it on the terminal"
+            opt.opensComposer -> "type in the box below"
+            else -> ""
+        }
+    }
     Row(
         Modifier
             .fillMaxWidth()
@@ -261,6 +308,11 @@ private fun BlockedOptionRow(opt: BlockedOption, sent: Boolean, enabled: Boolean
         )
         BasicText(
             text = buildAnnotatedString {
+                if (tick != null) {
+                    withStyle(SpanStyle(color = if (tick) colors.success else colors.textMuted, fontWeight = FontWeight.Bold)) {
+                        append(if (tick) "[✔] " else "[ ] ")
+                    }
+                }
                 append(opt.label)
                 if (desc.isNotBlank()) {
                     withStyle(SpanStyle(color = colors.textMuted, fontSize = type.labelSmall.fontSize)) { append("  — $desc") }

@@ -11,6 +11,7 @@ import java.net.UnknownHostException
 import java.net.URL
 import java.net.URLEncoder
 import javax.net.ssl.SSLException
+import org.json.JSONArray
 
 /**
  * Client HTTP cho qsrv. Chặn luồng — gọi từ Dispatchers.IO.
@@ -207,6 +208,15 @@ class QueueClient(
         JSONObject().apply {
             put("pane", pane)
             put("n", n)
+        },
+    )
+
+    /** Form chọn nhiều (23/9): `{pane, ns}` — qsrv tích đúng các ô rồi Tab + gửi. */
+    fun blockedAnswerMulti(pane: String, ns: List<Int>): Act = send(
+        "/blocked/answer",
+        JSONObject().apply {
+            put("pane", pane)
+            put("ns", JSONArray(ns))
         },
     )
 

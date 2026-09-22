@@ -350,6 +350,40 @@ class QueueViewModel(
         }
     }
 
+    /** SUBMIT trên thẻ chọn nhiều (23/9): qsrv tích đúng các ô `ns` rồi Tab + gửi. Khoá thẻ như trả lời một số. */
+    fun answerBlockedMulti(ns: List<Int>) {
+        val cur = _chat.value
+        val pane = cur.pane ?: return
+        val prompt = cur.blocked ?: return
+        if (cur.answering || cur.answered != null || !prompt.multi || ns.isEmpty()) return
+        if (ns.any { n -> prompt.options.none { it.n == n && it.checkbox && !it.opensComposer } }) return
+        _chat.update { it.copy(answering = true) }
+        viewModelScope.launch {
+            val r = try {
+                val c = client() ?: return@launch
+                withContext(Dispatchers.IO) { c.blockedAnswerMulti(pane, ns) }.also { persistAuthRecovery(c) }
+            } finally {
+                if (_chat.value.pane == pane) _chat.update { it.copy(answering = false) }
+            }
+            if (_chat.value.pane != pane) return@launch
+            when (r) {
+                is QueueClient.Act.Ok -> {
+                    _chat.update { it.copy(answered = BLOCKED_MULTI_SENT) }
+                    delay(BLOCKED_LOCK_MS)
+                    _chat.update { if (it.answered == BLOCKED_MULTI_SENT) it.copy(answered = null) else it }
+                }
+                is QueueClient.Act.Conflict -> {
+                    postFeedback("", "Prompt changed — reread", QueueFeedbackTone.Warning)
+                    blockedRefreshOnce(pane)
+                }
+                is QueueClient.Act.Failed -> {
+                    if (r.needsAuth) _ui.update { it.copy(needsSetup = true) }
+                    postFeedback(r.message, "Submit failed", QueueFeedbackTone.Error)
+                }
+            }
+        }
+    }
+
     /** true nếu hỏng. Trang mới về thì GHÉP với tin cũ hơn đã tải (offset là vị trí byte, ổn định). */
     private suspend fun chatRefreshOnce(pane: String, waitSec: Int): Boolean {
         val c = client() ?: run { _chat.update { it.copy(loading = false, error = "Queue is not configured yet") }; return true }
