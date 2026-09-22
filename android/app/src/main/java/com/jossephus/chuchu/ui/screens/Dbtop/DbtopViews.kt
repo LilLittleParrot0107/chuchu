@@ -20,7 +20,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
@@ -32,12 +35,16 @@ import com.jossephus.chuchu.data.model.dbtop.CurvePoint
 import com.jossephus.chuchu.data.model.dbtop.DailyYield
 import com.jossephus.chuchu.data.model.dbtop.DeFiFormatter
 import com.jossephus.chuchu.data.model.dbtop.DayFlowRow
+import com.jossephus.chuchu.data.model.dbtop.DayTx
+import com.jossephus.chuchu.data.model.dbtop.dayTransactions
 import com.jossephus.chuchu.data.model.dbtop.FlowState
 import com.jossephus.chuchu.data.model.dbtop.SpendingState
 import com.jossephus.chuchu.data.model.dbtop.dayFlowRows
+import com.jossephus.chuchu.ui.components.ChuBottomSheet
 import com.jossephus.chuchu.ui.components.ChuCard
 import com.jossephus.chuchu.ui.components.ChuText
 import com.jossephus.chuchu.ui.components.KohiSectionBand
+import com.jossephus.chuchu.ui.components.noRippleClickable
 import com.jossephus.chuchu.ui.components.chart.CashflowEngine
 import com.jossephus.chuchu.ui.components.chart.CashflowKpiSummary
 import com.jossephus.chuchu.ui.components.chart.NetWorthCurveChart
@@ -45,6 +52,8 @@ import com.jossephus.chuchu.ui.components.chart.NetRateChart
 import com.jossephus.chuchu.ui.theme.CHU_HAIRLINE_ALPHA
 import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTypography
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 import kotlin.math.abs
 
@@ -379,6 +388,17 @@ internal fun SpendingView(
     val hidden = moneyDisplay == MoneyDisplay.HIDDEN
     val neg = if (hidden) "" else "-"
     fun money(v: Double, compact: Boolean = false) = formatMoney(v, moneyDisplay, rate, compact)
+    // Chạm một ngày trên bảng → tấm trượt từ đáy liệt kê từng lệnh của ngày đó (user chốt B, 22/9).
+    var openDay by remember { mutableStateOf<String?>(null) }
+    openDay?.let { day ->
+        DayDetailSheet(
+            day = day,
+            rows = remember(day, spending, flowMonth) { dayTransactions(day, spending, flowMonth) },
+            hidden = hidden,
+            money = { money(it) },
+            onDismiss = { openDay = null },
+        )
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -435,7 +455,13 @@ internal fun SpendingView(
                 )
             }
             item(key = "days_table") {
-                DayFlowTable(rows = dayRows, showFlow = flowMonth != null, hidden = hidden, money = { money(it) })
+                DayFlowTable(
+                    rows = dayRows,
+                    showFlow = flowMonth != null,
+                    hidden = hidden,
+                    money = { money(it) },
+                    onDayClick = { openDay = it },
+                )
             }
         }
         if (monthRows.isNotEmpty()) {
@@ -474,6 +500,7 @@ private fun DayFlowTable(
     showFlow: Boolean,
     hidden: Boolean,
     money: (Double) -> String,
+    onDayClick: (String) -> Unit = {},
 ) {
     val colors = ChuColors.current
     val type = ChuTypography.current
@@ -525,6 +552,7 @@ private fun DayFlowTable(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .noRippleClickable { onDayClick(r.day) }
                     .padding(horizontal = 8.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -540,6 +568,73 @@ private fun DayFlowTable(
                     Num(r.inUsd, "+", colors.success)
                     Num(r.out, "-", colors.warning)
                 }
+            }
+            if (i < rows.lastIndex) {
+                Box(Modifier.fillMaxWidth().height(1.dp).background(colors.border.copy(alpha = CHU_HAIRLINE_ALPHA)))
+            }
+        }
+    }
+}
+
+/**
+ * Tấm chi tiết một ngày (prototype kohi-spend-day-detail-prototype.html B, user chốt 22/9): đầu là
+ * ngày + tổng vào / ra / spend, dưới là từng lệnh giờ · chiều · số tiền · token. Tiền tới ví
+ * spending in cam kèm chữ "spend". Không đối tác, không chỉ dẫn.
+ */
+@Composable
+private fun DayDetailSheet(
+    day: String,
+    rows: List<DayTx>,
+    hidden: Boolean,
+    money: (Double) -> String,
+    onDismiss: () -> Unit,
+) {
+    val colors = ChuColors.current
+    val type = ChuTypography.current
+    val numStyle = type.label.copy(fontFamily = FontFamily.Monospace, fontFeatureSettings = "tnum", fontWeight = FontWeight.Bold)
+    val clock = remember { SimpleDateFormat("HH:mm", Locale.US) }
+    val sumIn = rows.filter { it.kind == "in" }.sumOf { it.usd }
+    val sumOut = rows.filter { it.kind == "out" }.sumOf { it.usd }
+    val sumSpend = rows.filter { it.kind == "spend" }.sumOf { it.usd }
+    ChuBottomSheet(onDismiss = onDismiss) {
+        Row(modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            ChuText(
+                day.substring(8) + "/" + day.substring(5, 7),
+                style = type.labelSmall.copy(fontWeight = FontWeight.Bold),
+                color = colors.accent,
+            )
+            Spacer(Modifier.weight(1f))
+            if (sumIn > 0) ChuText((if (hidden) "" else "+") + money(sumIn), style = type.labelSmall, color = colors.success)
+            if (sumIn > 0 && (sumOut > 0 || sumSpend > 0)) ChuText(" · ", style = type.labelSmall, color = colors.textMuted)
+            if (sumOut > 0) ChuText((if (hidden) "" else "-") + money(sumOut), style = type.labelSmall, color = colors.warning)
+            if (sumOut > 0 && sumSpend > 0) ChuText(" · ", style = type.labelSmall, color = colors.textMuted)
+            if (sumSpend > 0) ChuText("spend " + (if (hidden) "" else "-") + money(sumSpend), style = type.labelSmall, color = colors.warning)
+        }
+        if (rows.isEmpty()) {
+            ChuText("no transactions", style = type.labelSmall, color = colors.textMuted)
+        }
+        rows.forEachIndexed { i, tx ->
+            val inbound = tx.kind == "in"
+            val color = if (inbound) colors.success else colors.warning
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                ChuText(
+                    remember(tx.ts) { clock.format(Date(tx.ts * 1000)) },
+                    style = type.labelSmall,
+                    color = colors.textMuted,
+                    modifier = Modifier.width(44.dp),
+                )
+                ChuText(if (inbound) "←" else "→", style = type.label.copy(fontWeight = FontWeight.Bold), color = color, modifier = Modifier.width(18.dp))
+                Spacer(Modifier.weight(1f))
+                ChuText((if (hidden) "" else if (inbound) "+" else "-") + money(tx.usd), style = numStyle, color = color)
+                ChuText(
+                    if (tx.kind == "spend") "spend" else tx.token,
+                    style = type.labelSmall,
+                    color = if (tx.kind == "spend") colors.warning else colors.textMuted,
+                    modifier = Modifier.width(52.dp).padding(start = 8.dp),
+                )
             }
             if (i < rows.lastIndex) {
                 Box(Modifier.fillMaxWidth().height(1.dp).background(colors.border.copy(alpha = CHU_HAIRLINE_ALPHA)))

@@ -18,7 +18,12 @@ data class FlowState(
     @SerialName("month_count") val monthCount: Int = 0,
     /** 45 ngày gần nhất, chỉ ngày có tiền qua lại; `out` dương. */
     @SerialName("by_day") val byDay: Map<String, FlowDay> = emptyMap(),
+    /** Từng lệnh theo ngày (mới nhất trước), `amount` có dấu — cho tấm chi tiết ngày. */
+    val days: Map<String, List<FlowTx>> = emptyMap(),
 )
+
+@Serializable
+data class FlowTx(val ts: Long = 0L, val token: String = "", val amount: Double = 0.0)
 
 @Serializable
 data class FlowDay(
@@ -47,4 +52,16 @@ fun dayFlowRows(spending: SpendingState, flow: FlowState?): List<DayFlowRow> {
             out = flowDays[d]?.out ?: 0.0,
         )
     }
+}
+
+/** Một lệnh trong tấm chi tiết ngày (user chốt B, 22/9): [kind] = "in" | "out" | "spend", [usd] luôn dương. */
+data class DayTx(val ts: Long, val kind: String, val token: String, val usd: Double)
+
+/** Lệnh của [day] từ cả hai nguồn, mới nhất trước. Không đối tác — user chỉ cần gửi/nhận bao nhiêu. */
+fun dayTransactions(day: String, spending: SpendingState, flow: FlowState?): List<DayTx> {
+    val fromFlow = flow?.days?.get(day).orEmpty().map {
+        DayTx(it.ts, if (it.amount >= 0) "in" else "out", it.token, kotlin.math.abs(it.amount))
+    }
+    val fromSpend = spending.days[day].orEmpty().map { DayTx(it.ts, "spend", it.token, it.usd) }
+    return (fromFlow + fromSpend).sortedByDescending { it.ts }
 }

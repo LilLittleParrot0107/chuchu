@@ -35,6 +35,19 @@ class FlowModelsTest {
     }
 
     @Test
+    fun `chi tiet ngay gop flow va spending, moi nhat truoc, so luon duong`() {
+        val flow = DbtopJson.decodeFromString(FlowState.serializer(), """{"month":"2026-09","days":{
+            "2026-09-20":[{"ts":1789916314,"token":"USDC","amount":359.0},{"ts":1789885000,"token":"USDC","amount":-240.0}]}}""")
+        val spending = SpendingState(month = "2026-09", days = mapOf("2026-09-20" to listOf(SpendingEntry(ts = 1789871879, token = "USDT", amount = 300.07, usd = 300.07))))
+        val rows = dayTransactions("2026-09-20", spending, flow)
+        assertEquals(listOf("in", "out", "spend"), rows.map { it.kind })
+        assertEquals(listOf(359.0, 240.0, 300.07), rows.map { it.usd })
+        assertEquals("USDT", rows[2].token)
+        assertTrue(dayTransactions("2026-09-19", spending, flow).isEmpty())
+        assertEquals(listOf("spend"), dayTransactions("2026-09-20", spending, null).map { it.kind })
+    }
+
+    @Test
     fun `flow lech thang thi khong tron vao`() {
         val spending = SpendingState(month = "2026-10", byDay = mapOf("2026-10-01" to 12.0))
         val flow = DbtopJson.decodeFromString(FlowState.serializer(), flowJson)   // tháng 9

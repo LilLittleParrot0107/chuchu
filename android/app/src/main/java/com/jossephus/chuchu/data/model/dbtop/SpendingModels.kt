@@ -27,6 +27,8 @@ data class SpendingState(
     /** Ty gia USD/VND (open.er-api, cache 12h server-side) cho che do doi VND. */
     @SerialName("usd_vnd") val usdVnd: Double = 0.0,
     val recent: List<SpendingEntry> = emptyList(),
+    /** Từng lệnh theo ngày, 45 ngày — cho tấm chi tiết khi chạm một ngày ở tab SPEND (22/9). */
+    val days: Map<String, List<SpendingEntry>> = emptyMap(),
 )
 
 @Serializable
