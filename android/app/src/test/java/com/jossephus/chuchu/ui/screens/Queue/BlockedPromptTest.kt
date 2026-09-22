@@ -63,6 +63,28 @@ class BlockedPromptTest {
     }
 
     @Test
+    fun `form chon nhieu - o tich, trang thai tich, chu ky khong doi khi tich`() {
+        // payload qsrv 23/9 cho form AskUserQuestion multiSelect (đo trên pane probe)
+        fun payload(bananaChecked: Boolean) = """{"kind":"question","title":"Fruit","question":"Which fruits do you like?",
+            "multi":true,
+            "options":[{"n":1,"label":"apple","desc":"red","selected":true,"checkbox":true,"checked":false},
+                       {"n":2,"label":"banana","desc":"yellow","checkbox":true,"checked":$bananaChecked},
+                       {"n":4,"label":"Type something","desc":"","checkbox":true,"checked":false},
+                       {"n":5,"label":"Chat about this","desc":"","checkbox":false,"checked":false}]}"""
+        val p = BlockedPrompt.parse(JSONObject(payload(false)))!!
+        assertTrue(p.multi)
+        assertEquals(listOf(true, true, true, false), p.options.map { it.checkbox })
+        assertFalse(p.options.any { it.checked })
+        assertTrue(p.options[2].opensComposer)          // ô gõ tiếp của form này: app không cho chạm
+        val ticked = BlockedPrompt.parse(JSONObject(payload(true)))!!
+        assertTrue(ticked.options[1].checked)
+        assertEquals(p.signature, ticked.signature)      // tích/bỏ tích trên terminal không làm thẻ khoá mở nhầm
+        // payload cũ (qsrv chưa có multi) vẫn đọc được, không phải form chọn nhiều
+        assertFalse(prompt(permission)!!.multi)
+        assertFalse(prompt(permission)!!.options[0].checkbox)
+    }
+
+    @Test
     fun `chu ky doi khi prompt doi, khong doi theo chan prompt`() {
         val a = prompt(permission)!!
         assertNotEquals(a.signature, a.copy(question = "Allow this?").signature)
