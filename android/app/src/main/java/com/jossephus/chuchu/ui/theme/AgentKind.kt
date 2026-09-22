@@ -128,18 +128,24 @@ fun distinctHue(familyHues: List<Float>, spread: Float = SESSION_SHADE_HUE_DEG):
 }
 
 /**
- * Màu nền bọt của ANH: tông xa cả ba họ agent, nhưng TỐI (sáng 0.30, bão hoà 0.55) — user 22/9 tối:
- * "làm màu bong bóng chat của a tối đi để đọc chữ cho dễ": bọt sáng rực làm chữ kem mất tương phản.
- * Dùng với alpha ~0.35 lên nền theme → thành một tấm tối ngả tông riêng, chữ nổi rõ.
+ * Màu nền bọt của ANH: tông xa cả ba họ agent, nhưng TỐI để chữ dễ đọc (user 22/9). Bản 1.62.7 đặt
+ * sáng 0.30 rồi pha alpha 0.38 lên nền → độ sáng tổng ≈ bản cũ (0.15 so 0.13), chỉ đậm màu hơn, nên
+ * user "chưa thấy tối đi mấy". Giờ tính THẲNG từ nền theme: nền tối thì bọt sáng hơn nền 8%, nền sáng
+ * thì tối hơn nền 8%, bão hoà 0.40 — đủ nhận tông riêng, không rực. Vẽ đặc, không pha alpha nữa.
  */
 @Composable
 @ReadOnlyComposable
 fun userColor(): Color {
     val c = ChuColors.current
     val fams = listOf(c.warning, c.accentSecondary, c.success).map { rgbToHsl(it.red, it.green, it.blue)[0] }
-    val rgb = hslToRgb(distinctHue(fams), 0.55f, 0.30f)
+    val bgL = rgbToHsl(c.background.red, c.background.green, c.background.blue)[2]
+    val l = (if (bgL < 0.5f) bgL + USER_BUBBLE_LIFT else bgL - USER_BUBBLE_LIFT).coerceIn(0.04f, 0.96f)
+    val rgb = hslToRgb(distinctHue(fams), USER_BUBBLE_SAT, l)
     return Color(rgb[0], rgb[1], rgb[2])
 }
+
+private const val USER_BUBBLE_LIFT = 0.08f
+private const val USER_BUBBLE_SAT = 0.40f
 
 fun sessionShade(base: Color, name: String): Color {
     val rgb = shadeRgb(base.red, base.green, base.blue, sessionStep(name))
