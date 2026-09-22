@@ -467,7 +467,7 @@ internal fun PositionDetailPane(
 
 /** Tieu de section gon: chu nho + duong ke keo het hang. */
 @Composable
-private fun DetailSection(label: String) {
+internal fun DetailSection(label: String) {
     val colors = ChuColors.current
     val type = ChuTypography.current
     Row(
@@ -499,7 +499,7 @@ private fun DetailSection(label: String) {
  * 72dp (92dp cu du thua ~37dp, chinh la thu doat cho khien gia tri gay dong).
  */
 @Composable
-private fun SpecRow(
+internal fun SpecRow(
     label: String,
     value: String,
     valueColor: Color? = null,
