@@ -87,7 +87,7 @@ data class QueueAgent(
      * App so với lần xem cuối để hiện "CHAT · MỚI". null = agent không có transcript.
      */
     val chatRev: String? = null,
-    /** Loại agent herdr báo ("claude"/"opencode"/"agy") — tô màu tên theo loại (user chốt 16/9). */
+    /** Loại agent herdr báo ("claude"/"opencode"/"agy"/"codex") — tô màu tên theo loại (user chốt 16/9). */
     val agent: String? = null,
     /** Tin cuối của transcript, dồn 1 dòng ≤160 ký tự — hàng HỘI THOẠI (UI G1) đọc nhanh. */
     val preview: String = "",
