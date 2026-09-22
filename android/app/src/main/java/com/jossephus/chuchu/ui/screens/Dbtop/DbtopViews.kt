@@ -620,7 +620,8 @@ private fun FlowDayTable(
                     .fillMaxWidth()
                     .background(if (day == selected) colors.accent.copy(alpha = 0.08f) else Color.Transparent)
                     .noRippleClickable { onSelect(day) }
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                    // hàng cao hơn bản 1.62.3 (4dp) — user 22/9 tối: "tăng kích thước mỗi hàng lên xíu"
+                    .padding(horizontal = 8.dp, vertical = 7.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 ChuText(
@@ -708,13 +709,21 @@ private fun FlowDaySheet(
             if (rows.isEmpty()) {
                 ChuText("no transfers", style = type.bodySmall, color = colors.textSecondary)
             }
-            rows.forEach { tx ->
+            // Mỗi lệnh cách nhau một vạch mờ và cao hơn dòng spec thường (user 22/9 tối: "cần có vạch
+            // phân giữa các mục tiền in out, nhìn cho dễ"). Vạch lấy xám chữ, không lấy border — border
+            // trên surface gần như tàng hình (đo 28/8, xem DetailSection).
+            rows.forEachIndexed { i, tx ->
                 val inbound = tx.usd >= 0
-                SpecRow(
-                    label = remember(tx.ts) { clock.format(Date(tx.ts * 1000)) },
-                    value = (if (inbound) pos else neg) + money(kotlin.math.abs(tx.usd)) + " " + tx.token,
-                    valueColor = if (inbound) colors.success else colors.warning,
-                )
+                Box(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+                    SpecRow(
+                        label = remember(tx.ts) { clock.format(Date(tx.ts * 1000)) },
+                        value = (if (inbound) pos else neg) + money(kotlin.math.abs(tx.usd)) + " " + tx.token,
+                        valueColor = if (inbound) colors.success else colors.warning,
+                    )
+                }
+                if (i < rows.lastIndex) {
+                    Box(Modifier.fillMaxWidth().height(1.dp).background(colors.textMuted.copy(alpha = 0.25f)))
+                }
             }
         }
     }
