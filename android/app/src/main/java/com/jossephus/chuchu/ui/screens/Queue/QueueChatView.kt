@@ -295,9 +295,9 @@ private fun UserRow(m: ChatMessage, bodyStyle: androidx.compose.ui.text.TextStyl
     val colors = ChuColors.current
     // ② + tint (user chốt 18/9): hộp TÔ MÀU không viền — accent 12%, lề phải, bo 4dp,
     // không tem tên (tin của anh luôn là của anh vì ở bên phải), giờ góc dưới phải.
-    // Nền bọt của anh = màu riêng xa cả ba họ agent (user 22/9), không còn accent vàng dễ lẫn với
-    // sắc Claude ngả vàng.
-    TintBox(fillColor = userColor().copy(alpha = 0.14f), fraction = 0.88f, alignEnd = true) {
+    // Nền bọt của anh = màu riêng xa cả ba họ agent, tối để chữ dễ đọc (user 22/9), không còn
+    // accent vàng dễ lẫn với sắc Claude ngả vàng.
+    TintBox(fillColor = userColor().copy(alpha = 0.38f), fraction = 0.88f, alignEnd = true) {
         LinkifiedText(m.text, style = bodyStyle, color = colors.textPrimary, modifier = Modifier.fillMaxWidth())
         Row(Modifier.fillMaxWidth()) {
             Spacer(Modifier.weight(1f))

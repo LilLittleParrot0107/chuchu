@@ -429,7 +429,7 @@ private fun FeedBubble(m: FeedMessage, color: androidx.compose.ui.graphics.Color
     val displayText = if (needsCollapse && !expanded) truncateFeedText(m.text) else m.text
     if (m.role == "user") {
         TintBox(
-            fillColor = userColor().copy(alpha = 0.14f),
+            fillColor = userColor().copy(alpha = 0.38f),
             fraction = 0.86f,
             alignEnd = true,
             modifier = Modifier.noRippleClickable { onPick(m) },

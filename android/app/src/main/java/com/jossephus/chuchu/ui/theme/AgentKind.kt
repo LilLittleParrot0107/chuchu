@@ -127,14 +127,17 @@ fun distinctHue(familyHues: List<Float>, spread: Float = SESSION_SHADE_HUE_DEG):
     return best
 }
 
-/** Màu phần của ANH: tông xa cả ba họ agent, độ bão hoà và sáng lấy từ accent để cùng "độ rực" với theme. */
+/**
+ * Màu nền bọt của ANH: tông xa cả ba họ agent, nhưng TỐI (sáng 0.30, bão hoà 0.55) — user 22/9 tối:
+ * "làm màu bong bóng chat của a tối đi để đọc chữ cho dễ": bọt sáng rực làm chữ kem mất tương phản.
+ * Dùng với alpha ~0.35 lên nền theme → thành một tấm tối ngả tông riêng, chữ nổi rõ.
+ */
 @Composable
 @ReadOnlyComposable
 fun userColor(): Color {
     val c = ChuColors.current
     val fams = listOf(c.warning, c.accentSecondary, c.success).map { rgbToHsl(it.red, it.green, it.blue)[0] }
-    val acc = rgbToHsl(c.accent.red, c.accent.green, c.accent.blue)
-    val rgb = hslToRgb(distinctHue(fams), acc[1], acc[2])
+    val rgb = hslToRgb(distinctHue(fams), 0.55f, 0.30f)
     return Color(rgb[0], rgb[1], rgb[2])
 }
 
