@@ -30,7 +30,13 @@ import com.jossephus.chuchu.ui.theme.ChuColors
 @Composable
 fun ChuBottomSheet(onDismiss: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
     val colors = ChuColors.current
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    // decorFitsSystemWindows = false: cửa sổ Dialog trên Android 15 (targetSdk 36) vốn vẽ tràn dưới vạch
+    // điều hướng, nhưng mặc định KHÔNG giao inset cho nội dung → navigationBarsPadding() bằng 0 và dòng
+    // cuối chui dưới vạch (ảnh 22/9 19:40 và 20:49). Tắt decorFits thì inset thật về tới Column.
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+    ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -48,9 +54,7 @@ fun ChuBottomSheet(onDismiss: () -> Unit, content: @Composable ColumnScope.() ->
                         drawLine(colors.border, Offset(0f, stroke / 2), Offset(size.width, stroke / 2), stroke)
                     }
                     .navigationBarsPadding()
-                    // Nâng khỏi vạch điều hướng cử chỉ (ảnh 22/9 19:40: dòng cuối bị vạch đè) và
-                    // giới hạn cao 520dp, dài thì cuộn bên trong.
-                    .padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 28.dp)
+                    .padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 14.dp)
                     .heightIn(max = 520.dp)
                     .verticalScroll(rememberScrollState()),
                 content = content,
