@@ -31,37 +31,9 @@ data class FlowDay(
     val out: Double = 0.0,
 )
 
-/** Một hàng bảng BY DAY của tab SPEND: ngày có chi tiêu hoặc có flow trong tháng đang xem. */
-data class DayFlowRow(val day: String, val spend: Double, val inUsd: Double, val out: Double)
+/** Một lệnh trong tấm chi tiết ngày của FLOW (user chốt 22/9): [usd] có dấu, dương = nhận. */
+data class DayTx(val ts: Long, val token: String, val usd: Double)
 
-/**
- * Gộp chi tiêu theo ngày (spending.json) với flow theo ngày (flow.json) thành các hàng của
- * tháng đang xem, mới nhất trước. flow lệch tháng (server chưa quét tới) thì coi như không có
- * flow — hàng vẫn ra, cột in/out bằng 0 — chứ không trộn số tháng khác vào.
- */
-fun dayFlowRows(spending: SpendingState, flow: FlowState?): List<DayFlowRow> {
-    val month = spending.month
-    val flowDays = flow?.takeIf { it.month == month }?.byDay.orEmpty()
-    // sortedDescending trên List: SortedSet.reversed() bị resolve vào member JDK 21, runtime 17/Android không có.
-    val days = (spending.byDay.keys + flowDays.keys).filter { it.startsWith(month) }.distinct().sortedDescending()
-    return days.map { d ->
-        DayFlowRow(
-            day = d,
-            spend = spending.byDay[d] ?: 0.0,
-            inUsd = flowDays[d]?.inUsd ?: 0.0,
-            out = flowDays[d]?.out ?: 0.0,
-        )
-    }
-}
-
-/** Một lệnh trong tấm chi tiết ngày (user chốt B, 22/9): [kind] = "in" | "out" | "spend", [usd] luôn dương. */
-data class DayTx(val ts: Long, val kind: String, val token: String, val usd: Double)
-
-/** Lệnh của [day] từ cả hai nguồn, mới nhất trước. Không đối tác — user chỉ cần gửi/nhận bao nhiêu. */
-fun dayTransactions(day: String, spending: SpendingState, flow: FlowState?): List<DayTx> {
-    val fromFlow = flow?.days?.get(day).orEmpty().map {
-        DayTx(it.ts, if (it.amount >= 0) "in" else "out", it.token, kotlin.math.abs(it.amount))
-    }
-    val fromSpend = spending.days[day].orEmpty().map { DayTx(it.ts, "spend", it.token, it.usd) }
-    return (fromFlow + fromSpend).sortedByDescending { it.ts }
-}
+/** Lệnh chuyển thuần của [day], mới nhất trước. Không đối tác, không mũi tên — dấu và màu là đủ. */
+fun flowDayRows(day: String, flow: FlowState?): List<DayTx> =
+    flow?.days?.get(day).orEmpty().map { DayTx(it.ts, it.token, it.amount) }.sortedByDescending { it.ts }
