@@ -101,6 +101,13 @@ class BlockedPromptTest {
         assertEquals(listOf("Which fruit? → apple", "Which colors? → red, blue"), rv.detail)
         // form một câu: không tab → nút vẫn là SUBMIT
         assertEquals(0, prompt(permission)!!.tabCount)
+        assertTrue(prompt(permission)!!.submits)
+        assertFalse(q2.submits)                                  // Claude/opencode câu cuối vẫn còn trang Review
+        // agy: câu cuối gửi luôn dù có 2 câu (qsrv gửi submits=true)
+        val agyLast = BlockedPrompt.parse(JSONObject("""{"kind":"question","title":"Question","question":"Which colors?","multi":true,
+            "tabs":[{"label":"1","done":true},{"label":"2","done":false}],"step":"2/2","submits":true,
+            "options":[{"n":1,"label":"red","checkbox":true}]}"""))!!
+        assertTrue(agyLast.submits)
     }
 
     @Test

@@ -527,6 +527,11 @@ data class BlockedPrompt(
     val step: String = "",
     /** Trang cuối "Review your answers": detail = các cặp câu hỏi → trả lời, lựa chọn Submit answers / Cancel. */
     val review: Boolean = false,
+    /**
+     * Nút của thẻ chọn nhiều GỬI luôn (true) hay chỉ SANG CÂU KẾ (false) — qsrv tính theo từng TUI (23/9):
+     * Claude/opencode form một câu = gửi, nhiều câu = sang câu kế rồi trang Review; agy câu cuối = gửi, câu giữa = Next.
+     */
+    val submits: Boolean = true,
 ) {
     /** Đổi khi prompt đổi — để biết số vừa gửi đã "ăn" (prompt biến mất/đổi) hay chưa. */
     val signature: String
@@ -564,6 +569,7 @@ data class BlockedPrompt(
                 tabCount = o.optJSONArray("tabs")?.length() ?: 0,
                 step = o.optString("step"),
                 review = o.optBoolean("review", false),
+                submits = o.optBoolean("submits", (o.optJSONArray("tabs")?.length() ?: 0) < 2),
             )
         }
     }
