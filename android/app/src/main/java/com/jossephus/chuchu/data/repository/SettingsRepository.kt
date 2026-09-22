@@ -86,6 +86,14 @@ class SettingsRepository(context: Context) {
             return "$base/chuchu/spending/spending.json"
         }
 
+    /** flow.json do flow-scan sinh (22/9), cùng thư mục với spending.json. */
+    val resolvedFlowUrl: String
+        get() {
+            val portal = _webPortalUrl.value.trim().trimEnd('/')
+            val base = if (portal.isNotEmpty()) portal else DEFAULT_WEB_PORTAL_URL.trimEnd('/')
+            return "$base/chuchu/spending/flow.json"
+        }
+
     /** Che do hien tien cua dashboard (USD/VND/HIDDEN) — nho qua cac lan mo app. */
     var dbtopMoneyDisplay: String
         get() = prefs.getString(KEY_DBTOP_MONEY, null) ?: "USD"

@@ -7,9 +7,10 @@ import androidx.lifecycle.viewModelScope
 import com.jossephus.chuchu.data.model.dbtop.DappRow
 import com.jossephus.chuchu.data.model.dbtop.DataFreshness
 import com.jossephus.chuchu.data.model.dbtop.DbtopState
+import com.jossephus.chuchu.data.model.dbtop.FlowState
 import com.jossephus.chuchu.data.model.dbtop.SpendingState
 import com.jossephus.chuchu.data.network.DbtopClient
-import com.jossephus.chuchu.data.network.SpendingClient
+import com.jossephus.chuchu.data.network.JsonFileClient
 import com.jossephus.chuchu.data.repository.DbtopCacheManager
 import com.jossephus.chuchu.data.repository.SettingsRepository
 import kotlinx.coroutines.Dispatchers
@@ -180,6 +181,8 @@ data class DbtopUiState(
     val selectedView: DbtopView = DbtopView.POSITIONS,
     val selectedPositionKey: String? = null,
     val spending: SpendingState? = null,
+    /** flow.json (22/9): dòng USDC/USDT vào/ra ví chính; null = chưa tải được. */
+    val flow: FlowState? = null,
     val moneyDisplay: MoneyDisplay = MoneyDisplay.USD,
 ) {
     /**
@@ -220,8 +223,10 @@ class DbtopViewModel(
     private var pollJob: Job? = null
     private var client: DbtopClient? = null
     private var clientConfig: ClientConfig? = null
-    private var spendingClient: SpendingClient? = null
+    private var spendingClient: JsonFileClient<SpendingState>? = null
     private var spendingClientUrl: String? = null
+    private var flowClient: JsonFileClient<FlowState>? = null
+    private var flowClientUrl: String? = null
     private val refreshMutex = Mutex()
 
     init {
@@ -310,8 +315,13 @@ class DbtopViewModel(
         // SpendingClient (ETag/304); hong hay 304 thi giu ban cu, khong lam
         // do ca man dashboard.
         val spendingResult = withContext(Dispatchers.IO) { getOrCreateSpendingClient().fetch() }
-        if (spendingResult is SpendingClient.FetchResult.Fresh) {
+        if (spendingResult is JsonFileClient.FetchResult.Fresh) {
             _ui.update { it.copy(spending = spendingResult.state) }
+        }
+        // flow.json cùng thư mục, cùng nhịp (22/9); hỏng hay 304 thì giữ bản cũ.
+        val flowResult = withContext(Dispatchers.IO) { getOrCreateFlowClient().fetch() }
+        if (flowResult is JsonFileClient.FetchResult.Fresh) {
+            _ui.update { it.copy(flow = flowResult.state) }
         }
 
         when (val result = withContext(Dispatchers.IO) { httpClient.fetch(forceRefresh = !isBackgroundPoll) }) {
@@ -364,13 +374,23 @@ class DbtopViewModel(
         }
     }
 
-    private fun getOrCreateSpendingClient(): SpendingClient {
+    private fun getOrCreateSpendingClient(): JsonFileClient<SpendingState> {
         val url = settings.resolvedSpendingUrl
         val existing = spendingClient
         if (existing != null && url == spendingClientUrl) return existing
-        return SpendingClient(url).also {
+        return JsonFileClient(url, SpendingState.serializer()).also {
             spendingClient = it
             spendingClientUrl = url
+        }
+    }
+
+    private fun getOrCreateFlowClient(): JsonFileClient<FlowState> {
+        val url = settings.resolvedFlowUrl
+        val existing = flowClient
+        if (existing != null && url == flowClientUrl) return existing
+        return JsonFileClient(url, FlowState.serializer()).also {
+            flowClient = it
+            flowClientUrl = url
         }
     }
 

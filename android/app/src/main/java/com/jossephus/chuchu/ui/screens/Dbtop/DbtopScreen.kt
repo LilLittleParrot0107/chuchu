@@ -242,6 +242,7 @@ fun DbtopScreen(
                     )
                     DbtopView.SPENDING -> SpendingView(
                         spending = ui.spending,
+                        flow = ui.flow,
                         moneyDisplay = ui.moneyDisplay,
                     )
                 }
