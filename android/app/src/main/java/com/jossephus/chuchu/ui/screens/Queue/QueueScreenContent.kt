@@ -316,13 +316,14 @@ internal fun QueueFeedView(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
-                    // Trong một chặng các khối cách 8dp; sang chặng mới vạch giờ đứng cách chặng trước
-                    // 22dp (user 22/9: "giữa mỗi chặng cách rộng hơn để mắt hiểu là hai chặng khác nhau").
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    // Hai khối phiên liền nhau cách 16dp để hai vạch dọc tách hẳn (user 22/9 tối: "khoảng
+                    // cách giữa 2 vạch đoạn lớn ra cho dễ phân biệt"); vạch giờ của chặng mới vẫn cách
+                    // chặng trước tổng 30dp (16 + gapTop 14) như trước.
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
                     itemsIndexed(items, key = { _, it -> it.key }) { index, item ->
                         when (item) {
-                            is FeedItem.Hour -> FeedHourDivider(epochClock(item.startSec), gapTop = if (index == 0) 0.dp else 22.dp)
+                            is FeedItem.Hour -> FeedHourDivider(epochClock(item.startSec), gapTop = if (index == 0) 0.dp else 14.dp)
                             is FeedItem.New -> FeedNewDivider("new · since " + epochClock(item.sinceSec))
                             is FeedItem.Block -> FeedBlockView(item.block, onPick = onPick, bodySize = type.body.fontSize)
                         }
