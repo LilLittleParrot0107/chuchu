@@ -193,7 +193,7 @@ private fun BlockedCard(
             ChuText("● NEEDS YOU", style = type.labelSmall.copy(fontWeight = FontWeight.Bold), color = colors.error)
             Spacer(Modifier.width(8.dp))
             ChuText(
-                prompt.title,
+                prompt.title + if (prompt.step.isNotBlank()) " · ${prompt.step}" else "",
                 style = type.labelSmall,
                 color = colors.textPrimary,
                 maxLines = 1,
@@ -239,9 +239,11 @@ private fun BlockedCard(
         }
         if (prompt.multi) {
             val can = picked.isNotEmpty() && !locked
+            // Form nhiều câu: nút là NEXT — qsrv Tab sang câu kế (hoặc trang Review, anh chạm "Submit answers" ở đó).
+            val verb = if (prompt.tabCount >= 2) "NEXT ▸" else "✔ SUBMIT"
             Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.End) {
                 ChuText(
-                    "✔ SUBMIT" + if (picked.isEmpty()) "" else " · ${picked.size}",
+                    verb + if (picked.isEmpty()) "" else " · ${picked.size}",
                     style = type.label.copy(fontWeight = FontWeight.Bold),
                     color = if (can) colors.success else colors.textMuted,
                     modifier = Modifier
@@ -255,6 +257,7 @@ private fun BlockedCard(
             answered == BLOCKED_MULTI_SENT -> "submitted ${picked.size} · waiting for the agent…"
             answered != null -> "sent $answered · waiting for the agent…"
             answering -> "sending…"
+            prompt.multi && prompt.tabCount >= 2 -> "tap = tick · NEXT = next question" + prompt.hint.takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty()
             prompt.multi -> "tap = tick · SUBMIT = send" + prompt.hint.takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty()
             else -> "tap = answer on the pane" + prompt.hint.takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty()
         }

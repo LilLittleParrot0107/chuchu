@@ -521,6 +521,12 @@ data class BlockedPrompt(
     val hint: String,
     /** Form AskUserQuestion chọn NHIỀU (23/9): ô "[ ]", tích rồi SUBMIT = `POST /blocked/answer {pane, ns}`. */
     val multi: Boolean = false,
+    /** Form NHIỀU câu hỏi (23/9): số ô tab trên đầu form; ≥ 2 thì nút của thẻ chọn nhiều là NEXT, không phải SUBMIT. */
+    val tabCount: Int = 0,
+    /** "2/3" = đang ở câu 2 của 3 (rỗng khi form một câu hoặc trang Review). */
+    val step: String = "",
+    /** Trang cuối "Review your answers": detail = các cặp câu hỏi → trả lời, lựa chọn Submit answers / Cancel. */
+    val review: Boolean = false,
 ) {
     /** Đổi khi prompt đổi — để biết số vừa gửi đã "ăn" (prompt biến mất/đổi) hay chưa. */
     val signature: String
@@ -555,6 +561,9 @@ data class BlockedPrompt(
                 options = options,
                 hint = o.optString("hint"),
                 multi = o.optBoolean("multi", false),
+                tabCount = o.optJSONArray("tabs")?.length() ?: 0,
+                step = o.optString("step"),
+                review = o.optBoolean("review", false),
             )
         }
     }

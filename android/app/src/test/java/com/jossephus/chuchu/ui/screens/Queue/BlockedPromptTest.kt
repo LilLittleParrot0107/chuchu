@@ -85,6 +85,25 @@ class BlockedPromptTest {
     }
 
     @Test
+    fun `form nhieu cau hoi - tab, buoc, trang review`() {
+        val q2 = BlockedPrompt.parse(JSONObject("""{"kind":"question","title":"Color","question":"Which colors?","multi":true,
+            "tabs":[{"label":"Fruit","done":true},{"label":"Color","done":false}],"tab":1,"step":"2/2","review":false,
+            "options":[{"n":1,"label":"red","checkbox":true,"checked":false}]}"""))!!
+        assertEquals(2, q2.tabCount)
+        assertEquals("2/2", q2.step)
+        assertFalse(q2.review)
+        val rv = BlockedPrompt.parse(JSONObject("""{"kind":"question","title":"Submit","question":"Ready to submit your answers?",
+            "detail":["Which fruit? → apple","Which colors? → red, blue"],"review":true,
+            "tabs":[{"label":"Fruit","done":true},{"label":"Color","done":true}],
+            "options":[{"n":1,"label":"Submit answers"},{"n":2,"label":"Cancel"}]}"""))!!
+        assertTrue(rv.review)
+        assertEquals("", rv.step)
+        assertEquals(listOf("Which fruit? → apple", "Which colors? → red, blue"), rv.detail)
+        // form một câu: không tab → nút vẫn là SUBMIT
+        assertEquals(0, prompt(permission)!!.tabCount)
+    }
+
+    @Test
     fun `chu ky doi khi prompt doi, khong doi theo chan prompt`() {
         val a = prompt(permission)!!
         assertNotEquals(a.signature, a.copy(question = "Allow this?").signature)
