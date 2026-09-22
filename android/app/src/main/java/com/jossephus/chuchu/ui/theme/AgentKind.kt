@@ -41,6 +41,76 @@ fun AgentKind.rosterColor(): Color = when (this) {
     AgentKind.OTHER -> ChuColors.current.textPrimary
 }
 
+// ── Sắc riêng của từng phiên trong họ màu của loại agent (user chốt 22/9: băm tên, ±20% sáng,
+// ±20° tông, 8 nấc). Cùng tên = cùng sắc mọi nơi (roster, CHAT, DÒNG THỜI GIAN); đổi tên là
+// đổi sắc, như herdr. Độ sáng kẹp [0.35, 0.90] để không chìm trên nền tối, không trắng bệch.
+// Chi phí: một hashCode chuỗi mỗi lần vẽ tem — không đáng đo, khỏi cache.
+
+const val SESSION_SHADE_STEPS = 8
+const val SESSION_SHADE_HUE_DEG = 20f
+const val SESSION_SHADE_LIGHT = 0.20f
+
+/** Nấc 0..steps-1 của tên phiên; String.hashCode theo chuẩn JVM nên ổn định qua các lần mở app. */
+fun sessionStep(name: String, steps: Int = SESSION_SHADE_STEPS): Int {
+    val key = name.trim().lowercase()
+    if (key.isEmpty() || steps <= 1) return steps / 2
+    return Math.floorMod(key.hashCode(), steps)
+}
+
+/** rgb 0..1 → (h 0..360, s 0..1, l 0..1). */
+fun rgbToHsl(r: Float, g: Float, b: Float): FloatArray {
+    val max = maxOf(r, g, b); val min = minOf(r, g, b); val l = (max + min) / 2f
+    if (max == min) return floatArrayOf(0f, 0f, l)
+    val d = max - min
+    val s = if (l > 0.5f) d / (2f - max - min) else d / (max + min)
+    var h = when (max) {
+        r -> (g - b) / d + (if (g < b) 6f else 0f)
+        g -> (b - r) / d + 2f
+        else -> (r - g) / d + 4f
+    } * 60f
+    if (h < 0f) h += 360f
+    return floatArrayOf(h, s, l)
+}
+
+/** (h 0..360, s 0..1, l 0..1) → rgb 0..1. */
+fun hslToRgb(h: Float, s: Float, l: Float): FloatArray {
+    if (s == 0f) return floatArrayOf(l, l, l)
+    val q = if (l < 0.5f) l * (1f + s) else l + s - l * s
+    val p = 2f * l - q
+    fun ch(t0: Float): Float {
+        var t = t0; if (t < 0f) t += 1f; if (t > 1f) t -= 1f
+        return when {
+            t < 1f / 6f -> p + (q - p) * 6f * t
+            t < 1f / 2f -> q
+            t < 2f / 3f -> p + (q - p) * (2f / 3f - t) * 6f
+            else -> p
+        }
+    }
+    val hk = ((h % 360f) + 360f) % 360f / 360f
+    return floatArrayOf(ch(hk + 1f / 3f), ch(hk), ch(hk - 1f / 3f))
+}
+
+/** Sắc nấc [step] của màu gốc: tông ±[hueDeg], sáng ±[lightAmp], sáng kẹp [lMin, lMax]. Thuần, test được. */
+fun shadeRgb(
+    r: Float, g: Float, b: Float, step: Int,
+    steps: Int = SESSION_SHADE_STEPS, hueDeg: Float = SESSION_SHADE_HUE_DEG, lightAmp: Float = SESSION_SHADE_LIGHT,
+    lMin: Float = 0.35f, lMax: Float = 0.90f,
+): FloatArray {
+    val t = if (steps > 1) step.toFloat() / (steps - 1) * 2f - 1f else 0f
+    val hsl = rgbToHsl(r, g, b)
+    return hslToRgb(hsl[0] + hueDeg * t, hsl[1], (hsl[2] + lightAmp * t).coerceIn(lMin, lMax))
+}
+
+fun sessionShade(base: Color, name: String): Color {
+    val rgb = shadeRgb(base.red, base.green, base.blue, sessionStep(name))
+    return Color(rgb[0], rgb[1], rgb[2], base.alpha)
+}
+
+/** Màu của MỘT phiên: họ màu theo loại ([rosterColor]) lệch theo tên phiên. Dùng thay rosterColor ở mọi chỗ có tên. */
+@Composable
+@ReadOnlyComposable
+fun AgentKind.sessionColor(name: String): Color = sessionShade(rosterColor(), name)
+
 /**
  * Màu phần nội dung tin của agent — phương án 2B user chốt 16/9: đúng màu TỪNG
  * TOOL tự phát trong terminal, đo bằng `herdr pane read <pane> --ansi` ngày 16/9

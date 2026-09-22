@@ -50,7 +50,7 @@ import com.jossephus.chuchu.ui.theme.ChatTone
 import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTypography
 import com.jossephus.chuchu.ui.theme.chatTone
-import com.jossephus.chuchu.ui.theme.rosterColor
+import com.jossephus.chuchu.ui.theme.sessionColor
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.TimeZone
@@ -86,6 +86,7 @@ internal fun QueueChatView(
     val colors = ChuColors.current
     val type = ChuTypography.current
     val tone = remember(kind) { kind.chatTone() }
+    val sessionColor = kind.sessionColor(chat.name)
     val blocked = chat.blocked
     val textSize = if (fontSizeSp > 0f) fontSizeSp.sp else type.body.fontSize
     // Như terminal: cỡ chữ Settings, dãn dòng tự nhiên của font, không thêm leading.
@@ -135,7 +136,7 @@ internal fun QueueChatView(
                 items(messages, key = ChatMessage::key) { m ->
                     when (m.role) {
                         "user" -> UserRow(m, bodyStyle)
-                        "assistant" -> AssistantRow(m, textSize, tone = tone, kind = kind)
+                        "assistant" -> AssistantRow(m, textSize, tone = tone, bubbleColor = sessionColor)
                         "tool" -> ToolRow(m, tone = tone)
                         // think/tin rỗng đã bị collapseAssistantTurns bỏ ở tầng đọc.
                         else -> Unit
@@ -303,10 +304,9 @@ private fun UserRow(m: ChatMessage, bodyStyle: androidx.compose.ui.text.TextStyl
 }
 
 @Composable
-private fun AssistantRow(m: ChatMessage, textSize: TextUnit, tone: ChatTone?, kind: AgentKind) {
+private fun AssistantRow(m: ChatMessage, textSize: TextUnit, tone: ChatTone?, bubbleColor: androidx.compose.ui.graphics.Color) {
     val colors = ChuColors.current
     val type = ChuTypography.current
-    val bubbleColor = kind.rosterColor()
     // Tem "● ASSISTANT · giờ" nằm TRÊN khối (hết viền nên hết cắn viền); thân =
     // 10% màu agent, bo 4dp — cùng công thức với tin của anh, khác màu/ bên.
     Column(Modifier.fillMaxWidth(0.94f)) {
@@ -456,6 +456,10 @@ internal fun chatClock(ts: String): String {
         ""
     }
 }
+
+/** epoch giây → "12:04" theo giờ máy (vạch giờ của DÒNG THỜI GIAN). */
+internal fun epochClock(sec: Long): String =
+    SimpleDateFormat("HH:mm", Locale.US).format(java.util.Date(sec * 1000L))
 
 /** "cập nhật 12 giây trước" cho dòng phụ dưới thanh tiêu đề. */
 internal fun chatAge(updatedAt: Long, now: Long = System.currentTimeMillis()): String {

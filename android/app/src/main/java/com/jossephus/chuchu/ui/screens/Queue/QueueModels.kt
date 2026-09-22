@@ -570,3 +570,76 @@ data class BlockedOption(
             it == "type something" || it == "chat about this" || it == "type your own answer" || it.startsWith("write-in")
         }
 }
+
+// ── DÒNG THỜI GIAN kiểu T2 (user chốt 22/9): ô 30 phút, trong ô gom theo phiên ──────────────
+
+/** Một khối trên dòng thời gian: các tin LIÊN TIẾP trong cùng ô giờ của cùng phiên. */
+data class FeedBlock(
+    val pane: String,
+    val name: String,
+    val agent: String?,
+    /** Nhãn trạng thái của phiên tại tin cuối (qsrv gắn theo /state lúc trả feed). */
+    val label: String,
+    val messages: List<FeedMessage>,
+) {
+    val key: String get() = "blk:" + messages.first().key
+    val lastTs: String get() = messages.last().ts
+}
+
+sealed class FeedItem(val key: String) {
+    /** Vạch giờ mờ đầu mỗi ô. */
+    class Hour(val startSec: Long) : FeedItem("hour:$startSec")
+    /** Vạch MỚI: từ đây trở xuống là tin chưa xem lần trước. */
+    class New(val sinceSec: Long) : FeedItem("new")
+    class Block(val block: FeedBlock) : FeedItem(block.key)
+}
+
+const val FEED_BUCKET_SEC = 1800L
+
+/** "2026-09-16T05:04:31.123Z" → epoch giây; chuỗi lạ → null. */
+fun isoEpochSec(ts: String): Long? {
+    if (ts.length < 19) return null
+    return try {
+        val f = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US)
+        f.timeZone = java.util.TimeZone.getTimeZone("UTC")
+        f.parse(ts.substring(0, 19))?.time?.div(1000L)
+    } catch (e: Exception) {
+        null
+    }
+}
+
+/**
+ * Xếp tin (đã qua [collapseFeedTurns]) thành ô [bucketSec] có vạch giờ; trong ô, tin của cùng pane
+ * gom một khối theo thứ tự xuất hiện đầu tiên — hết xen kẽ từng bọt giữa các phiên. [sinceSec] > 0
+ * thì chèn vạch MỚI trước tin đầu tiên mới hơn mốc (chỉ khi đã có tin cũ hơn ở trên — toàn tin
+ * mới thì không cần vạch). Hàm thuần, có test.
+ */
+fun feedTimelineItems(messages: List<FeedMessage>, sinceSec: Long = 0L, bucketSec: Long = FEED_BUCKET_SEC): List<FeedItem> {
+    val out = ArrayList<FeedItem>()
+    var blocks = ArrayList<FeedBlock>()
+    var bucketStart = Long.MIN_VALUE
+    var newDone = sinceSec <= 0L
+    fun flush() { blocks.forEach { out += FeedItem.Block(it) }; blocks = ArrayList() }
+    for (m in messages) {
+        val sec = isoEpochSec(m.ts) ?: continue
+        val bs = sec / bucketSec * bucketSec
+        if (bs != bucketStart) { flush(); bucketStart = bs; out += FeedItem.Hour(bs) }
+        if (!newDone && sec > sinceSec) {
+            if (blocks.isNotEmpty() || out.any { it is FeedItem.Block }) { flush(); out += FeedItem.New(sinceSec) }
+            newDone = true
+        }
+        val i = blocks.indexOfFirst { it.pane == m.pane }
+        if (i >= 0) blocks[i] = blocks[i].copy(messages = blocks[i].messages + m, label = m.label)
+        else blocks += FeedBlock(m.pane, m.name, m.agent, m.label, listOf(m))
+    }
+    flush()
+    return out
+}
+
+/** Phiên đang KẸT (nhãn cần anh) → khối ghim ở đáy gồm tin cuối của phiên đó, để không trôi theo ô giờ. */
+fun blockedBlocks(messages: List<FeedMessage>): List<FeedBlock> {
+    val last = LinkedHashMap<String, FeedMessage>()
+    for (m in messages) last[m.pane] = m
+    return last.values.filter { AgentState.of(it.label) == AgentState.Blocked }
+        .map { FeedBlock(it.pane, it.name, it.agent, it.label, listOf(it)) }
+}

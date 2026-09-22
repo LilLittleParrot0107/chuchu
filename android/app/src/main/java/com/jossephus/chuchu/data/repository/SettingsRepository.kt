@@ -94,6 +94,11 @@ class SettingsRepository(context: Context) {
             return "$base/chuchu/spending/flow.json"
         }
 
+    /** Mốc "đã xem" DÒNG THỜI GIAN (epoch giây): vạch MỚI đứng sau tin cuối đã thấy lần rời màn trước (22/9). */
+    var feedSeenTs: Long
+        get() = prefs.getLong("queue_feed_seen_ts", 0L)
+        set(value) { prefs.edit().putLong("queue_feed_seen_ts", value).apply() }
+
     /** Che do hien tien cua dashboard (USD/VND/HIDDEN) — nho qua cac lan mo app. */
     var dbtopMoneyDisplay: String
         get() = prefs.getString(KEY_DBTOP_MONEY, null) ?: "USD"

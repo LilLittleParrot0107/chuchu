@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -55,10 +56,11 @@ import com.jossephus.chuchu.ui.components.LinkifiedText
 import com.jossephus.chuchu.ui.components.MiniMarkdownText
 import com.jossephus.chuchu.ui.theme.AgentKind
 import com.jossephus.chuchu.ui.theme.CHU_HAIRLINE_ALPHA
+import com.jossephus.chuchu.ui.theme.ChatTone
 import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTypography
 import com.jossephus.chuchu.ui.theme.chatTone
-import com.jossephus.chuchu.ui.theme.rosterColor
+import com.jossephus.chuchu.ui.theme.sessionColor
 
 internal const val ALL_AGENTS = "ALL"
 
@@ -250,9 +252,13 @@ internal fun feedRestoreIndex(keys: List<String>, pinned: Boolean, anchorKey: St
 }
 
 /**
- * DÒNG THỜI GIAN (G1): tin cuối các session đang động, gộp theo giờ, tin mới ở dưới.
- * Chạm một tin = nhắm luôn phiên đó cho ô gõ ngay dưới (user chốt 17/9) — không nhảy
- * sang HỘI THOẠI như bản G1 đầu.
+ * DÒNG THỜI GIAN kiểu T2 (user chốt 22/9, prototype kohi-timeline-t2-shades): chia ô 30 phút có
+ * vạch giờ mờ; trong ô, tin của cùng phiên gom một KHỐI có thanh màu trái và tem một lần (tên ·
+ * pha · giờ); tin của anh là bọt phải nền accent, tin agent bọt trái nền màu PHIÊN (họ màu loại
+ * agent lệch theo tên — [sessionColor]); đoạn assistant liên tiếp đã gộp ở [collapseFeedTurns].
+ * Vạch MỚI ngăn phần chưa xem từ lần rời màn trước ([FeedUiState.sinceTs]); phiên đang kẹt ghim
+ * khối ở đáy, không trôi theo ô giờ. Chạm tin = nhắm phiên cho ô gõ (giữ luật 17/9). Vị trí cuộn
+ * do QueueScreen giữ (rememberSaveable) — đổi mode/hội thoại quay lại vẫn y chỗ.
  */
 @Composable
 internal fun QueueFeedView(
@@ -267,11 +273,11 @@ internal fun QueueFeedView(
 ) {
     val colors = ChuColors.current
     val type = ChuTypography.current
-    // Gộp các đoạn assistant liền nhau CÙNG PANE của một lượt (17/9) — feed xen kẽ
-    // nhiều phiên nên chỉ tin cùng pane mới được coi là cùng lượt.
     val messages = remember(feed.messages) { collapseFeedTurns(feed.messages) }
-    // Vị trí cuộn do QueueScreen giữ (rememberSaveable) — mode/hội thoại quay lại vẫn y chỗ.
-    val curMessages by rememberUpdatedState(messages)
+    val items = remember(messages, feed.sinceTs) { feedTimelineItems(messages, feed.sinceTs) }
+    val keys = remember(items) { items.map { it.key } }
+    val pinnedBlocks = remember(messages) { blockedBlocks(messages) }
+    val curKeys by rememberUpdatedState(keys)
     // Đã khôi phục vị trí cho lần vào hiện tại chưa. Collector bên dưới chỉ ghi
     // pinned/neo SAU khi khôi phục xong: layout đầu tiên lúc vào có thể còn ở vị
     // trí cũ trong khi neo đã lưu là tin khác (feed cắt đầu làm index trôi) —
@@ -282,129 +288,169 @@ internal fun QueueFeedView(
             if (info.totalItemsCount > 0 && restored) {
                 val last = info.visibleItemsInfo.lastOrNull()?.index ?: -1
                 onPinnedChange(last >= info.totalItemsCount - 2)
-                // Neo = KEY tin đầu đang thấy: feed cắt tin ở đầu nên index trôi, key ổn định.
+                // Neo = KEY mục đầu đang thấy: feed cắt tin ở đầu nên index trôi, key ổn định.
                 val first = info.visibleItemsInfo.firstOrNull()?.index ?: -1
-                if (first >= 0) onAnchorChange(curMessages.getOrNull(first)?.key)
+                if (first >= 0) onAnchorChange(curKeys.getOrNull(first))
             }
         }
     }
-    // Vào lần đầu / quay lại: dừng đúng tin cuối đã thấy; neo rơi khỏi cửa sổ feed
+    // Vào lần đầu / quay lại: dừng đúng chỗ đã thấy; neo rơi khỏi cửa sổ feed
     // (hoặc đang ở đáy) thì về điểm mới nhất (user chốt 17/9).
-    LaunchedEffect(messages.isNotEmpty(), pinned, anchorKey) {
-        if (restored || messages.isEmpty()) return@LaunchedEffect
+    LaunchedEffect(items.isNotEmpty(), pinned, anchorKey) {
+        if (restored || items.isEmpty()) return@LaunchedEffect
         restored = true
-        listState.scrollToItem(
-            feedRestoreIndex(messages.map(FeedMessage::key), pinned, anchorKey)
-        )
+        listState.scrollToItem(feedRestoreIndex(keys, pinned, anchorKey))
     }
-    LaunchedEffect(messages.lastOrNull()?.key, messages.lastOrNull()?.ts, messages.size) {
-        if (messages.isNotEmpty() && pinned) listState.scrollToItem(messages.size)
+    LaunchedEffect(messages.lastOrNull()?.key, messages.lastOrNull()?.ts, items.size) {
+        if (items.isNotEmpty() && pinned) listState.scrollToItem(items.size)
     }
-    Box(modifier = modifier.fillMaxSize()) {
-        when {
-            messages.isEmpty() && feed.loading -> CenterNote("LOADING TIMELINE…")
-            messages.isEmpty() && feed.error != null -> CenterNote("▌ ${feed.error}")
-            messages.isEmpty() -> CenterNote("no messages yet — the house is quiet · switch to CONVERSATIONS to open a session")
-            else -> LazyColumn(
-                state = listState,
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
-            ) {
-                items(messages, key = FeedMessage::key) { m ->
-                    FeedRow(m, onPick = onPick, bodySize = type.body.fontSize)
+    Column(modifier = modifier.fillMaxSize()) {
+        Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+            when {
+                messages.isEmpty() && feed.loading -> CenterNote("LOADING TIMELINE…")
+                messages.isEmpty() && feed.error != null -> CenterNote("▌ ${feed.error}")
+                messages.isEmpty() -> CenterNote("no messages yet — the house is quiet · switch to CONVERSATIONS to open a session")
+                else -> LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    items(items, key = { it.key }) { item ->
+                        when (item) {
+                            is FeedItem.Hour -> FeedHourDivider(epochClock(item.startSec))
+                            is FeedItem.New -> FeedNewDivider("new · since " + epochClock(item.sinceSec))
+                            is FeedItem.Block -> FeedBlockView(item.block, onPick = onPick, bodySize = type.body.fontSize)
+                        }
+                    }
                 }
+            }
+        }
+        // Phiên đang kẹt: ghim sát ô gõ tới khi anh trả lời — không trôi lên theo ô giờ.
+        pinnedBlocks.forEach { b ->
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp)
+                    .padding(bottom = 6.dp)
+                    .background(colors.error.copy(alpha = 0.07f))
+                    .border(1.dp, colors.error.copy(alpha = 0.55f))
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+            ) {
+                FeedBlockView(b, onPick = onPick, bodySize = type.body.fontSize)
             }
         }
     }
 }
 
 @Composable
-private fun FeedRow(m: FeedMessage, onPick: (FeedMessage) -> Unit, bodySize: TextUnit) {
+private fun FeedHourDivider(text: String) {
     val colors = ChuColors.current
     val type = ChuTypography.current
-    val kind = AgentKind.of(m.agent)
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+        Box(Modifier.weight(1f).height(1.dp).background(colors.border.copy(alpha = 0.7f)))
+        ChuText(text, style = type.labelSmall, color = colors.textMuted, modifier = Modifier.padding(horizontal = 8.dp))
+        Box(Modifier.weight(1f).height(1.dp).background(colors.border.copy(alpha = 0.7f)))
+    }
+}
+
+@Composable
+private fun FeedNewDivider(text: String) {
+    val colors = ChuColors.current
+    val type = ChuTypography.current
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+        Box(Modifier.weight(1f).height(1.dp).background(colors.accent.copy(alpha = 0.45f)))
+        ChuText(text.uppercase(), style = type.labelSmall, color = colors.accent, modifier = Modifier.padding(horizontal = 8.dp))
+        Box(Modifier.weight(1f).height(1.dp).background(colors.accent.copy(alpha = 0.45f)))
+    }
+}
+
+/**
+ * Một khối phiên: thanh màu phiên bên trái, tem "● tên · pha/giờ" một lần, rồi các bọt. Pha đọc
+ * từ nhãn /state của phiên (kẹt = đỏ, đang làm = accent, xong = xanh kèm giờ), không đoán từ chữ.
+ */
+@Composable
+private fun FeedBlockView(block: FeedBlock, onPick: (FeedMessage) -> Unit, bodySize: TextUnit) {
+    val colors = ChuColors.current
+    val type = ChuTypography.current
+    val kind = AgentKind.of(block.agent)
     val tone = remember(kind) { kind.chatTone() }
+    val color = kind.sessionColor(block.name)
+    val state = AgentState.of(block.label)
+    val last = block.messages.last()
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .drawBehind {
+                val w = 2.dp.toPx()
+                drawLine(color, Offset(w / 2, 0f), Offset(w / 2, size.height), w)
+            }
+            .padding(start = 9.dp),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth().padding(bottom = 3.dp).noRippleClickable { onPick(last) },
+        ) {
+            ChuText("● ", style = type.labelSmall, color = color)
+            ChuText(
+                block.name,
+                style = type.labelSmall.copy(fontWeight = FontWeight.Bold),
+                color = color,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            Spacer(Modifier.weight(1f))
+            when (state) {
+                AgentState.Blocked -> ChuText("● NEEDS YOU", style = type.labelSmall.copy(fontWeight = FontWeight.Bold), color = colors.error)
+                AgentState.Working -> ChuText("◐ working", style = type.labelSmall, color = colors.accent)
+                AgentState.Done -> ChuText("✓ " + chatClock(last.ts), style = type.labelSmall, color = colors.success)
+                else -> ChuText(chatClock(last.ts), style = type.labelSmall, color = colors.textMuted)
+            }
+        }
+        block.messages.forEachIndexed { i, m ->
+            if (i > 0) Spacer(Modifier.height(4.dp))
+            FeedBubble(m, color = color, tone = tone, bodySize = bodySize, onPick = onPick)
+        }
+    }
+}
+
+/** Bọt một tin: anh = phải nền accent 12% với ❯; agent = trái nền màu phiên 12%. Dài thì gấp "show more". */
+@Composable
+private fun FeedBubble(m: FeedMessage, color: androidx.compose.ui.graphics.Color, tone: ChatTone?, bodySize: TextUnit, onPick: (FeedMessage) -> Unit) {
+    val colors = ChuColors.current
+    val type = ChuTypography.current
     val needsCollapse = remember(m.text) { shouldCollapseFeed(m.text) }
     var expanded by remember(m.key) { mutableStateOf(false) }
     val displayText = if (needsCollapse && !expanded) truncateFeedText(m.text) else m.text
-    // ② + tint (chốt 18/9): TEM NGOÀI KHỐI + khối tô màu không viền. Agent = tem
-    // "● tên · [chấm status] giờ" phía trên, thân 10% màu agent; anh = khối accent
-    // 12% lề phải, không tem, giờ trong khối. Timeline giữ tem tên vì trộn phiên.
-    when (m.role) {
-        "user" -> Column(Modifier.fillMaxWidth().noRippleClickable { onPick(m) }) {
-            // Tem người nhận (user đòi 18/9 — timeline trộn phiên, tin của anh phải
-            // nêu GỬI ĐẾN đâu): lề phải, cùng công thức tem agent "● tên · giờ",
-            // màu theo LOẠI agent của phiên nhận.
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth().padding(bottom = 3.dp),
-            ) {
-                Spacer(Modifier.weight(1f))
-                ChuText("●", style = type.labelSmall, color = kind.rosterColor())
-                Spacer(Modifier.width(5.dp))
+    if (m.role == "user") {
+        TintBox(
+            fillColor = colors.accent.copy(alpha = 0.12f),
+            fraction = 0.86f,
+            alignEnd = true,
+            modifier = Modifier.noRippleClickable { onPick(m) },
+        ) {
+            LinkifiedText("❯ " + displayText, style = type.body, color = colors.textPrimary, modifier = Modifier.fillMaxWidth())
+            if (needsCollapse) {
                 ChuText(
-                    m.name,
-                    style = type.labelSmall.copy(fontWeight = FontWeight.Bold),
-                    color = colors.textSecondary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.widthIn(max = 200.dp),
+                    text = if (expanded) "▴ show less" else "· show more ▾",
+                    style = type.labelSmall,
+                    color = colors.textMuted,
+                    modifier = Modifier.align(Alignment.End).noRippleClickable { expanded = !expanded }.padding(top = 4.dp, bottom = 2.dp),
                 )
-                Spacer(Modifier.width(6.dp))
-                ChuText(chatClock(m.ts), style = type.labelSmall, color = colors.textMuted)
-            }
-            TintBox(fillColor = colors.accent.copy(alpha = 0.12f), fraction = 0.88f, alignEnd = true) {
-                LinkifiedText(displayText, style = type.body, color = colors.textPrimary, modifier = Modifier.fillMaxWidth())
-                if (needsCollapse) {
-                    ChuText(
-                        text = if (expanded) "▴ show less" else "· show more ▾",
-                        style = type.labelSmall,
-                        color = colors.textMuted,
-                        modifier = Modifier
-                            .align(Alignment.End)
-                            .noRippleClickable { expanded = !expanded }
-                            .padding(top = 4.dp, bottom = 2.dp),
-                    )
-                }
             }
         }
-        else -> Column(Modifier.fillMaxWidth().noRippleClickable { onPick(m) }) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(bottom = 3.dp),
-            ) {
-                ChuText("●", style = type.labelSmall, color = kind.rosterColor())
-                Spacer(Modifier.width(5.dp))
+    } else {
+        TintBox(fillColor = color.copy(alpha = 0.12f), fraction = 0.94f, modifier = Modifier.noRippleClickable { onPick(m) }) {
+            ParasFold(m.key, m.paras, bodySize, tone)
+            MiniMarkdownText(displayText, fontSize = bodySize, tone = tone)
+            if (needsCollapse) {
                 ChuText(
-                    m.name,
-                    style = type.labelSmall.copy(fontWeight = FontWeight.Bold),
-                    color = colors.textSecondary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.widthIn(max = 200.dp),
+                    text = if (expanded) "▴ show less" else "· show more ▾",
+                    style = type.labelSmall,
+                    color = colors.textMuted,
+                    modifier = Modifier.noRippleClickable { expanded = !expanded }.padding(top = 4.dp, bottom = 2.dp),
                 )
-                Spacer(Modifier.width(6.dp))
-                // Nhãn chữ ("working"/"done"…) thu thành một chấm màu (user 17/9).
-                if (m.label.isNotBlank()) {
-                    ChuText("●", style = type.labelSmall, color = if (AgentState.of(m.label) == AgentState.Blocked) colors.error else m.tone.color())
-                    Spacer(Modifier.width(6.dp))
-                }
-                ChuText(chatClock(m.ts), style = type.labelSmall, color = colors.textMuted)
-            }
-            TintBox(fillColor = kind.rosterColor().copy(alpha = 0.10f), fraction = 0.96f) {
-                ParasFold(m.key, m.paras, bodySize, tone)
-                MiniMarkdownText(displayText, fontSize = bodySize, tone = tone)
-                if (needsCollapse) {
-                    ChuText(
-                        text = if (expanded) "▴ show less" else "· show more ▾",
-                        style = type.labelSmall,
-                        color = colors.textMuted,
-                        modifier = Modifier
-                            .noRippleClickable { expanded = !expanded }
-                            .padding(top = 4.dp, bottom = 2.dp),
-                    )
-                }
             }
         }
     }
@@ -441,7 +487,7 @@ internal fun QueueConversationList(
             // ③ Gutter Rail + Tint Strip (chốt 18/9): Cột gutter 22dp căn thẳng glyph;
             // thân phải là TintStrip bo 4dp (10% màu agent) đồng bộ với TintBox của Chat.
             // TUYỆT ĐỐI KHÔNG làm sáng vàng cho session đã truy cập và back ra.
-            val kColor = AgentKind.of(agent.agent).rosterColor()
+            val kColor = AgentKind.of(agent.agent).sessionColor(agent.name)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()

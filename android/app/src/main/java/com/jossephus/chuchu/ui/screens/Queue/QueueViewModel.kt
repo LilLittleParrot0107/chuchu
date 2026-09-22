@@ -73,6 +73,8 @@ data class FeedUiState(
     val loading: Boolean = false,
     val error: String? = null,
     val updatedAt: Long = 0L,
+    /** Mốc đã xem (epoch giây) lúc VÀO màn — vạch MỚI đặt sau tin cuối trước mốc; 0 = không vạch. */
+    val sinceTs: Long = 0L,
 )
 
 class QueueViewModel(
@@ -383,6 +385,9 @@ class QueueViewModel(
     fun setFeedVisible(wanted: Boolean) {
         if (wanted == feedWanted) return
         feedWanted = wanted
+        // Vào màn: giữ mốc cũ làm vạch MỚI suốt lần xem; rời màn: ghi mốc = bây giờ.
+        if (wanted) _feed.update { it.copy(sinceTs = settings.feedSeenTs) }
+        else settings.feedSeenTs = System.currentTimeMillis() / 1000L
         syncFeedPolling()
     }
 
