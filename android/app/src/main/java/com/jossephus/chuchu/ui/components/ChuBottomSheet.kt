@@ -6,6 +6,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
@@ -44,8 +47,12 @@ fun ChuBottomSheet(onDismiss: () -> Unit, content: @Composable ColumnScope.() ->
                         val stroke = 1.dp.toPx()
                         drawLine(colors.border, Offset(0f, stroke / 2), Offset(size.width, stroke / 2), stroke)
                     }
-                    .padding(horizontal = 12.dp, vertical = 10.dp)
-                    .navigationBarsPadding(),
+                    .navigationBarsPadding()
+                    // Nâng khỏi vạch điều hướng cử chỉ (ảnh 22/9 19:40: dòng cuối bị vạch đè) và
+                    // giới hạn cao 520dp, dài thì cuộn bên trong.
+                    .padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 28.dp)
+                    .heightIn(max = 520.dp)
+                    .verticalScroll(rememberScrollState()),
                 content = content,
             )
         }

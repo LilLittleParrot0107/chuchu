@@ -22,7 +22,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -353,8 +352,9 @@ internal fun ChartsView(
  * Tab SPENDING — bố cục lưới, không all-time (luật 26/8), không danh sách giao dịch.
  * 22/9 (user chốt "kiểu 2" sau 8 vòng prototype): phần chi tiêu y bản 27/8 — card, lưới BY DAY
  * hai cột, lưới tháng — chỉ đổi ô phải của card thành FLOW · <tháng> (ròng USDC/USDT/USDG của ví
- * chính, dòng nhỏ vào · ra) và tổng năm dời xuống meta dải năm. FLOW là PHÂN VÙNG RIÊNG ở cuối,
- * gấp sẵn: xổ ra là lưới ngày ô đôi +in · −out; chạm ô ngày FLOW mở tấm liệt kê từng lệnh.
+ * chính, dòng nhỏ vào · ra) và tổng năm dời xuống meta dải năm. FLOW là PHÂN VÙNG RIÊNG ở cuối, luôn hiện (user bỏ dải
+ * gấp 22/9 tối): dải FLOW + lưới ngày ô đôi +in · −out, số không lẻ, chữ nhỏ cho khỏi lẹm;
+ * chạm ô ngày FLOW mở tấm liệt kê từng lệnh.
  * Chạm ô ngày chi tiêu không làm gì. Chưa có flow.json → ô phải hiện tổng năm, không có phân vùng.
  */
 @Composable
@@ -398,8 +398,7 @@ internal fun SpendingView(
     val hidden = moneyDisplay == MoneyDisplay.HIDDEN
     val neg = if (hidden) "" else "-"
     val pos = if (hidden) "" else "+"
-    fun money(v: Double, compact: Boolean = false) = formatMoney(v, moneyDisplay, rate, compact)
-    var flowOpen by rememberSaveable { mutableStateOf(false) }
+    fun money(v: Double, compact: Boolean = false, decimals: Int = 2) = formatMoney(v, moneyDisplay, rate, compact, decimals)
     var openDay by remember { mutableStateOf<String?>(null) }
     openDay?.let { day ->
         FlowDaySheet(
@@ -508,52 +507,37 @@ internal fun SpendingView(
             }
         }
         if (flowMonth != null) {
-            // Phân vùng FLOW: dải gấp; xổ ra là lưới ngày ô đôi. Trạng thái nhớ trong phiên (rememberSaveable).
-            item(key = "flow_fold") {
+            // Phân vùng FLOW luôn hiện: dải chuẩn như BY DAY, rồi lưới ngày ô đôi.
+            item(key = "flow_band") {
+                KohiSectionBand(
+                    label = "FLOW",
+                    meta = monthAbbr(flowMonth.month) + " · in / out",
+                    containerColor = colors.background,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
+            }
+            if (flowRows.isEmpty()) {
+                item(key = "flow_empty") { DashboardHint("no transfers this month yet") }
+            }
+            items(flowRows, key = { row -> "f-" + row.joinToString("|") { it.key } }) { rowDays ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 10.dp)
-                        .padding(top = 8.dp)
-                        .border(1.dp, colors.border)
-                        .noRippleClickable { flowOpen = !flowOpen }
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                        .padding(horizontal = 10.dp, vertical = 3.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    ChuText(
-                        (if (flowOpen) "▾ " else "▸ ") + "FLOW · ${monthAbbr(flowMonth.month)}",
-                        style = type.labelSmall.copy(fontWeight = FontWeight.Bold),
-                        color = colors.accent,
-                    )
-                    Spacer(Modifier.width(10.dp))
-                    ChuText(pos + money(flowMonth.monthIn), style = type.labelSmall, color = colors.success)
-                    ChuText(" · ", style = type.labelSmall, color = colors.textMuted)
-                    ChuText(neg + money(flowMonth.monthOut), style = type.labelSmall, color = colors.warning)
-                }
-            }
-            if (flowOpen) {
-                if (flowRows.isEmpty()) {
-                    item(key = "flow_empty") { DashboardHint("no transfers this month yet") }
-                }
-                items(flowRows, key = { row -> "f-" + row.joinToString("|") { it.key } }) { rowDays ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 10.dp, vertical = 3.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        rowDays.forEach { (day, fd) ->
-                            FlowCell(
-                                label = day.substring(8) + "/" + day.substring(5, 7),
-                                inText = if (fd.inUsd > 0) pos + money(fd.inUsd) else null,
-                                outText = if (fd.out > 0) neg + money(fd.out) else null,
-                                selected = openDay == day,
-                                onClick = { openDay = day },
-                                modifier = Modifier.weight(1f),
-                            )
-                        }
-                        if (rowDays.size == 1) Spacer(Modifier.weight(1f))
+                    rowDays.forEach { (day, fd) ->
+                        FlowCell(
+                            label = day.substring(8) + "/" + day.substring(5, 7),
+                            // số không lẻ + chữ nhỏ: ô 2 cột ở 360dp từng lẹm "-$983.00" thành "-$98" (ảnh 22/9 19:40)
+                            inText = if (fd.inUsd > 0) pos + money(fd.inUsd, decimals = 0) else null,
+                            outText = if (fd.out > 0) neg + money(fd.out, decimals = 0) else null,
+                            selected = openDay == day,
+                            onClick = { openDay = day },
+                            modifier = Modifier.weight(1f),
+                        )
                     }
+                    if (rowDays.size == 1) Spacer(Modifier.weight(1f))
                 }
             }
         }
@@ -572,7 +556,7 @@ private fun FlowCell(
 ) {
     val colors = ChuColors.current
     val type = ChuTypography.current
-    val num = type.label.copy(fontFamily = FontFamily.Monospace, fontFeatureSettings = "tnum", fontWeight = FontWeight.Bold)
+    val num = type.labelSmall.copy(fontFamily = FontFamily.Monospace, fontFeatureSettings = "tnum", fontWeight = FontWeight.Bold)
     Column(
         modifier = modifier
             .background(if (selected) colors.accent.copy(alpha = 0.08f) else colors.surface)
@@ -583,10 +567,10 @@ private fun FlowCell(
         ChuText(label, style = type.labelSmall, color = colors.textMuted, maxLines = 1)
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (inText != null) ChuText(inText, style = num, color = colors.success, maxLines = 1)
-            else ChuText("0", style = type.label, color = colors.textMuted, maxLines = 1)
+            else ChuText("0", style = type.labelSmall, color = colors.textMuted, maxLines = 1)
             ChuText(" · ", style = type.labelSmall, color = colors.textMuted)
             if (outText != null) ChuText(outText, style = num, color = colors.warning, maxLines = 1)
-            else ChuText("0", style = type.label, color = colors.textMuted, maxLines = 1)
+            else ChuText("0", style = type.labelSmall, color = colors.textMuted, maxLines = 1)
         }
     }
 }

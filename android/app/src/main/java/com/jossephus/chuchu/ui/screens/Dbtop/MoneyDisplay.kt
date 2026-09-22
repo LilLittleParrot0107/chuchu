@@ -31,9 +31,10 @@ internal fun formatMoney(
     mode: MoneyDisplay,
     vndRate: Double,
     compact: Boolean = false,
+    decimals: Int = 2,
 ): String = when (mode) {
     MoneyDisplay.HIDDEN -> "••••"
-    MoneyDisplay.USD -> if (compact) DeFiFormatter.formatUsdCompact(usd) else DeFiFormatter.formatUsd(usd)
+    MoneyDisplay.USD -> if (compact) DeFiFormatter.formatUsdCompact(usd) else DeFiFormatter.formatUsd(usd, decimals)
     MoneyDisplay.VND -> formatVnd(usd * (vndRate.takeIf { it > 0 } ?: DEFAULT_USD_VND))
 }
 
