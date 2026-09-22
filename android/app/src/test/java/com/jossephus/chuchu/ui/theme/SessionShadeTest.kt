@@ -25,18 +25,26 @@ class SessionShadeTest {
     }
 
     @Test
-    fun `sac lech toi da 20 do va 20 phan tram, sang kep trong khoang`() {
+    fun `sac lech toi da 20 do, sang -20 den +35 phan tram, kep trong khoang`() {
         val base = rgbToHsl(0.94f, 0.64f, 0.37f)   // cam kiểu warning
         for (step in 0 until SESSION_SHADE_STEPS) {
             val rgb = shadeRgb(0.94f, 0.64f, 0.37f, step)
             val h = rgbToHsl(rgb[0], rgb[1], rgb[2])
-            val dh = abs(((h[0] - base[0]) + 540f) % 360f - 180f)
-            assertTrue("hue lệch $dh", dh <= 20.5f)
-            assertTrue("light ${h[2]}", h[2] in 0.35f..0.90f)
-            assertTrue(abs(h[2] - base[2]) <= 0.205f)
+            assertTrue("hue lệch", hueDistance(h[0], base[0]) <= 20.5f)
+            assertTrue("light ${h[2]}", h[2] in SESSION_SHADE_L_MIN..SESSION_SHADE_L_MAX)
+            assertTrue(h[2] - base[2] >= -0.205f && h[2] - base[2] <= 0.355f)
         }
-        // nấc giữa ≈ màu gốc
-        val mid = shadeRgb(0.94f, 0.64f, 0.37f, (SESSION_SHADE_STEPS - 1) / 2)
-        assertTrue(abs(mid[0] - 0.94f) < 0.08f)
+        // nấc đầu tối hơn gốc, nấc cuối sáng hơn gốc (lệch về phía sáng nhiều hơn)
+        val lo = shadeRgb(0.94f, 0.64f, 0.37f, 0).let { rgbToHsl(it[0], it[1], it[2])[2] }
+        val hi = shadeRgb(0.94f, 0.64f, 0.37f, SESSION_SHADE_STEPS - 1).let { rgbToHsl(it[0], it[1], it[2])[2] }
+        assertTrue(lo < base[2] && hi > base[2])
+    }
+
+    @Test
+    fun `tong cua anh xa ca ba ho agent`() {
+        val fams = listOf(30f, 220f, 130f)   // cam / xanh dương / xanh lá
+        val h = distinctHue(fams)
+        assertTrue("h=$h", fams.all { hueDistance(h, it) >= 45f + SESSION_SHADE_HUE_DEG })
+        assertEquals(300f, distinctHue(emptyList()), 0f)
     }
 }

@@ -41,14 +41,18 @@ fun AgentKind.rosterColor(): Color = when (this) {
     AgentKind.OTHER -> ChuColors.current.textPrimary
 }
 
-// ── Sắc riêng của từng phiên trong họ màu của loại agent (user chốt 22/9: băm tên, ±20% sáng,
-// ±20° tông, 8 nấc). Cùng tên = cùng sắc mọi nơi (roster, CHAT, DÒNG THỜI GIAN); đổi tên là
-// đổi sắc, như herdr. Độ sáng kẹp [0.35, 0.90] để không chìm trên nền tối, không trắng bệch.
+// ── Sắc riêng của từng phiên trong họ màu của loại agent (user chốt 22/9: băm tên, 8 nấc,
+// tông ±20°, sáng −20% … +35% — user đổi từ ±20% sang lệch về phía sáng cho dễ phân biệt trên
+// nền tối). Cùng tên = cùng sắc mọi nơi (roster, CHAT, DÒNG THỜI GIAN); đổi tên là đổi sắc,
+// như herdr. Độ sáng kẹp [0.35, 0.93] để không chìm trên nền tối, không trắng bệch.
 // Chi phí: một hashCode chuỗi mỗi lần vẽ tem — không đáng đo, khỏi cache.
 
 const val SESSION_SHADE_STEPS = 8
 const val SESSION_SHADE_HUE_DEG = 20f
-const val SESSION_SHADE_LIGHT = 0.20f
+const val SESSION_SHADE_LIGHT_DOWN = 0.20f
+const val SESSION_SHADE_LIGHT_UP = 0.35f
+const val SESSION_SHADE_L_MIN = 0.35f
+const val SESSION_SHADE_L_MAX = 0.93f
 
 /** Nấc 0..steps-1 của tên phiên; String.hashCode theo chuẩn JVM nên ổn định qua các lần mở app. */
 fun sessionStep(name: String, steps: Int = SESSION_SHADE_STEPS): Int {
@@ -90,15 +94,48 @@ fun hslToRgb(h: Float, s: Float, l: Float): FloatArray {
     return floatArrayOf(ch(hk + 1f / 3f), ch(hk), ch(hk - 1f / 3f))
 }
 
-/** Sắc nấc [step] của màu gốc: tông ±[hueDeg], sáng ±[lightAmp], sáng kẹp [lMin, lMax]. Thuần, test được. */
+/** Sắc nấc [step] của màu gốc: tông ±[hueDeg], sáng −[lightDown] … +[lightUp], kẹp [lMin, lMax]. Thuần, test được. */
 fun shadeRgb(
     r: Float, g: Float, b: Float, step: Int,
-    steps: Int = SESSION_SHADE_STEPS, hueDeg: Float = SESSION_SHADE_HUE_DEG, lightAmp: Float = SESSION_SHADE_LIGHT,
-    lMin: Float = 0.35f, lMax: Float = 0.90f,
+    steps: Int = SESSION_SHADE_STEPS, hueDeg: Float = SESSION_SHADE_HUE_DEG,
+    lightDown: Float = SESSION_SHADE_LIGHT_DOWN, lightUp: Float = SESSION_SHADE_LIGHT_UP,
+    lMin: Float = SESSION_SHADE_L_MIN, lMax: Float = SESSION_SHADE_L_MAX,
 ): FloatArray {
     val t = if (steps > 1) step.toFloat() / (steps - 1) * 2f - 1f else 0f
     val hsl = rgbToHsl(r, g, b)
-    return hslToRgb(hsl[0] + hueDeg * t, hsl[1], (hsl[2] + lightAmp * t).coerceIn(lMin, lMax))
+    val dl = if (t < 0f) lightDown * t else lightUp * t
+    return hslToRgb(hsl[0] + hueDeg * t, hsl[1], (hsl[2] + dl).coerceIn(lMin, lMax))
+}
+
+/** Khoảng cách góc tông (0..180). */
+fun hueDistance(a: Float, b: Float): Float = kotlin.math.abs(((a - b) % 360f + 540f) % 360f - 180f)
+
+/**
+ * Tông xa nhất khỏi mọi họ màu agent (kể cả phần lệch ±[spread] của sắc phiên): duyệt mỗi 15°,
+ * lấy tông có khoảng cách nhỏ nhất tới các họ là lớn nhất. Dùng cho màu phần của ANH (user 22/9:
+ * "màu phần chat của t luôn khác") — theme đổi thì tự tính lại, không ghim số.
+ */
+fun distinctHue(familyHues: List<Float>, spread: Float = SESSION_SHADE_HUE_DEG): Float {
+    if (familyHues.isEmpty()) return 300f
+    var best = 0f; var bestGap = -1f
+    var h = 0f
+    while (h < 360f) {
+        val gap = familyHues.minOf { hueDistance(h, it) } - spread
+        if (gap > bestGap) { bestGap = gap; best = h }
+        h += 15f
+    }
+    return best
+}
+
+/** Màu phần của ANH: tông xa cả ba họ agent, độ bão hoà và sáng lấy từ accent để cùng "độ rực" với theme. */
+@Composable
+@ReadOnlyComposable
+fun userColor(): Color {
+    val c = ChuColors.current
+    val fams = listOf(c.warning, c.accentSecondary, c.success).map { rgbToHsl(it.red, it.green, it.blue)[0] }
+    val acc = rgbToHsl(c.accent.red, c.accent.green, c.accent.blue)
+    val rgb = hslToRgb(distinctHue(fams), acc[1], acc[2])
+    return Color(rgb[0], rgb[1], rgb[2])
 }
 
 fun sessionShade(base: Color, name: String): Color {

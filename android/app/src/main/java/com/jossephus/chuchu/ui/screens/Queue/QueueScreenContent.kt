@@ -62,6 +62,7 @@ import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTypography
 import com.jossephus.chuchu.ui.theme.chatTone
 import com.jossephus.chuchu.ui.theme.sessionColor
+import com.jossephus.chuchu.ui.theme.userColor
 
 internal const val ALL_AGENTS = "ALL"
 
@@ -428,7 +429,7 @@ private fun FeedBubble(m: FeedMessage, color: androidx.compose.ui.graphics.Color
     val displayText = if (needsCollapse && !expanded) truncateFeedText(m.text) else m.text
     if (m.role == "user") {
         TintBox(
-            fillColor = colors.accent.copy(alpha = 0.12f),
+            fillColor = userColor().copy(alpha = 0.14f),
             fraction = 0.86f,
             alignEnd = true,
             modifier = Modifier.noRippleClickable { onPick(m) },
