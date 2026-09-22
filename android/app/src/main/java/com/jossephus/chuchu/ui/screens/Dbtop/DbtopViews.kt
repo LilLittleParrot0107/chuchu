@@ -5,6 +5,9 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -37,7 +40,7 @@ import com.jossephus.chuchu.data.model.dbtop.DayTx
 import com.jossephus.chuchu.data.model.dbtop.flowDayRows
 import com.jossephus.chuchu.data.model.dbtop.FlowState
 import com.jossephus.chuchu.data.model.dbtop.SpendingState
-import com.jossephus.chuchu.ui.components.ChuBottomSheet
+import com.jossephus.chuchu.ui.components.KohiBottomSheet
 import com.jossephus.chuchu.ui.components.ChuCard
 import com.jossephus.chuchu.ui.components.ChuText
 import com.jossephus.chuchu.ui.components.KohiSectionBand
@@ -579,6 +582,10 @@ private fun FlowCell(
  * Tấm chi tiết một ngày FLOW (prototype kohi-spend-v2-detail-prototype.html F, user chốt 22/9):
  * đầu là ngày + tổng vào · ra, dưới là từng lệnh giờ · số tiền có dấu · token. Không mũi tên
  * (user bỏ), không đối tác, không chỉ dẫn.
+ *
+ * Dùng chung [KohiBottomSheet] với detail vị thế (neo đáy + inset đo từ cửa sổ gốc, đã chịu
+ * 6 lần "lẹm đáy" hồi 26–28/8). Bản Dialog tự viết 22/9 để gravity CENTER nên trên máy user
+ * bị tụt xuống dưới vạch điều hướng (ảnh 19:40 và 20:49) — bỏ.
  */
 @Composable
 private fun FlowDaySheet(
@@ -594,7 +601,14 @@ private fun FlowDaySheet(
     val clock = remember { SimpleDateFormat("HH:mm", Locale.US) }
     val sumIn = rows.filter { it.usd > 0 }.sumOf { it.usd }
     val sumOut = rows.filter { it.usd < 0 }.sumOf { -it.usd }
-    ChuBottomSheet(onDismiss = onDismiss) {
+    KohiBottomSheet(onDismiss = onDismiss) {
+      Column(
+          modifier = Modifier
+              .fillMaxWidth()
+              .heightIn(max = 520.dp)
+              .padding(horizontal = 12.dp, vertical = 10.dp)
+              .verticalScroll(rememberScrollState()),
+      ) {
         Row(modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             ChuText(
                 day.substring(8) + "/" + day.substring(5, 7) + " · FLOW",
@@ -638,6 +652,7 @@ private fun FlowDaySheet(
                 Box(Modifier.fillMaxWidth().height(1.dp).background(colors.border.copy(alpha = CHU_HAIRLINE_ALPHA)))
             }
         }
+      }
     }
 }
 
