@@ -102,7 +102,12 @@ internal fun QueueLaunchSheet(
                         .fillMaxWidth()
                         .background(if (on) colors.accent.copy(alpha = 0.08f) else Color.Transparent, BoxShape)
                         .border(1.dp, if (on) colors.accent else Color.Transparent, BoxShape)
-                        .noRippleClickable { picked = d.path; other = "" }
+                        .noRippleClickable {
+                            picked = d.path; other = ""
+                            // Hàng thư mục ghi tên agent đang chạy ở đó → chọn luôn chip đó (23/9: anh bấm hàng
+                            // "agy · aivid-main" rồi START mà chip vẫn claude mặc định → lòi phiên Claude thừa).
+                            if (d.agent in LAUNCH_AGENTS) agent = d.agent
+                        }
                         .padding(horizontal = 8.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -137,7 +142,7 @@ internal fun QueueLaunchSheet(
             )
 
             Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.End) {
-                KohiCompactAction(label = "▸ START", enabled = cwd.isNotBlank(), onClick = { onStart(agent, cwd, text.trim()) })
+                KohiCompactAction(label = "▸ START $agent", enabled = cwd.isNotBlank(), onClick = { onStart(agent, cwd, text.trim()) })
             }
         }
     }
