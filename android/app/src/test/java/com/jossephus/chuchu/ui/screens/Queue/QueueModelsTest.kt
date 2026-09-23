@@ -278,35 +278,6 @@ class QueueModelsTest {
     }
 
     @Test
-    fun `tin ngan tren timeline khong bi thu gon`() {
-        val short = "Hoàn thành kiểm tra đơn vị."
-        assertEquals(false, shouldCollapseFeed(short))
-        assertEquals(short, truncateFeedText(short))
-    }
-
-    @Test
-    fun `tin vuot qua 260 ky tu bi danh dau thu gon va cat tai ranh tu`() {
-        val long = "Từ những ngày đầu phát triển Chuchu, nhóm luôn hướng đến một trải nghiệm terminal client mượt mà, tối giản nhưng mạnh mẽ trên thiết bị di động. Các tính năng từ hội thoại, hàng đợi cho đến dòng thời gian đều được thiết kế tỉ mỉ để lập trình viên có thể theo dõi và tương tác mọi lúc mọi nơi."
-        assertTrue(long.length > FEED_MAX_CHARS)
-        assertTrue(shouldCollapseFeed(long))
-        val truncated = truncateFeedText(long)
-        assertTrue(truncated.length <= FEED_MAX_CHARS + 1)
-        assertTrue(truncated.endsWith("…"))
-        assertFalse(truncated.contains("  "))
-    }
-
-    @Test
-    fun `tin vuot qua 5 dong bi thu gon ve 5 dong kem dau ba cham`() {
-        val linesText = (1..10).joinToString("\n") { "Dòng thứ $it" }
-        assertTrue(shouldCollapseFeed(linesText))
-        val truncated = truncateFeedText(linesText)
-        assertEquals(5, truncated.lines().size)
-        assertTrue(truncated.endsWith("…"))
-        assertTrue(truncated.startsWith("Dòng thứ 1"))
-        assertFalse(truncated.contains("Dòng thứ 6"))
-    }
-
-    @Test
     fun `doc duoc loai agent cua pane`() {
         // qsrv chuyển nguyên field `agent` của herdr (16/9) — app tô màu tên theo loại.
         val s = QueueState.parse(
@@ -342,46 +313,6 @@ class QueueModelsTest {
     @Test
     fun `chat send key khoa theo pane`() {
         assertEquals("chat-send:w1:p1", QueueOperationKey.chatSend("w1:p1"))
-    }
-
-    @Test
-    fun `feed page doc duoc trang that`() {
-        val page = FeedPage.parse(
-            """{"rev":"7-ab12cd34","pane":null,"messages":[
-               {"pane":"w1:p1","name":"OC | build","agent":"opencode","label":"working","tone":"accent",
-                "role":"assistant","ts":"2026-09-16T05:04:31.123Z","text":"đang sửa","uuid":"u1","off":100},
-               {"pane":"w1:p2","name":"claude","agent":"claude","label":"idle","tone":"dim",
-                "role":"user","ts":"2026-09-16T05:05:00.000Z","text":"gửi việc","uuid":"","off":9}]}"""
-        )
-        assertEquals("7-ab12cd34", page.rev)
-        assertNull(page.pane)
-        assertEquals(2, page.messages.size)
-        assertEquals(QueueTone.Accent, page.messages[0].tone)
-        assertEquals("assistant", page.messages[0].role)
-        assertEquals("opencode", page.messages[0].agent)
-        // uuid một mình không đủ làm key: opencode có nhiều đoạn text cùng uuid, khác off.
-        assertEquals("w1:p1:u1:100", page.messages[0].key)
-        assertEquals("w1:p2:2026-09-16T05:05:00.000Z:9", page.messages[1].key)
-    }
-
-    @Test
-    fun `feed bo qua phan tu rac chu khong vo danh sach`() {
-        val page = FeedPage.parse(
-            """{"rev":"r","messages":["rác",null,{"pane":"p1","text":"that","role":"assistant"}]}"""
-        )
-        assertEquals(1, page.messages.size)
-        assertEquals("that", page.messages.single().text)
-    }
-
-    /** Timeline chỉ kể chuyện người↔agent; tool/think là nhiễu, không phải tin. */
-    @Test
-    fun `feed bo vai tro khong phai tin`() {
-        val page = FeedPage.parse(
-            """{"rev":"r","messages":[
-               {"pane":"p1","role":"tool","text":"x"},
-               {"pane":"p1","role":"think","text":"y"}]}"""
-        )
-        assertTrue(page.messages.isEmpty())
     }
 
     @Test

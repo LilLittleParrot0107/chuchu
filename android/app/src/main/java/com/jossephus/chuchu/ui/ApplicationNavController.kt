@@ -33,6 +33,7 @@ import com.jossephus.chuchu.ui.screens.AddServer.AddServerScreen
 import com.jossephus.chuchu.ui.components.KohiNavShell
 import com.jossephus.chuchu.ui.screens.AddServer.AddServerViewModel
 import com.jossephus.chuchu.ui.screens.Dbtop.DbtopScreen
+import com.jossephus.chuchu.ui.screens.Queue.QueueMode
 import com.jossephus.chuchu.ui.screens.Queue.QueueScreen
 import com.jossephus.chuchu.ui.screens.Queue.QueueViewModel
 import com.jossephus.chuchu.ui.screens.ServerList.ServerListScreen
@@ -57,7 +58,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.ui.unit.dp
 
-private val MAIN_TAB_ROUTES = setOf("servers", "web", "dashboard", "queue")
+private val MAIN_TAB_ROUTES = setOf("servers", "dashboard", "queue")
 
 /**
  * Queue mo tu accessory bar trong terminal. Route rieng voi tab QUEUE de
@@ -334,16 +335,25 @@ fun ApplicationNavController() {
             )
         }
         composable(
-            route = "queue?pane={pane}",
-            arguments = listOf(navArgument("pane") {
-                type = NavType.StringType
-                nullable = true
-                defaultValue = null
-            }),
+            route = "queue?pane={pane}&mode={mode}",
+            arguments = listOf(
+                navArgument("pane") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+                // mode=files: mở thẳng trang FILES (file portal, gộp vào Queue 23/9)
+                navArgument("mode") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+            ),
         ) { backStackEntry ->
             QueueDestination(
                 sharedQueueVm = sharedQueueVm,
                 initialPane = backStackEntry.arguments?.getString("pane"),
+                initialMode = if (backStackEntry.arguments?.getString("mode") == "files") QueueMode.Files else null,
                 onBack = onExitApp,
             )
         }
@@ -365,14 +375,6 @@ fun ApplicationNavController() {
             )
         }
 
-        composable("web") {
-            val settingsRepo = SettingsRepository.getInstance(application)
-            val webUrl by settingsRepo.webPortalUrl.collectAsStateWithLifecycle()
-            com.jossephus.chuchu.ui.screens.Web.WebPortalScreen(
-                url = webUrl,
-                onClose = onExitApp,
-            )
-        }
         composable("settings") {
             val settingsRepo = SettingsRepository.getInstance(application)
             val backupViewModel: SettingsBackupViewModel = viewModel(
@@ -464,7 +466,7 @@ fun ApplicationNavController() {
                     hostId = null,
                     openLocalShell = true,
                     onOpenSettings = { navController.navigate("settings") },
-                    onOpenWeb = { navController.navigate("web") },
+                    onOpenWeb = { navController.navigate("queue?mode=files") { launchSingleTop = true } },
                     onOpenQueue = { pane ->
                         navController.navigate(sessionQueueRoute(pane))
                     },
@@ -491,7 +493,7 @@ fun ApplicationNavController() {
                 vm = vm,
                 hostId = id,
                 onOpenSettings = { navController.navigate("settings") },
-                onOpenWeb = { navController.navigate("web") },
+                onOpenWeb = { navController.navigate("queue?mode=files") { launchSingleTop = true } },
                 onOpenQueue = { pane ->
                     navController.navigate(sessionQueueRoute(pane))
                 },
@@ -517,8 +519,11 @@ private fun QueueDestination(
     sharedQueueVm: QueueViewModel,
     initialPane: String?,
     onBack: () -> Unit,
+    initialMode: QueueMode? = null,
 ) {
     val ui by sharedQueueVm.ui.collectAsStateWithLifecycle()
+    // FILES trong Queue (23/9): file portal dufs, URL từ Settings như tab Files cũ.
+    val portalUrl by SettingsRepository.getInstance(LocalContext.current.applicationContext as Application).webPortalUrl.collectAsStateWithLifecycle()
     val qUrl by sharedQueueVm.queueUrl.collectAsStateWithLifecycle()
     val qToken by sharedQueueVm.queueToken.collectAsStateWithLifecycle()
     LifecycleResumeEffect(sharedQueueVm) {
@@ -550,11 +555,14 @@ private fun QueueDestination(
         onSendChat = sharedQueueVm::sendChat,
         onAnswerBlocked = sharedQueueVm::answerBlocked,
         onSubmitBlocked = sharedQueueVm::answerBlockedMulti,
-        // UI G1 (16/9): hàng HỘI THOẠI gửi tới chip đang chọn; DÒNG THỜI GIAN
-        // đọc /feed (chỉ long-poll khi màn đó hiện) + lọc theo chip.
+        // UI G1 (16/9): hàng HỘI THOẠI gửi tới chip đang chọn.
         onSendToPane = { pane, text -> sharedQueueVm.sendToPane(pane, text) },
-        feed = sharedQueueVm.feed.collectAsStateWithLifecycle().value,
-        onFeedVisible = sharedQueueVm::setFeedVisible,
+        // FILES + NEW SESSION (23/9, thay TIMELINE)
+        portalUrl = portalUrl,
+        initialMode = initialMode,
+        launchDirs = sharedQueueVm.launchDirs.collectAsStateWithLifecycle().value,
+        onLaunchOpen = sharedQueueVm::loadLaunchDirs,
+        onLaunch = sharedQueueVm::launch,
         onUploadToInbox = sharedQueueVm::uploadToInbox,
         chatFontSizeSp = sharedQueueVm.terminalFontSize.collectAsStateWithLifecycle().value,
         onBack = onBack,

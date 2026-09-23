@@ -78,6 +78,8 @@ private object WebPortalCache {
 fun WebPortalScreen(
     url: String,
     onClose: () -> Unit,
+    /** Nhúng vào trang FILES của Queue (23/9): màn ngoài đã đệm system bar, không đệm thêm. */
+    embedded: Boolean = false,
 ) {
     val colors = ChuColors.current
     val typography = ChuTypography.current
@@ -203,8 +205,7 @@ fun WebPortalScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(colors.background)
-            .statusBarsPadding()
-            .navigationBarsPadding(),
+            .then(if (embedded) Modifier else Modifier.statusBarsPadding().navigationBarsPadding()),
     ) {
         Row(
             modifier = Modifier

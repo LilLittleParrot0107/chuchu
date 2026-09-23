@@ -66,7 +66,7 @@ import com.jossephus.chuchu.ui.theme.ChuTypography
  */
 enum class KohiTab(val route: String, val contentDescription: String) {
     HOSTS("servers", "Hosts"),
-    FILES("web", "Files"),
+    // FILES bỏ khỏi thanh dưới 23/9 (user chốt): file portal nằm trong QUEUE › FILES.
     DASHBOARD("dashboard", "Dashboard"),
     QUEUE("queue", "Queue"),
 }
@@ -155,8 +155,6 @@ private fun tabIcon(tab: KohiTab, selected: Boolean, tint: Color) {
     when (tab) {
         KohiTab.HOSTS ->
             if (selected) VectorIcon(Icons.Filled.Home, tint) else VectorIcon(Icons.Outlined.Home, tint)
-        KohiTab.FILES ->
-            FolderIcon(tint)
         KohiTab.DASHBOARD -> CurveDashboardIcon(tint)
         KohiTab.QUEUE -> QueueListIcon(tint)
     }

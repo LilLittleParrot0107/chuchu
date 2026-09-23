@@ -328,7 +328,7 @@ private fun BlockedOptionRow(
 }
 
 /** Viền đứt 1dp bo 4dp (lựa chọn "gõ tiếp") — Compose không có border kiểu dashed sẵn. */
-private fun Modifier.dashedBorder(color: Color): Modifier = drawBehind {
+internal fun Modifier.dashedBorder(color: Color): Modifier = drawBehind {
     val stroke = 1.dp.toPx()
     drawRoundRect(
         color = color,

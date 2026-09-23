@@ -375,73 +375,6 @@ data class ChatPage(
 }
 
 /**
- * Một tin trên DÒNG THỜI GIAN (qsrv `GET /feed`, UI G1 16/9): tin cuối của các session
- * đang động, gộp theo giờ. [role] chỉ có `user` (anh gõ) và `assistant` — tool/think bị
- * server lọc bỏ để dòng thời gian đọc như tin nhắn.
- */
-data class FeedMessage(
-    val pane: String,
-    val name: String,
-    val agent: String?,
-    val label: String,
-    val tone: QueueTone,
-    val role: String,
-    val ts: String,
-    val text: String,
-    val uuid: String = "",
-    /** Vị trí bản ghi trong transcript — ổn định, dùng làm key danh sách. */
-    val offset: Long = 0L,
-    /** Đoạn dẫn trước của cùng lượt trên DÒNG THỜI GIAN (xem [collapseFeedTurns]). */
-    val paras: List<String> = emptyList(),
-) {
-    // uuid một mình không đủ: một bản ghi assistant có thể có nhiều đoạn text. offset
-    // của opencode là rowid message nên hai đoạn cùng offset nhưng khác uuid.
-    val key: String get() = "$pane:${uuid.ifBlank { ts }}:$offset"
-}
-
-data class FeedPage(
-    val rev: String,
-    val pane: String?,
-    val messages: List<FeedMessage>,
-) {
-    companion object {
-        fun parse(json: String): FeedPage {
-            val o = JSONObject(json)
-            val arr = o.optJSONArray("messages")
-            val out = ArrayList<FeedMessage>(arr?.length() ?: 0)
-            if (arr != null) for (i in 0 until arr.length()) {
-                val m = arr.optJSONObject(i) ?: continue
-                val role = m.optString("role")
-                if (role !in FEED_ROLES) continue
-                out += FeedMessage(
-                    pane = m.optString("pane"),
-                    name = m.optString("name"),
-                    agent = m.optStringOrNull("agent"),
-                    label = m.optString("label"),
-                    tone = QueueTone.from(m.optString("tone")),
-                    role = role,
-                    ts = m.optString("ts"),
-                    text = m.optString("text"),
-                    uuid = m.optString("uuid"),
-                    offset = m.optLong("off", 0L),
-                )
-            }
-            return FeedPage(
-                rev = o.optString("rev"),
-                pane = o.optStringOrNull("pane"),
-                messages = out,
-            )
-        }
-
-        private val FEED_ROLES = setOf("user", "assistant")
-    }
-}
-
-// ── Dọn "response thừa" trong transcript (user duyệt 17/9, 5 mục) ──────────────
-// qsrv giữ NGUYÊN dữ liệu (hạ tầng chung với qq); mọi cắt gọt nằm ở tầng đọc của
-// app. Các hàm dưới thuần Kotlin, không Compose — unit test chạy được trên JVM.
-
-/**
  * Gộp các đoạn assistant LIÊN TIẾP của cùng một lượt (không có user/tool chen giữa)
  * thành một bubble: đoạn cuối là `text`, các đoạn trước nằm trong [ChatMessage.paras]
  * (bubble thường chỉ hiện đoạn cuối). `think` bị bỏ khỏi tầm nhìn mặc định — và vì
@@ -473,33 +406,6 @@ fun collapseAssistantTurns(messages: List<ChatMessage>): List<ChatMessage> {
                 i = j
             }
             else -> { out.add(m); i++ }
-        }
-    }
-    return out
-}
-
-/**
- * Như [collapseAssistantTurns] cho DÒNG THỜI GIAN: feed xen kẽ nhiều pane nên
- * một lượt phải là assistant LIÊN TIẾP CÙNG PANE. Nhãn/chấm màu lấy của tin cuối
- * (trạng thái mới nhất của phiên), key giữ của tin đầu.
- */
-fun collapseFeedTurns(messages: List<FeedMessage>): List<FeedMessage> {
-    val out = ArrayList<FeedMessage>(messages.size)
-    var i = 0
-    while (i < messages.size) {
-        val m = messages[i]
-        if (m.role == "assistant" && m.text.isNotBlank()) {
-            val run = ArrayList<String>()
-            run.add(m.text)
-            var last = m
-            var j = i + 1
-            while (j < messages.size && messages[j].role == "assistant" && messages[j].pane == m.pane && messages[j].text.isNotBlank()) {
-                run.add(messages[j].text); last = messages[j]; j++
-            }
-            out.add(if (run.size == 1) m else m.copy(name = last.name, label = last.label, tone = last.tone, ts = last.ts, text = last.text, paras = run.dropLast(1)))
-            i = j
-        } else {
-            out.add(m); i++
         }
     }
     return out
@@ -576,6 +482,9 @@ data class BlockedPrompt(
 }
 
 /** `answered` của thẻ khi đã SUBMIT một bộ ô tích (không phải một số lựa chọn). */
+/** Thư mục gợi ý cho tấm NEW SESSION (qsrv /launch/recent): cwd các phiên đang chạy + lịch sử mở. */
+data class LaunchDir(val path: String, val short: String, val agent: String = "", val name: String = "")
+
 const val BLOCKED_MULTI_SENT = -1
 
 data class BlockedOption(
@@ -600,29 +509,6 @@ data class BlockedOption(
 
 // ── DÒNG THỜI GIAN kiểu T2 (user chốt 22/9): ô 30 phút, trong ô gom theo phiên ──────────────
 
-/** Một khối trên dòng thời gian: các tin LIÊN TIẾP trong cùng ô giờ của cùng phiên. */
-data class FeedBlock(
-    val pane: String,
-    val name: String,
-    val agent: String?,
-    /** Nhãn trạng thái của phiên tại tin cuối (qsrv gắn theo /state lúc trả feed). */
-    val label: String,
-    val messages: List<FeedMessage>,
-) {
-    val key: String get() = "blk:" + messages.first().key
-    val lastTs: String get() = messages.last().ts
-}
-
-sealed class FeedItem(val key: String) {
-    /** Vạch giờ mờ đầu mỗi ô. */
-    class Hour(val startSec: Long) : FeedItem("hour:$startSec")
-    /** Vạch MỚI: từ đây trở xuống là tin chưa xem lần trước. */
-    class New(val sinceSec: Long) : FeedItem("new")
-    class Block(val block: FeedBlock) : FeedItem(block.key)
-}
-
-const val FEED_BUCKET_SEC = 1800L
-
 /** "2026-09-16T05:04:31.123Z" → epoch giây; chuỗi lạ → null. */
 fun isoEpochSec(ts: String): Long? {
     if (ts.length < 19) return null
@@ -633,40 +519,4 @@ fun isoEpochSec(ts: String): Long? {
     } catch (e: Exception) {
         null
     }
-}
-
-/**
- * Xếp tin (đã qua [collapseFeedTurns]) thành ô [bucketSec] có vạch giờ; trong ô, tin của cùng pane
- * gom một khối theo thứ tự xuất hiện đầu tiên — hết xen kẽ từng bọt giữa các phiên. [sinceSec] > 0
- * thì chèn vạch MỚI trước tin đầu tiên mới hơn mốc (chỉ khi đã có tin cũ hơn ở trên — toàn tin
- * mới thì không cần vạch). Hàm thuần, có test.
- */
-fun feedTimelineItems(messages: List<FeedMessage>, sinceSec: Long = 0L, bucketSec: Long = FEED_BUCKET_SEC): List<FeedItem> {
-    val out = ArrayList<FeedItem>()
-    var blocks = ArrayList<FeedBlock>()
-    var bucketStart = Long.MIN_VALUE
-    var newDone = sinceSec <= 0L
-    fun flush() { blocks.forEach { out += FeedItem.Block(it) }; blocks = ArrayList() }
-    for (m in messages) {
-        val sec = isoEpochSec(m.ts) ?: continue
-        val bs = sec / bucketSec * bucketSec
-        if (bs != bucketStart) { flush(); bucketStart = bs; out += FeedItem.Hour(bs) }
-        if (!newDone && sec > sinceSec) {
-            if (blocks.isNotEmpty() || out.any { it is FeedItem.Block }) { flush(); out += FeedItem.New(sinceSec) }
-            newDone = true
-        }
-        val i = blocks.indexOfFirst { it.pane == m.pane }
-        if (i >= 0) blocks[i] = blocks[i].copy(messages = blocks[i].messages + m, label = m.label)
-        else blocks += FeedBlock(m.pane, m.name, m.agent, m.label, listOf(m))
-    }
-    flush()
-    return out
-}
-
-/** Phiên đang KẸT (nhãn cần anh) → khối ghim ở đáy gồm tin cuối của phiên đó, để không trôi theo ô giờ. */
-fun blockedBlocks(messages: List<FeedMessage>): List<FeedBlock> {
-    val last = LinkedHashMap<String, FeedMessage>()
-    for (m in messages) last[m.pane] = m
-    return last.values.filter { AgentState.of(it.label) == AgentState.Blocked }
-        .map { FeedBlock(it.pane, it.name, it.agent, it.label, listOf(it)) }
 }

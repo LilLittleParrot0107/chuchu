@@ -110,10 +110,14 @@ fun QueueScreen(
     onSubmitBlocked: (List<Int>) -> Unit = {},
     // Hàng HỘI THOẠI gửi tới chip đang chọn mà không cần mở chat (UI G1, 16/9).
     onSendToPane: (String, String) -> Unit = { _, _ -> },
-    // DÒNG THỜI GIAN (UI G1): dữ liệu /feed + bật/tắt poll. Bỏ lọc theo chip 17/9 —
-    // dòng thời gian luôn của cả chuồng; chọn phiên chỉ để nhắm ô gõ.
-    feed: FeedUiState = FeedUiState(),
-    onFeedVisible: (Boolean) -> Unit = {},
+    // FILES (23/9, thay TIMELINE): file portal dufs nhúng vào trang phải của pager.
+    portalUrl: String = "",
+    /** Trang mở khi vào màn (deep link "file portal" từ terminal → Files); null = giữ trang đang có. */
+    initialMode: QueueMode? = null,
+    // NEW SESSION (23/9): tấm trượt đáy chọn agent · thư mục · lệnh → qsrv mở phiên.
+    launchDirs: List<LaunchDir> = emptyList(),
+    onLaunchOpen: () -> Unit = {},
+    onLaunch: (agent: String, cwd: String, prompt: String) -> Unit = { _, _, _ -> },
     /** ⊕ trong chat: tải file lên ~/inbox trên host, trả đường dẫn để dán vào tin (null = hỏng). */
     onUploadToInbox: suspend (name: String, length: Long, open: () -> java.io.InputStream?) -> String? = { _, _, _ -> null },
     /** Cỡ chữ terminal (sp) để tin trong chat cùng cỡ với terminal. */
@@ -125,16 +129,13 @@ fun QueueScreen(
     val chatOpen = chat.pane != null
     val chatListState = rememberLazyListState()
     val chatScope = rememberCoroutineScope()
-    // Dòng thời gian: giữ vị trí cuộn qua mỗi lần rời màn (đổi mode, mở chat, sang
-    // màn khác rồi quay lại — user báo 17/9). Neo theo KEY tin đầu đang thấy; về tới
-    // nơi mà neo rơi khỏi cửa sổ feed (tin cũ bị cắt) thì hiện điểm mới nhất.
-    val feedListState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
-    var feedPinned by rememberSaveable { mutableStateOf(true) }
-    var feedAnchorKey by rememberSaveable { mutableStateOf<String?>(null) }
-    // G1 (user chốt 16/9): mặc định mở ở DÒNG THỜI GIAN; bảng VIỆC là lớp riêng đè lên.
+    // Bảng VIỆC là lớp riêng đè lên pager.
     var tasksOpen by rememberSaveable { mutableStateOf(false) }
+    // Tấm NEW SESSION (23/9): mở là nạp danh sách thư mục gợi ý.
+    var launchOpen by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(launchOpen) { if (launchOpen) onLaunchOpen() }
 
-    // HorizontalPager: vuốt trái/phải giữa DÒNG THỜI GIAN (0) ↔ HỘI THOẠI (1), đồng bộ Dashboard.
+    // HorizontalPager: vuốt trái/phải giữa HỘI THOẠI (0) ↔ FILES (1), đồng bộ Dashboard.
     // Trang pager LÀ chế độ màn — nguồn sự thật duy nhất (21/9). Trước đây còn biến `mode`
     // chạy song song rồi hai effect đồng bộ qua lại + `modeBeforeChat` để nhớ đường về;
     // thực ra rememberPagerState tự lưu qua xoay màn, còn mở chat / bảng VIỆC chỉ tháo
@@ -147,6 +148,8 @@ fun QueueScreen(
         tasksOpen = false   // bảng VIỆC và pager cùng chiếm thân màn
         pagerScope.launch { pagerState.animateScrollToPage(target.ordinal) }
     }
+    // Deep link "file portal" (terminal) → mở thẳng trang FILES.
+    LaunchedEffect(initialMode) { if (initialMode != null) pagerState.scrollToPage(initialMode.ordinal) }
     // Rung nhẹ khi sang trang; bỏ giá trị đầu để mở màn không rung.
     LaunchedEffect(Unit) {
         snapshotFlow { pagerState.currentPage }.drop(1).collect {
@@ -168,9 +171,19 @@ fun QueueScreen(
         when (queueBackAction(chatOpen, tasksOpen, mode)) {
             QueueBackAction.CloseChat -> onCloseChat()
             QueueBackAction.CloseTasks -> tasksOpen = false
-            QueueBackAction.GoToTimeline -> goTo(QueueMode.Timeline)
+            QueueBackAction.GoToThreads -> goTo(QueueMode.Threads)
             QueueBackAction.Leave -> onBack()
         }
+    }
+    if (launchOpen) {
+        QueueLaunchSheet(
+            dirs = launchDirs,
+            onDismiss = { launchOpen = false },
+            onStart = { agent, cwd, text ->
+                launchOpen = false
+                onLaunch(agent, cwd, text)
+            },
+        )
     }
     var prompt by remember { mutableStateOf("") }
     // ⊕ trong chat: chọn file → tải lên ~/inbox qua dufs → dán đường dẫn vào ô gõ (user 16/9).
@@ -211,10 +224,6 @@ fun QueueScreen(
         if (inspectedTaskId != null) focusManager.clearFocus()
     }
     var selectedPane by remember(initialPane) { mutableStateOf(initialPane) }
-    // Chỉ long-poll /feed khi chế độ dòng thời gian đang hiện (đỡ tốn radio);
-    // mở CHAT cũng tạm ngưng vì tin đã hiện trong chat.
-    LaunchedEffect(mode, chatOpen) { onFeedVisible(mode == QueueMode.Timeline && !chatOpen) }
-
     val agents = ui.state.agents
     // Mặc định TẤT CẢ — dòng thời gian luôn của cả chuồng; đây chỉ là ĐÍCH cho ô gõ,
     // đổi bằng cách chạm một tin trên dòng thời gian / một dòng HỘI THOẠI (user 17/9).
@@ -440,8 +449,8 @@ fun QueueScreen(
                                 onDragStart = { acc = 0f },
                                 onDragEnd = {
                                     val next = when {
-                                        acc <= -threshold -> QueueMode.Threads
-                                        acc >= threshold -> QueueMode.Timeline
+                                        acc <= -threshold -> QueueMode.Files
+                                        acc >= threshold -> QueueMode.Threads
                                         else -> null
                                     }
                                     if (next != null) goTo(next)
@@ -498,31 +507,18 @@ fun QueueScreen(
                     }
                 }
             } else {
-                // HorizontalPager: vuốt trái/phải siêu mượt giữa DÒNG THỜI GIAN ↔ HỘI THOẠI (đồng bộ Dashboard)
+                // HorizontalPager: vuốt trái/phải siêu mượt giữa HỘI THOẠI ↔ FILES (đồng bộ Dashboard)
                 // Không compose sẵn trang kề (mặc định 0): trang được compose ngay khi bắt đầu
                 // kéo nên vẫn mượt, mà không phải recompose cả hai danh sách mỗi lần state đổi.
                 HorizontalPager(
                     state = pagerState,
-                    key = { page -> if (page == 0) "timeline" else "threads" },
+                    key = { page -> if (page == 0) "threads" else "files" },
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
                 ) { page ->
                     when (page) {
-                        0 -> QueueFeedView(
-                            feed = feed,
-                            onPick = { m ->
-                                // Chạm tin = nhắm phiên đó cho ô gõ ngay dưới (user chốt 17/9):
-                                // ở lại dòng thời gian, gõ request luôn tại chỗ.
-                                selectedPane = m.pane
-                            },
-                            listState = feedListState,
-                            pinned = feedPinned,
-                            onPinnedChange = { feedPinned = it },
-                            anchorKey = feedAnchorKey,
-                            onAnchorChange = { feedAnchorKey = it },
-                        )
-                        1 -> QueueConversationList(
+                        0 -> QueueConversationList(
                             agents = agents,
                             selectedPane = pane,
                             chatSeen = chatSeen,
@@ -532,6 +528,14 @@ fun QueueScreen(
                                 onOpenChat(p)
                             },
                             onSelect = { p -> selectedPane = p },
+                            onNewSession = { launchOpen = true },
+                        )
+                        // FILES = file portal dufs (trước là tab riêng ở thanh dưới; user gộp 23/9).
+                        // BackHandler của nó đứng trong trang này nên back = lên thư mục cha, ở gốc thì về HỘI THOẠI.
+                        1 -> com.jossephus.chuchu.ui.screens.Web.WebPortalScreen(
+                            url = portalUrl,
+                            onClose = { goTo(QueueMode.Threads) },
+                            embedded = true,
                         )
                     }
                 }
@@ -703,17 +707,17 @@ private fun queueStatusText(ui: QueueUiState): String {
 private const val FEEDBACK_TTL_MS = 3_200L
 
 /** Việc cần làm với một cú back khi đang ở màn Queue. */
-internal enum class QueueBackAction { CloseChat, CloseTasks, GoToTimeline, Leave }
+internal enum class QueueBackAction { CloseChat, CloseTasks, GoToThreads, Leave }
 
 /**
  * Luật back của màn Queue, tách khỏi Compose để test được. Bóc lớp từ trên xuống:
- * chat toàn màn → bảng VIỆC → trang HỘI THOẠI lùi về DÒNG THỜI GIAN → ở gốc mới
+ * chat toàn màn → bảng VIỆC → trang FILES lùi về HỘI THOẠI → ở gốc mới
  * nhường cho nav (thu app / popBackStack, tuỳ nơi gọi). Dialog là cửa sổ riêng,
  * tự xử lý back nên không nằm trong luật này.
  */
 internal fun queueBackAction(chatOpen: Boolean, tasksOpen: Boolean, mode: QueueMode): QueueBackAction = when {
     chatOpen -> QueueBackAction.CloseChat
     tasksOpen -> QueueBackAction.CloseTasks
-    mode != QueueMode.Timeline -> QueueBackAction.GoToTimeline
+    mode != QueueMode.Threads -> QueueBackAction.GoToThreads
     else -> QueueBackAction.Leave
 }

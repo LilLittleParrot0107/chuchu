@@ -71,53 +71,11 @@ class QueueClient(
         data class Failed(val message: String, val needsAuth: Boolean = false) : ChatFetch
     }
 
-    sealed interface FeedFetch {
-        data class Fresh(val page: FeedPage) : FeedFetch
-        data object Unchanged : FeedFetch
-        data class Failed(val message: String, val needsAuth: Boolean = false) : FeedFetch
-    }
 
     sealed interface SwitchAccountResult {
         /** Server trả ngay `{ok, acc}`; việc làm mới quota chạy nền phía server. */
         data class Ok(val acc: String) : SwitchAccountResult
         data class Failed(val message: String, val needsAuth: Boolean = false) : SwitchAccountResult
-    }
-
-    /**
-     * `GET /feed` (UI G1, 16/9): tin cuối các session đang động gộp theo giờ, luôn của cả
-     * chuồng (lọc theo pane bỏ 17/9 — server vẫn nhận `?pane=` nếu sau này cần lại).
-     * [sinceRev] + [waitSec] = long-poll như /chat; rev của /feed gồm chat_rev nên tin mới
-     * đánh thức được (rev_now của /state thì không).
-     */
-    fun feed(limit: Int = 40, sinceRev: String? = null, waitSec: Int = 0): FeedFetch {
-        val wait = if (sinceRev.isNullOrEmpty()) 0 else waitSec.coerceIn(0, 25)
-        val q = StringBuilder("/feed?limit=").append(limit)
-        if (!sinceRev.isNullOrEmpty()) {
-            q.append("&since=").append(URLEncoder.encode(sinceRev, "UTF-8"))
-            if (wait > 0) q.append("&wait=").append(wait)
-        }
-        return try {
-            val (code, body) = request(q.toString(), null, readTimeoutMs + wait * 1000)
-            when (code) {
-                HttpURLConnection.HTTP_NOT_MODIFIED -> FeedFetch.Unchanged
-                HttpURLConnection.HTTP_OK -> FeedFetch.Fresh(FeedPage.parse(body))
-                HttpURLConnection.HTTP_NOT_FOUND -> FeedFetch.Failed(
-                    runCatching { JSONObject(body).optString("error") }.getOrNull()?.takeIf { it.isNotBlank() }
-                        ?: "This qsrv has no /feed yet — update qsrv on the host",
-                )
-                HttpURLConnection.HTTP_UNAUTHORIZED -> FeedFetch.Failed("The token is invalid or has changed", needsAuth = true)
-                HttpURLConnection.HTTP_FORBIDDEN -> FeedFetch.Failed("Access denied (403) — open Tailscale and verify the account", needsAuth = true)
-                else -> FeedFetch.Failed("Feed server error ($code)")
-            }
-        } catch (e: SocketTimeoutException) {
-            FeedFetch.Failed("Feed read timed out — check Tailscale")
-        } catch (e: UnknownHostException) {
-            FeedFetch.Failed("Host not found — check Tailscale VPN/DNS")
-        } catch (e: IOException) {
-            FeedFetch.Failed(offlineMessage(e))
-        } catch (e: Exception) {
-            FeedFetch.Failed("Could not read the feed (${e.javaClass.simpleName})")
-        }
     }
 
     /**
@@ -217,6 +175,31 @@ class QueueClient(
         JSONObject().apply {
             put("pane", pane)
             put("ns", JSONArray(ns))
+        },
+    )
+
+    /** `GET /launch/recent` (23/9): thư mục gợi ý cho tấm NEW SESSION. null = hỏng. */
+    fun launchRecent(): List<LaunchDir>? = try {
+        val (code, body) = request("/launch/recent", null)
+        if (code != HttpURLConnection.HTTP_OK) null else {
+            val arr = JSONObject(body).optJSONArray("dirs")
+            val out = ArrayList<LaunchDir>()
+            if (arr != null) for (i in 0 until arr.length()) {
+                val o = arr.optJSONObject(i) ?: continue
+                val path = o.optString("path"); if (path.isBlank()) continue
+                out += LaunchDir(path = path, short = o.optString("short").ifBlank { path }, agent = o.optString("agent"), name = o.optString("name"))
+            }
+            out
+        }
+    } catch (e: Exception) { null }
+
+    /** `POST /launch {agent, cwd, prompt}` (23/9): qsrv mở tab herdr, chạy agent, gửi lệnh khi sẵn sàng. */
+    fun launch(agent: String, cwd: String, prompt: String): Act = send(
+        "/launch",
+        JSONObject().apply {
+            put("agent", agent)
+            put("cwd", cwd)
+            put("prompt", prompt)
         },
     )
 

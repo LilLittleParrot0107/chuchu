@@ -62,21 +62,6 @@ data class QueueUiState(
     val feedback: QueueFeedback? = null,
 )
 
-/**
- * Dòng thời gian (UI G1): tin cuối các session đang động, mới nhất ở cuối. [pane] null =
- * tất cả. Server trả trọn trang mỗi lần (không phân trang) — tin cũ trôi khỏi tầm mắt,
- * muốn đọc đủ thì mở hội thoại.
- */
-data class FeedUiState(
-    val messages: List<FeedMessage> = emptyList(),
-    val rev: String = "",
-    val loading: Boolean = false,
-    val error: String? = null,
-    val updatedAt: Long = 0L,
-    /** Mốc đã xem (epoch giây) lúc VÀO màn — vạch MỚI đặt sau tin cuối trước mốc; 0 = không vạch. */
-    val sinceTs: Long = 0L,
-)
-
 class QueueViewModel(
     private val settings: SettingsRepository,
 ) : ViewModel() {
@@ -93,8 +78,6 @@ class QueueViewModel(
     private var chatJob: Job? = null
     private var blockedJob: Job? = null
 
-    // ── Dòng thời gian (UI G1): chỉ chạy khi chế độ DÒNG THỜI GIAN đang hiện ──────
-    private val _feed = MutableStateFlow(FeedUiState())
 
     init {
         // Thẻ NEEDS YOU: bật/tắt hỏi /blocked theo cặp (pane đang chat, trạng thái agent đó trên
@@ -105,9 +88,37 @@ class QueueViewModel(
             }.distinctUntilChanged().collect { syncBlockedPolling() }
         }
     }
-    val feed: StateFlow<FeedUiState> = _feed.asStateFlow()
-    private var feedJob: Job? = null
-    private var feedWanted = false
+
+    // ── NEW SESSION (23/9): thư mục gợi ý từ qsrv /launch/recent, mở phiên qua POST /launch ──
+    private val _launchDirs = MutableStateFlow<List<LaunchDir>>(emptyList())
+    val launchDirs: StateFlow<List<LaunchDir>> = _launchDirs.asStateFlow()
+
+    /** Mở tấm NEW SESSION: nạp danh sách thư mục (cwd các phiên đang chạy + lịch sử mở). */
+    fun loadLaunchDirs() {
+        viewModelScope.launch {
+            val c = client() ?: return@launch
+            val dirs = withContext(Dispatchers.IO) { c.launchRecent() } ?: return@launch
+            _launchDirs.value = dirs
+        }
+    }
+
+    /** START trên tấm NEW SESSION: qsrv mở tab herdr + chạy agent + gửi lệnh; phiên hiện ở roster sau vài giây. */
+    fun launch(agent: String, cwd: String, prompt: String) {
+        viewModelScope.launch {
+            val c = client() ?: run { postFeedback("", "No Queue URL in Settings", QueueFeedbackTone.Error); return@launch }
+            when (val r = withContext(Dispatchers.IO) { c.launch(agent, cwd, prompt) }) {
+                is QueueClient.Act.Ok -> {
+                    postFeedback("", "Starting $agent in ${cwd.substringAfterLast('/').ifBlank { cwd }}…", QueueFeedbackTone.Success)
+                    refreshNow()
+                }
+                is QueueClient.Act.Conflict -> postFeedback("", "Launch conflict", QueueFeedbackTone.Warning)
+                is QueueClient.Act.Failed -> {
+                    if (r.needsAuth) _ui.update { it.copy(needsSetup = true) }
+                    postFeedback(r.message, "Launch failed", QueueFeedbackTone.Error)
+                }
+            }
+        }
+    }
 
     private val _ambientSummary = MutableStateFlow(QueueAmbientSummary.Empty)
 
@@ -415,53 +426,6 @@ class QueueViewModel(
         }
     }
 
-    /** Bật khi công tắc đang ở DÒNG THỜI GIAN; tắt khi sang HỘI THOẠI (đỡ tốn radio). */
-    fun setFeedVisible(wanted: Boolean) {
-        if (wanted == feedWanted) return
-        feedWanted = wanted
-        // Vào màn: giữ mốc cũ làm vạch MỚI suốt lần xem; rời màn: ghi mốc = bây giờ.
-        if (wanted) _feed.update { it.copy(sinceTs = settings.feedSeenTs) }
-        else settings.feedSeenTs = System.currentTimeMillis() / 1000L
-        syncFeedPolling()
-    }
-
-    private fun syncFeedPolling() {
-        val shouldRun = feedWanted && isAppActive && isQueueVisible
-        if (!shouldRun) { feedJob?.cancel(); feedJob = null; return }
-        if (feedJob?.isActive == true) return
-        feedJob = viewModelScope.launch {
-            var backoff = 0L
-            while (isActive && feedWanted) {
-                val t0 = System.currentTimeMillis()
-                val failed = feedRefreshOnce(waitSec = LONGPOLL_S)
-                backoff = if (failed) minOf(maxOf(backoff * 2, FOREGROUND_POLL_MS), MAX_FOREGROUND_BACKOFF_MS) else 0L
-                val elapsed = System.currentTimeMillis() - t0
-                delay(maxOf(backoff, MIN_GAP_MS - elapsed))
-            }
-        }
-    }
-
-    /** true nếu hỏng (để giãn nhịp). Server trả trọn trang nên áp thẳng, không ghép. */
-    private suspend fun feedRefreshOnce(waitSec: Int): Boolean {
-        val c = client() ?: run { _feed.update { it.copy(loading = false, error = "Queue is not configured yet") }; return true }
-        val cur = _feed.value
-        val since = cur.rev.takeIf { it.isNotBlank() }
-        val result = withContext(Dispatchers.IO) { c.feed(sinceRev = since, waitSec = waitSec) }
-        persistAuthRecovery(c)
-        return when (val r = result) {
-            is QueueClient.FeedFetch.Fresh -> {
-                _feed.update { it.copy(messages = r.page.messages, rev = r.page.rev, loading = false, error = null, updatedAt = System.currentTimeMillis()) }
-                false
-            }
-            QueueClient.FeedFetch.Unchanged -> { _feed.update { it.copy(loading = false, error = null) }; false }
-            is QueueClient.FeedFetch.Failed -> {
-                _feed.update { it.copy(loading = false, error = r.message) }
-                if (r.needsAuth) _ui.update { it.copy(needsSetup = true) }
-                true
-            }
-        }
-    }
-
     /** "tải thêm": trang cũ hơn trước cursor, nối lên đầu. */
     fun loadOlderChat() {
         val cur = _chat.value
@@ -562,7 +526,6 @@ class QueueViewModel(
         syncPollingMode()
         syncChatPolling()
         syncBlockedPolling()
-        syncFeedPolling()
         // Cả poll /machine lẫn ý muốn làm mới quota đều dừng khi app xuống nền:
         // trang USAGE còn mở trong túi quần không được kéo theo claude 380MB/30s.
         machinePoller.setAppActive(active)
@@ -575,7 +538,6 @@ class QueueViewModel(
         syncPollingMode()
         syncChatPolling()
         syncBlockedPolling()
-        syncFeedPolling()
     }
 
     private fun syncPollingMode() {
@@ -834,8 +796,6 @@ class QueueViewModel(
         // Summary ambient phải reset cùng state: nếu không, pill/FAB vẫn hiển thị
         // số liệu của qsrv CŨ trong khoảng thời gian trước khi refreshNow() kịp về.
         _ambientSummary.value = QueueAmbientSummary.Empty
-        // Feed là dữ liệu của qsrv CŨ — giữ lại là hiện tin của server khác.
-        _feed.value = FeedUiState()
         _ui.update {
             it.copy(
                 state = QueueState.Empty,
@@ -877,8 +837,6 @@ class QueueViewModel(
     override fun onCleared() {
         pollJob?.cancel()
         pollJob = null
-        feedJob?.cancel()
-        feedJob = null
         pollingMode = QueuePollingMode.Stopped
         super.onCleared()
     }

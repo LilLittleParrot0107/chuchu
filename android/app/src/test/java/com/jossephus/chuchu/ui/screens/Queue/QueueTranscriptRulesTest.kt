@@ -8,9 +8,6 @@ class QueueTranscriptRulesTest {
     private fun msg(role: String, off: Long, text: String = "t", ts: String = "2026-09-17T00:00:0${off}.000Z") =
         ChatMessage(role = role, uuid = "u$off", ts = ts, text = text, offset = off)
 
-    private fun feed(pane: String, off: Long, role: String = "assistant", text: String = "t") =
-        FeedMessage(pane = pane, name = pane, agent = null, label = "working", tone = QueueTone.Dim,
-            role = role, ts = "2026-09-17T00:00:0$off.000Z", text = text, uuid = "u$off", offset = off)
 
     @Test
     fun mergesConsecutiveAssistantIntoOneBubble() {
@@ -50,14 +47,4 @@ class QueueTranscriptRulesTest {
         assertEquals(listOf("a"), out[0].paras)
     }
 
-    @Test
-    fun feedMergesOnlySamePane() {
-        val out = collapseFeedTurns(listOf(feed("pA", 1, "user"), feed("pA", 2), feed("pA", 3), feed("pB", 4), feed("pA", 5)))
-        assertEquals(4, out.size) // pB chen giữa cắt lượt: pA(5) đứng bubble riêng
-        val merged = out[1]
-        assertEquals("pA", merged.pane)
-        assertEquals(listOf("t"), merged.paras) // gộp 2 đoạn pA liên tiếp, giữ key tin đầu
-        assertEquals("pB", out[2].pane)
-        assertEquals(5L, out[3].offset)
-    }
 }
