@@ -6,7 +6,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Environment
 import android.widget.Toast
-import androidx.activity.compose.BackHandler
+import com.jossephus.chuchu.ui.components.KohiBackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -162,7 +162,7 @@ fun WebPortalScreen(
         path = path.substringBeforeLast('/', "")
     }
 
-    BackHandler {
+    KohiBackHandler {
         if (path.isEmpty()) onClose() else goUp()
     }
 

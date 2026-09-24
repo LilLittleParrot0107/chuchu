@@ -1,7 +1,7 @@
 package com.jossephus.chuchu.ui.screens.Dbtop
 
 import android.app.Application
-import androidx.activity.compose.BackHandler
+import com.jossephus.chuchu.ui.components.KohiBackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -82,7 +82,7 @@ fun DbtopScreen(
         }
     }
 
-    BackHandler {
+    KohiBackHandler {
         if (pagerState.currentPage != 0) {
             coroutineScope.launch {
                 pagerState.animateScrollToPage(0)

@@ -11,7 +11,7 @@ import android.view.WindowManager
 import android.view.inputmethod.InputMethodManager
 import android.webkit.MimeTypeMap
 import android.widget.Toast
-import androidx.activity.compose.BackHandler
+import com.jossephus.chuchu.ui.components.KohiBackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -2329,13 +2329,13 @@ fun TerminalScreen(
         }
     }
 
-    BackHandler(enabled = selectionState != null) {
+    KohiBackHandler(enabled = selectionState != null) {
         selection = null
         selectionState = null
     }
-    BackHandler(enabled = showGlobalTabManager) { showGlobalTabManager = false }
-    BackHandler(enabled = showTabSheet) { showTabSheet = false }
-    BackHandler(enabled = showComposeBox) { showComposeBox = false }
+    KohiBackHandler(enabled = showGlobalTabManager) { showGlobalTabManager = false }
+    KohiBackHandler(enabled = showTabSheet) { showTabSheet = false }
+    KohiBackHandler(enabled = showComposeBox) { showComposeBox = false }
 
     // Strip mode overlays — hoisted outside the when block so they are
     // available from disconnected, error, connecting, and connected states.

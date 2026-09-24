@@ -14,7 +14,7 @@ import kotlinx.coroutines.flow.drop
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.activity.compose.BackHandler
+import com.jossephus.chuchu.ui.components.KohiBackHandler
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -167,7 +167,7 @@ fun QueueScreen(
     // Back hệ thống bóc từng lớp (xem queueBackAction). Dialog task/CFG là cửa sổ riêng,
     // tự ăn back nên không có cấp ở đây; manifest đã tắt predictive back nên mỗi cử chỉ
     // là đúng một sự kiện — không cần cửa sổ "nuốt cú dội" như trước.
-    BackHandler {
+    KohiBackHandler {
         when (queueBackAction(chatOpen, tasksOpen, mode)) {
             QueueBackAction.CloseChat -> onCloseChat()
             QueueBackAction.CloseTasks -> tasksOpen = false

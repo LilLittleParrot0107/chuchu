@@ -1,6 +1,6 @@
 package com.jossephus.chuchu.ui.screens.Queue
 
-import androidx.activity.compose.BackHandler
+import com.jossephus.chuchu.ui.components.KohiBackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -92,7 +92,7 @@ internal fun MachineStrip(
     val open = expanded && !collapse && !preview
 
     // Back khi panel đang mở thì thu panel lại, không thoát màn hình
-    BackHandler(enabled = open) {
+    KohiBackHandler(enabled = open) {
         expanded = false
     }
 

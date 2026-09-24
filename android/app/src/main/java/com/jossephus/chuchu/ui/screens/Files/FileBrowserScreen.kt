@@ -1,6 +1,6 @@
 package com.jossephus.chuchu.ui.screens.Files
 
-import androidx.activity.compose.BackHandler
+import com.jossephus.chuchu.ui.components.KohiBackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -66,7 +66,7 @@ fun FileBrowserScreen(
     var showSortDropdown by remember { mutableStateOf(false) }
     var optionsEntryPath by remember { mutableStateOf<String?>(null) }
 
-    BackHandler {
+    KohiBackHandler {
         if (segment == FilesSegment.Machine) {
             onSelectSegment(FilesSegment.File)
         } else if (state.currentPath == "/" || state.currentPath == state.resolvedHomePath) {

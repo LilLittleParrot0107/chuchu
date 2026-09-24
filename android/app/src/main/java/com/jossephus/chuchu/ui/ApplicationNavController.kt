@@ -5,7 +5,7 @@ import android.app.Application
 import android.content.Context
 import android.content.ContextWrapper
 import android.net.Uri
-import androidx.activity.compose.BackHandler
+import com.jossephus.chuchu.ui.components.KohiBackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -277,7 +277,7 @@ fun ApplicationNavController() {
             },
         ) {
         composable("servers") {
-            BackHandler(onBack = onExitApp)
+            KohiBackHandler(onBack = onExitApp)
             val vm: ServerListViewModel = viewModel(factory = ServerListViewModel.factory(application))
             val settingsRepo = SettingsRepository.getInstance(application)
             val requireAuthOnConnect by settingsRepo.requireAuthOnConnect.collectAsStateWithLifecycle()

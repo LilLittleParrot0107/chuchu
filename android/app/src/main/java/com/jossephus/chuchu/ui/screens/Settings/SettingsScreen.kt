@@ -1,6 +1,6 @@
 package com.jossephus.chuchu.ui.screens.Settings
 
-import androidx.activity.compose.BackHandler
+import com.jossephus.chuchu.ui.components.KohiBackHandler
 import androidx.compose.foundation.background
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.clickable
@@ -89,7 +89,7 @@ fun SettingsScreen(
     var showChuchuCommandsEditor by remember { mutableStateOf(false) }
     var showBackupSheet by remember { mutableStateOf(false) }
 
-    BackHandler(enabled = true) {
+    KohiBackHandler(enabled = true) {
         when {
             showBackupSheet -> {
                 backupViewModel?.dismissSheet()

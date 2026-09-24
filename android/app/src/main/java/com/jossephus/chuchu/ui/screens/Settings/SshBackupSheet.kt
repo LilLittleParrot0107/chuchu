@@ -1,6 +1,6 @@
 package com.jossephus.chuchu.ui.screens.Settings
 
-import androidx.activity.compose.BackHandler
+import com.jossephus.chuchu.ui.components.KohiBackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -161,10 +161,10 @@ internal fun SshBackupSheet(
         }
     }
 
-    BackHandler(enabled = visible) {
+    KohiBackHandler(enabled = visible) {
         if (selectedKeyDetails != null) {
             selectedKeyDetails = null
-            return@BackHandler
+            return@KohiBackHandler
         }
         handleBack()
     }

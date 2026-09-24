@@ -1,7 +1,7 @@
 package com.jossephus.chuchu.ui.screens.Terminal
 
 import android.view.inputmethod.InputMethodManager
-import androidx.activity.compose.BackHandler
+import com.jossephus.chuchu.ui.components.KohiBackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -112,7 +112,7 @@ fun TerminalTabManager(
     val maxIndex = (entries.size - 1).coerceAtLeast(0)
     val focusRequester = remember { FocusRequester() }
 
-    BackHandler(enabled = visible) { onDismiss() }
+    KohiBackHandler(enabled = visible) { onDismiss() }
 
     LaunchedEffect(entries.size) {
         onFocusedTabIndexChange(focusedTabIndex.coerceIn(0, maxIndex))
