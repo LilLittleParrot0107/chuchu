@@ -342,11 +342,14 @@ internal fun PositionDetailPane(
 ) {
     val colors = ChuColors.current
     val type = ChuTypography.current
+    // Màu theo LOẠI (COLL/SUP/BOR/RWD) như cũ, nhưng token thứ 2, 3… cùng loại nhạt dần — trước đây
+    // PONS và USDG cùng vàng nên dính thành một khối, không soi được tỷ lệ (user chốt phương án A 24/9).
+    fun shade(base: Color, i: Int) = base.copy(alpha = base.alpha * TOKEN_SHADES[minOf(i, TOKEN_SHADES.lastIndex)])
     val tokens = buildList {
-        row.detail?.collateral?.forEach { add(Triple("COLL", colors.accentSecondary, it)) }
-        row.detail?.supply?.forEach { add(Triple("SUP", colors.accent, it)) }
-        row.detail?.borrow?.forEach { add(Triple("BOR", colors.error, it)) }
-        row.detail?.reward?.forEach { add(Triple("RWD", colors.success, it)) }
+        row.detail?.collateral?.forEachIndexed { i, t -> add(Triple("COLL", shade(colors.accentSecondary, i), t)) }
+        row.detail?.supply?.forEachIndexed { i, t -> add(Triple("SUP", shade(colors.accent, i), t)) }
+        row.detail?.borrow?.forEachIndexed { i, t -> add(Triple("BOR", shade(colors.error, i), t)) }
+        row.detail?.reward?.forEachIndexed { i, t -> add(Triple("RWD", shade(colors.success, i), t)) }
     }
 
     Column(
@@ -441,7 +444,7 @@ internal fun PositionDetailPane(
             val debtUsd = debts.sumOf { Math.abs(it.third.usd) }
             DetailSection("TOKENS")
             CompositionBar(assets.map { (_, color, t) -> color to Math.abs(t.usd) })
-            assets.forEach { (kind, color, t) -> TokenRow(kind, color, t) }
+            assets.forEach { (kind, color, t) -> TokenRow(kind, color, t, sharePct(t.usd, assetUsd)) }
             if (debts.isNotEmpty()) {
                 val pct = if (assetUsd > 0) (debtUsd / assetUsd * 100).roundToInt() else null
                 DetailSection(if (pct != null) "BORROW · $pct% OF SUPPLY" else "BORROW")
@@ -450,7 +453,7 @@ internal fun PositionDetailPane(
                     color = colors.error,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                debts.forEach { (kind, color, t) -> TokenRow(kind, color, t) }
+                debts.forEach { (kind, color, t) -> TokenRow(kind, color, t, sharePct(t.usd, assetUsd)) }
             }
         }
         if (row.detail?.option == null && tokens.isEmpty() && row.detail?.breakdown == null) {
@@ -537,7 +540,7 @@ internal fun SpecRow(
 private fun CompositionBar(segments: List<Pair<Color, Double>>) {
     val total = segments.sumOf { it.second }
     if (total <= 0.0) return
-    BlockSegmentBar(segments, modifier = Modifier.fillMaxWidth())
+    BlockSegmentBar(segments, modifier = Modifier.fillMaxWidth(), gap = 2.dp)
 }
 
 /**
@@ -609,7 +612,7 @@ private fun MoneynessGauge(option: OptionDetail) {
 
 /** Hang token 3 cot: cham mau + loai + symbol | so luong | USD compact. */
 @Composable
-private fun TokenRow(kind: String, dotColor: Color, token: TokenPosition) {
+private fun TokenRow(kind: String, dotColor: Color, token: TokenPosition, pct: Int? = null) {
     val colors = ChuColors.current
     val type = ChuTypography.current
     Row(
@@ -626,6 +629,20 @@ private fun TokenRow(kind: String, dotColor: Color, token: TokenPosition) {
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
+        if (pct != null) {
+            // Tỷ trọng trong tổng tài sản của vị thế — đọc tỷ lệ bằng số, khỏi ước bằng mắt.
+            ChuText(
+                "$pct%",
+                style = type.bodySmall.copy(
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                ),
+                color = colors.textPrimary,
+                maxLines = 1,
+                modifier = Modifier.width(38.dp),
+            )
+            Spacer(Modifier.width(8.dp))
+        }
         ChuText(
             formatAmountCompact(token.amt),
             style = type.bodySmall,
@@ -641,6 +658,12 @@ private fun TokenRow(kind: String, dotColor: Color, token: TokenPosition) {
         )
     }
 }
+
+/** Độ đậm của token thứ 1, 2, 3+ cùng loại trong thanh TOKENS. */
+private val TOKEN_SHADES = floatArrayOf(1f, 0.55f, 0.32f)
+
+private fun sharePct(usd: Double, total: Double): Int? =
+    if (total > 0) (Math.abs(usd) / total * 100).roundToInt() else null
 
 /** So luong token gon cho man hep: 1.11M / 483.8k / 50,000 / 0.2000. */
 private fun formatAmountCompact(amount: Double): String {

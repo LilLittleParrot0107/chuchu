@@ -164,16 +164,19 @@ fun BlockSegmentBar(
     segments: List<Pair<Color, Double>>,
     modifier: Modifier = Modifier,
     fontSize: Int = 9,
+    /** Khe giữa các đoạn: hai đoạn gần màu (cùng loại, khác độ đậm) vẫn tách rõ. */
+    gap: androidx.compose.ui.unit.Dp = 0.dp,
 ) {
     val bs = barStyle(fontSize)
     val visible = segments.filter { it.second > 0.0 }
     val total = visible.sumOf { it.second }
     if (total <= 0.0) return
     BoxWithConstraints(modifier.fillMaxWidth()) {
-        val cells = cellsFor(maxWidth, bs)
+        val cells = cellsFor(maxWidth - gap * (visible.size - 1).coerceAtLeast(0), bs)
         val counts = visible.map { (it.second / total * cells).toInt().coerceAtLeast(1) }
         Row(verticalAlignment = Alignment.CenterVertically) {
             visible.forEachIndexed { i, (color, _) ->
+                if (i > 0 && gap > 0.dp) androidx.compose.foundation.layout.Spacer(Modifier.width(gap))
                 ChuText("█".repeat(counts[i]), style = bs, color = color,
                     maxLines = 1, softWrap = false)
             }
