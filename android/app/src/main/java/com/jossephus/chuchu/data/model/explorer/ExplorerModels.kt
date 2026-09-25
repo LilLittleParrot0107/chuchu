@@ -30,6 +30,7 @@ data class ExplorerCoin(
 @Serializable
 data class ExplorerProject(
     val name: String,
+    val img: String? = null,
     val slug: String = "",
     val cat: String? = null,
     val chains: List<String> = emptyList(),
@@ -52,6 +53,7 @@ data class ExplorerProject(
 @Serializable
 data class ExplorerYield(
     val name: String,
+    val img: String? = null,
     val chain: String? = null,
     val project: String? = null,
     val kind: String? = null,
@@ -71,6 +73,7 @@ data class ExplorerYield(
 @Serializable
 data class ExplorerBuzz(
     val name: String,
+    val img: String? = null,
     val kind: String? = null,
     val score: Double? = null,
     val n: Int? = null,

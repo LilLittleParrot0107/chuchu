@@ -41,6 +41,7 @@ import com.jossephus.chuchu.ui.components.KohiBottomSheet
 import com.jossephus.chuchu.ui.components.KohiCompactAction
 import com.jossephus.chuchu.ui.components.KohiSectionBand
 import com.jossephus.chuchu.ui.components.KohiSelectableRow
+import com.jossephus.chuchu.ui.components.RemoteLogo
 import com.jossephus.chuchu.ui.theme.ChuColorPalette
 import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTypography
@@ -199,7 +200,7 @@ private fun ProjectRow(
         onClick = onClick,
         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
     ) {
-        ChuText("◆", style = type.labelSmall, color = colors.accent)
+        RemoteLogo(url = project.img, fallback = "◆", tint = colors.accent)
         Spacer(Modifier.width(6.dp))
         Column(modifier = Modifier.weight(1f)) {
             Row(
@@ -276,7 +277,7 @@ private fun YieldRow(
         onClick = onClick,
         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
     ) {
-        ChuText("⟡", style = type.labelSmall, color = colors.accentSecondary)
+        RemoteLogo(url = yield.img, fallback = "⟡", tint = colors.accentSecondary)
         Spacer(Modifier.width(6.dp))
         Column(modifier = Modifier.weight(1f)) {
             Row(
@@ -346,7 +347,7 @@ private fun BuzzRow(
         onClick = onClick,
         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
     ) {
-        ChuText("@", style = type.labelSmall, color = colors.accent)
+        RemoteLogo(url = buzz.img, fallback = "@", tint = colors.accent)
         Spacer(Modifier.width(6.dp))
         Column(modifier = Modifier.weight(1f)) {
             Row(
