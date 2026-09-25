@@ -1,6 +1,5 @@
-package com.jossephus.chuchu.ui.screens.Explorer
+package com.jossephus.chuchu.ui.screens.Dbtop
 
-import android.app.Application
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -9,15 +8,11 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -30,120 +25,73 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.lifecycle.compose.LifecycleResumeEffect
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.jossephus.chuchu.data.model.dbtop.DeFiFormatter
 import com.jossephus.chuchu.data.model.explorer.ExplorerBuzz
 import com.jossephus.chuchu.data.model.explorer.ExplorerCoin
 import com.jossephus.chuchu.data.model.explorer.ExplorerProject
 import com.jossephus.chuchu.data.model.explorer.ExplorerState
 import com.jossephus.chuchu.data.model.explorer.ExplorerYield
-import com.jossephus.chuchu.ui.components.ChuButton
-import com.jossephus.chuchu.ui.components.ChuButtonVariant
 import com.jossephus.chuchu.ui.components.ChuCard
 import com.jossephus.chuchu.ui.components.ChuText
-import com.jossephus.chuchu.ui.components.KohiBackHandler
 import com.jossephus.chuchu.ui.components.KohiBottomSheet
-import com.jossephus.chuchu.ui.components.KohiCommandBand
 import com.jossephus.chuchu.ui.components.KohiCompactAction
 import com.jossephus.chuchu.ui.components.KohiSectionBand
 import com.jossephus.chuchu.ui.components.KohiSelectableRow
+import com.jossephus.chuchu.ui.theme.ChuColorPalette
 import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTypography
+import java.util.Locale
 
 /**
- * Tab EXPLORER — 3 sub-tab PROJECTS · YIELD · X BUZZ (prototype 26/9). Dữ liệu
- * đã gộp sẵn ở out/explorer.json; màn chỉ vẽ, chạm hàng mở tấm chi tiết.
+ * Hai tab khám phá trong Dashboard (26/9): PROJECTS gộp cả YIELD (user chốt
+ * "gộp yield vào project"), BUZZ là X BUZZ. Dữ liệu từ out/explorer.json
+ * (mkt/explorer.py) — màn chỉ vẽ, chạm hàng mở tấm chi tiết.
  */
 @Composable
-fun ExplorerScreen(
-    onClose: () -> Unit,
-    modifier: Modifier = Modifier,
-    viewModel: ExplorerViewModel = viewModel(
-        factory = ExplorerViewModel.factory(LocalContext.current.applicationContext as Application),
-    ),
-) {
+internal fun ProjectsView(explorer: ExplorerState?) {
     val colors = ChuColors.current
-    val haptics = LocalHapticFeedback.current
-    val ui by viewModel.ui.collectAsStateWithLifecycle()
-
+    if (explorer == null) {
+        DashboardEmpty("NO EXPLORER DATA (SCAN PENDING)")
+        return
+    }
     var projectSheet by remember { mutableStateOf<ExplorerProject?>(null) }
     var yieldSheet by remember { mutableStateOf<ExplorerYield?>(null) }
-    var buzzSheet by remember { mutableStateOf<ExplorerBuzz?>(null) }
 
-    LifecycleResumeEffect(Unit) {
-        viewModel.startPolling()
-        onPauseOrDispose { viewModel.stopPolling() }
-    }
-    KohiBackHandler { onClose() }
-
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(colors.background),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .windowInsetsPadding(WindowInsets.safeDrawing),
-        ) {
-            KohiCommandBand(
-                title = "EXPLORER",
-                status = when {
-                    ui.error != null -> "OFFLINE"
-                    ui.isRefreshing && !ui.everLoaded -> "SCANNING"
-                    ui.everLoaded -> "SYNCED ${ui.state.ts}"
-                    else -> "SCANNING"
-                },
-                statusColor = if (ui.error != null) colors.error else colors.textMuted,
-                onBack = null,
-                containerColor = colors.background,
-                titleSize = 18.sp,
-            ) {
-                KohiCompactAction(
-                    label = if (ui.isRefreshing) "SCANNING" else "↻",
-                    onClick = {
-                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                        viewModel.refreshNow()
-                    },
-                    enabled = !ui.isRefreshing,
+    LazyColumn(modifier = Modifier.fillMaxSize()) {
+        item(key = "market") {
+            MarketStrip(explorer.market)
+        }
+        if (explorer.projects.isNotEmpty()) {
+            item(key = "projects_band") {
+                KohiSectionBand(
+                    label = "NEW PROJECTS · TVL RISING",
+                    meta = "UPDATED ${explorer.tsnp}",
+                    containerColor = colors.background,
                 )
             }
-
-            MarketStrip(ui.state.market)
-            ExplorerPaneBand(
-                selected = ui.selectedPane,
-                onSelect = { pane ->
-                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                    viewModel.selectPane(pane)
-                },
-            )
-
-            when (ui.selectedPane) {
-                ExplorerPane.PROJECTS -> ProjectList(
-                    projects = ui.state.projects,
-                    stamp = ui.state.tsnp,
-                    onOpen = { projectSheet = it },
+            items(explorer.projects, key = { it.slug.ifBlank { it.name } }) { p ->
+                ProjectRow(project = p, onClick = { projectSheet = p })
+            }
+        }
+        if (explorer.yields.isNotEmpty()) {
+            item(key = "yields_band") {
+                KohiSectionBand(
+                    label = "YIELD · WORTH A LOOK",
+                    meta = "UPDATED ${explorer.tssc}",
+                    containerColor = colors.background,
                 )
-                ExplorerPane.YIELDS -> YieldList(
-                    yields = ui.state.yields,
-                    stamp = ui.state.tssc,
-                    onOpen = { yieldSheet = it },
-                )
-                ExplorerPane.BUZZ -> BuzzList(
-                    buzz = ui.state.x,
-                    stamp = ui.state.tsdc,
-                    onOpen = { buzzSheet = it },
-                )
+            }
+            items(explorer.yields, key = { "${it.chain}|${it.project}|${it.name}" }) { y ->
+                YieldRow(yield = y, onClick = { yieldSheet = y })
+            }
+        }
+        if (explorer.projects.isEmpty() && explorer.yields.isEmpty()) {
+            item(key = "empty") {
+                EmptyPane("NO PROJECT / YIELD DATA · CHECK PIPELINE")
             }
         }
     }
@@ -154,6 +102,35 @@ fun ExplorerScreen(
     yieldSheet?.let { y ->
         YieldSheet(yield = y, onDismiss = { yieldSheet = null })
     }
+}
+
+@Composable
+internal fun BuzzView(explorer: ExplorerState?) {
+    val colors = ChuColors.current
+    if (explorer == null) {
+        DashboardEmpty("NO EXPLORER DATA (SCAN PENDING)")
+        return
+    }
+    var buzzSheet by remember { mutableStateOf<ExplorerBuzz?>(null) }
+
+    LazyColumn(modifier = Modifier.fillMaxSize()) {
+        item(key = "buzz_band") {
+            KohiSectionBand(
+                label = "X BUZZ · RISING ACCOUNTS",
+                meta = "UPDATED ${explorer.tsdc}",
+                containerColor = colors.background,
+            )
+        }
+        items(explorer.x, key = { it.name }) { b ->
+            BuzzRow(buzz = b, onClick = { buzzSheet = b })
+        }
+        if (explorer.x.isEmpty()) {
+            item(key = "empty") {
+                EmptyPane("NO X DATA · CHECK PIPELINE")
+            }
+        }
+    }
+
     buzzSheet?.let { b ->
         BuzzSheet(buzz = b, onDismiss = { buzzSheet = null })
     }
@@ -200,67 +177,6 @@ private fun MarketStrip(coins: List<ExplorerCoin>) {
                     )
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun ExplorerPaneBand(
-    selected: ExplorerPane,
-    onSelect: (ExplorerPane) -> Unit,
-) {
-    val colors = ChuColors.current
-    val type = ChuTypography.current
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(colors.background)
-            .padding(horizontal = 10.dp, vertical = 5.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        ExplorerPane.entries.forEach { pane ->
-            val active = selected == pane
-            ChuButton(
-                onClick = { onSelect(pane) },
-                variant = if (active) ChuButtonVariant.Filled else ChuButtonVariant.Ghost,
-                bracketed = true,
-                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 3.dp),
-                minHeight = 24.dp,
-                modifier = Modifier.weight(1f),
-            ) {
-                ChuText(
-                    pane.label,
-                    style = type.label.copy(fontWeight = FontWeight.Bold),
-                    color = if (active) colors.onAccent else colors.textSecondary,
-                    maxLines = 1,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun ProjectList(
-    projects: List<ExplorerProject>,
-    stamp: String,
-    onOpen: (ExplorerProject) -> Unit,
-) {
-    val colors = ChuColors.current
-    val type = ChuTypography.current
-    if (projects.isEmpty()) {
-        EmptyPane("NO PROJECT DATA · CHECK PIPELINE")
-        return
-    }
-    LazyColumn(modifier = Modifier.fillMaxSize()) {
-        item(key = "band") {
-            KohiSectionBand(
-                label = "NEW PROJECTS · TVL RISING",
-                meta = "UPDATED $stamp",
-                containerColor = colors.background,
-            )
-        }
-        items(projects, key = { it.slug.ifBlank { it.name } }) { p ->
-            ProjectRow(project = p, onClick = { onOpen(p) })
         }
     }
 }
@@ -347,44 +263,13 @@ private fun ProjectRow(
 }
 
 @Composable
-private fun YieldList(
-    yields: List<ExplorerYield>,
-    stamp: String,
-    onOpen: (ExplorerYield) -> Unit,
-) {
-    val colors = ChuColors.current
-    if (yields.isEmpty()) {
-        EmptyPane("NO YIELD DATA · CHECK PIPELINE")
-        return
-    }
-    LazyColumn(modifier = Modifier.fillMaxSize()) {
-        item(key = "band") {
-            KohiSectionBand(
-                label = "YIELD · WORTH A LOOK",
-                meta = "UPDATED $stamp",
-                containerColor = colors.background,
-            )
-        }
-        items(yields, key = { "${it.chain}|${it.project}|${it.name}" }) { y ->
-            YieldRow(yield = y, onClick = { onOpen(y) })
-        }
-    }
-}
-
-@Composable
 private fun YieldRow(
     yield: ExplorerYield,
     onClick: () -> Unit,
 ) {
     val colors = ChuColors.current
     val type = ChuTypography.current
-    val lane = when (yield.lane) {
-        "carry" -> "CARRY"
-        "stable" -> "STABLE"
-        "lp" -> "LP"
-        "new" -> "NEW"
-        else -> yield.lane?.uppercase() ?: ""
-    }
+    val lane = laneLabel(yield.lane)
     KohiSelectableRow(
         selected = false,
         tone = colors.accentSecondary,
@@ -408,7 +293,7 @@ private fun YieldRow(
                 )
                 Spacer(Modifier.width(6.dp))
                 ChuText(
-                    yield.net?.let { "${String.format(java.util.Locale.US, "%.1f", it)}%" } ?: "—",
+                    yield.net?.let { "${String.format(Locale.US, "%.1f", it)}%" } ?: "—",
                     style = type.label.copy(
                         fontFamily = FontFamily.Monospace,
                         fontFeatureSettings = "tnum",
@@ -434,7 +319,7 @@ private fun YieldRow(
                 )
                 Spacer(Modifier.width(6.dp))
                 ChuText(
-                    yield.risk?.let { String.format(java.util.Locale.US, "safety %.2f", it) } ?: "",
+                    yield.risk?.let { String.format(Locale.US, "safety %.2f", it) } ?: "",
                     style = type.labelSmall.copy(
                         fontFamily = FontFamily.Monospace,
                         fontFeatureSettings = "tnum",
@@ -448,38 +333,13 @@ private fun YieldRow(
 }
 
 @Composable
-private fun BuzzList(
-    buzz: List<ExplorerBuzz>,
-    stamp: String,
-    onOpen: (ExplorerBuzz) -> Unit,
-) {
-    val colors = ChuColors.current
-    if (buzz.isEmpty()) {
-        EmptyPane("NO X DATA · CHECK PIPELINE")
-        return
-    }
-    LazyColumn(modifier = Modifier.fillMaxSize()) {
-        item(key = "band") {
-            KohiSectionBand(
-                label = "X BUZZ · RISING ACCOUNTS",
-                meta = "UPDATED $stamp",
-                containerColor = colors.background,
-            )
-        }
-        items(buzz, key = { it.name }) { b ->
-            BuzzRow(buzz = b, onClick = { onOpen(b) })
-        }
-    }
-}
-
-@Composable
 private fun BuzzRow(
     buzz: ExplorerBuzz,
     onClick: () -> Unit,
 ) {
     val colors = ChuColors.current
     val type = ChuTypography.current
-    val likes = buzz.likes?.let { if (it >= 1000) String.format(java.util.Locale.US, "%.1fk", it / 1000.0) else "$it" }
+    val likes = buzz.likes?.let { if (it >= 1000) String.format(Locale.US, "%.1fk", it / 1000.0) else "$it" }
     KohiSelectableRow(
         selected = false,
         tone = colors.accent,
@@ -569,14 +429,14 @@ private fun ProjectSheet(
                 "AUDITS" to (project.audits?.toString() ?: "—"),
             )
         )
-        project.why?.takeIf { it.isNotBlank() }?.let {
+        project.why?.takeIf { it.isNotBlank() }?.let { why ->
             SheetSection("CALL")
             Row(verticalAlignment = Alignment.CenterVertically) {
                 project.action?.let {
                     ExTag(it, colors.accent)
                     Spacer(Modifier.width(4.dp))
                 }
-                ChuText(it, style = type.bodySmall, color = colors.textSecondary)
+                ChuText(why, style = type.bodySmall, color = colors.textSecondary)
             }
         }
         if (project.flags.isNotEmpty() || project.nPools != null) {
@@ -616,13 +476,6 @@ private fun YieldSheet(
 ) {
     val colors = ChuColors.current
     val type = ChuTypography.current
-    val lane = when (yield.lane) {
-        "carry" -> "CARRY"
-        "stable" -> "STABLE"
-        "lp" -> "LP"
-        "new" -> "NEW"
-        else -> yield.lane?.uppercase() ?: ""
-    }
     SheetFrame(
         title = yield.name,
         subtitle = listOfNotNull(yield.chain, yield.project).joinToString(" · "),
@@ -630,13 +483,13 @@ private fun YieldSheet(
     ) {
         SheetGrid(
             listOfNotNull(
-                "NET/YR" to (yield.net?.let { String.format(java.util.Locale.US, "%.1f%%", it) } ?: "—"),
-                "SAFETY" to (yield.risk?.let { String.format(java.util.Locale.US, "%.2f", it) } ?: "—"),
+                "NET/YR" to (yield.net?.let { String.format(Locale.US, "%.1f%%", it) } ?: "—"),
+                "SAFETY" to (yield.risk?.let { String.format(Locale.US, "%.2f", it) } ?: "—"),
                 "TVL" to DeFiFormatter.formatUsdCompact(yield.tvl),
                 yield.lltv?.let { "LLTV" to "${kotlin.math.round(it * 100).toInt()}%" },
-                yield.lev?.let { "LEVERAGE" to "${String.format(java.util.Locale.US, "%.1f", it)}×" },
-                yield.bnet?.let { "BORROW NET" to "${String.format(java.util.Locale.US, "%.1f", it)}%" },
-                yield.cy?.let { "COLL YIELD" to "${String.format(java.util.Locale.US, "%.1f", it)}%" },
+                yield.lev?.let { "LEVERAGE" to "${String.format(Locale.US, "%.1f", it)}×" },
+                yield.bnet?.let { "BORROW NET" to "${String.format(Locale.US, "%.1f", it)}%" },
+                yield.cy?.let { "COLL YIELD" to "${String.format(Locale.US, "%.1f", it)}%" },
             )
         )
         if (yield.why.isNotBlank()) {
@@ -646,7 +499,7 @@ private fun YieldSheet(
         if (yield.flags.isNotEmpty()) {
             SheetSection("FLAGS")
             ChuText(
-                (yield.flags + listOfNotNull(lane, yield.kind)).joinToString("  ·  "),
+                (yield.flags + listOfNotNull(laneLabel(yield.lane), yield.kind)).joinToString("  ·  "),
                 style = type.bodySmall,
                 color = colors.textSecondary,
             )
@@ -808,7 +661,15 @@ private fun EmptyPane(text: String) {
     }
 }
 
-private fun pctColor(value: Double?, colors: com.jossephus.chuchu.ui.theme.ChuColorPalette): Color = when {
+private fun laneLabel(lane: String?): String = when (lane) {
+    "carry" -> "CARRY"
+    "stable" -> "STABLE"
+    "lp" -> "LP"
+    "new" -> "NEW"
+    else -> lane?.uppercase() ?: ""
+}
+
+private fun pctColor(value: Double?, colors: ChuColorPalette): Color = when {
     value == null -> colors.textMuted
     value >= 0 -> colors.success
     else -> colors.error

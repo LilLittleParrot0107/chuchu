@@ -33,7 +33,6 @@ import com.jossephus.chuchu.ui.screens.AddServer.AddServerScreen
 import com.jossephus.chuchu.ui.components.KohiNavShell
 import com.jossephus.chuchu.ui.screens.AddServer.AddServerViewModel
 import com.jossephus.chuchu.ui.screens.Dbtop.DbtopScreen
-import com.jossephus.chuchu.ui.screens.Explorer.ExplorerScreen
 import com.jossephus.chuchu.ui.screens.Queue.QueueMode
 import com.jossephus.chuchu.ui.screens.Queue.QueueScreen
 import com.jossephus.chuchu.ui.screens.Queue.QueueViewModel
@@ -59,7 +58,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.ui.unit.dp
 
-private val MAIN_TAB_ROUTES = setOf("servers", "dashboard", "explorer", "queue")
+private val MAIN_TAB_ROUTES = setOf("servers", "dashboard", "queue")
 
 /**
  * Queue mo tu accessory bar trong terminal. Route rieng voi tab QUEUE de
@@ -332,11 +331,6 @@ fun ApplicationNavController() {
         }
         composable("dashboard") {
             DbtopScreen(
-                onClose = onExitApp,
-            )
-        }
-        composable("explorer") {
-            ExplorerScreen(
                 onClose = onExitApp,
             )
         }

@@ -150,8 +150,13 @@ private fun WatchlistTokenRow(
     }
 }
 
+/**
+ * Phân vùng NET RATE — từ 26/9 nằm trong tab SPEND (user chốt: "gộp chart vào
+ * spend"), không còn tab CHART riêng. Bảng KPI + curve NET WORTH đã lên bảng
+ * summary đầu màn nên ở đây chỉ còn chart.
+ */
 @Composable
-internal fun ChartsView(
+internal fun NetRateSection(
     currentPerDay: Double?,
     daily: List<DailyYield>,
     spending: SpendingState? = null,
@@ -162,8 +167,6 @@ internal fun ChartsView(
     val colors = ChuColors.current
     val type = ChuTypography.current
 
-    // KPI + curve NET WORTH da doi len bang summary dau man (user chot 26/9);
-    // chart chi con NET RATE nen chi can ratePoints.
     val cashflowPoints = remember(daily, spendByDay) {
         CashflowEngine.calculatePoints(daily, spendByDay)
     }
@@ -175,47 +178,43 @@ internal fun ChartsView(
     // %APR ung voi moi 1 USD/ngay — chinh he so bien truc USD thanh truc APR.
     val aprFactor = remember(cap) { if (cap > 0.0) 365.0 / cap * 100.0 else null }
 
-    LazyColumn(modifier = Modifier.fillMaxSize()) {
-        item(key = "net_rate") {
-            val netAprVal = kpis.netRunRateApr
-            val perDay = kpis.netRunRatePerDay
-            val meta = when {
-                currentPerDay == null && daily.isEmpty() -> "SCAN OFFLINE"
-                netAprVal != null -> "${if (netAprVal >= 0) "+" else ""}${String.format(Locale.US, "%.1f%% NET APR", netAprVal)}"
-                else -> "${if (perDay >= 0) "+" else "-"}${DeFiFormatter.formatUsd(abs(perDay))}/D NET"
-            }
-            KohiSectionBand(
-                label = "NET RATE · TRAILING",
-                meta = meta,
-                containerColor = colors.background,
-                accent = if (perDay >= 0) colors.success else colors.error,
-            )
-            ChuCard(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 10.dp, vertical = 4.dp),
-            ) {
-                Column(modifier = Modifier.fillMaxWidth().padding(10.dp)) {
-                    if (ratePoints.isEmpty()) {
-                        ChuText("NO DAILY YIELD DATA", style = type.bodySmall, color = colors.textMuted)
-                    } else {
-                        NetRateChart(
-                            points = ratePoints,
-                            grossColor = colors.accent,
-                            netColor = if (perDay >= 0) colors.success else colors.error,
-                            // KHÔNG dùng warning: cam cạnh vàng (yield) nhìn lẫn (user 5/9).
-                            // Cũng không dùng error: lúc chi vượt yield, đường NET đỏ sẽ
-                            // chìm vào cột đỏ — đúng lúc cần đọc nhất.
-                            spendColor = colors.accentSecondary,
-                            gridColor = colors.border.copy(alpha = 0.4f),
-                            textColor = colors.textSecondary,
-                            tooltipBg = colors.surfaceVariant,
-                            tooltipText = colors.textPrimary,
-                            aprFactor = aprFactor,
-                            height = 200.dp,
-                        )
-                    }
-                }
+    val netAprVal = kpis.netRunRateApr
+    val perDay = kpis.netRunRatePerDay
+    val meta = when {
+        currentPerDay == null && daily.isEmpty() -> "SCAN OFFLINE"
+        netAprVal != null -> "${if (netAprVal >= 0) "+" else ""}${String.format(Locale.US, "%.1f%% NET APR", netAprVal)}"
+        else -> "${if (perDay >= 0) "+" else "-"}${DeFiFormatter.formatUsd(abs(perDay))}/D NET"
+    }
+    KohiSectionBand(
+        label = "NET RATE · TRAILING",
+        meta = meta,
+        containerColor = colors.background,
+        accent = if (perDay >= 0) colors.success else colors.error,
+    )
+    ChuCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 10.dp, vertical = 4.dp),
+    ) {
+        Column(modifier = Modifier.fillMaxWidth().padding(10.dp)) {
+            if (ratePoints.isEmpty()) {
+                ChuText("NO DAILY YIELD DATA", style = type.bodySmall, color = colors.textMuted)
+            } else {
+                NetRateChart(
+                    points = ratePoints,
+                    grossColor = colors.accent,
+                    netColor = if (perDay >= 0) colors.success else colors.error,
+                    // KHÔNG dùng warning: cam cạnh vàng (yield) nhìn lẫn (user 5/9).
+                    // Cũng không dùng error: lúc chi vượt yield, đường NET đỏ sẽ
+                    // chìm vào cột đỏ — đúng lúc cần đọc nhất.
+                    spendColor = colors.accentSecondary,
+                    gridColor = colors.border.copy(alpha = 0.4f),
+                    textColor = colors.textSecondary,
+                    tooltipBg = colors.surfaceVariant,
+                    tooltipText = colors.textPrimary,
+                    aprFactor = aprFactor,
+                    height = 200.dp,
+                )
             }
         }
     }
@@ -235,6 +234,10 @@ internal fun SpendingView(
     spending: SpendingState?,
     flow: FlowState? = null,
     moneyDisplay: MoneyDisplay = MoneyDisplay.USD,
+    currentPerDay: Double? = null,
+    daily: List<DailyYield> = emptyList(),
+    cap: Double = 0.0,
+    kpis: CashflowKpiSummary,
 ) {
     val colors = ChuColors.current
     val type = ChuTypography.current
@@ -288,6 +291,17 @@ internal fun SpendingView(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = 8.dp),
     ) {
+        // Chart NET RATE lên đầu tab SPEND (user chốt 26/9: "gộp chart vào spend").
+        item(key = "net_rate") {
+            NetRateSection(
+                currentPerDay = currentPerDay,
+                daily = daily,
+                spending = spending,
+                spendByDay = spending.byDay,
+                cap = cap,
+                kpis = kpis,
+            )
+        }
         item(key = "summary") {
             ChuCard(
                 modifier = Modifier

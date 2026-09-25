@@ -9,6 +9,7 @@ import com.jossephus.chuchu.data.model.dbtop.DataFreshness
 import com.jossephus.chuchu.data.model.dbtop.DbtopState
 import com.jossephus.chuchu.data.model.dbtop.FlowState
 import com.jossephus.chuchu.data.model.dbtop.SpendingState
+import com.jossephus.chuchu.data.model.explorer.ExplorerState
 import com.jossephus.chuchu.data.network.DbtopClient
 import com.jossephus.chuchu.data.network.JsonFileClient
 import com.jossephus.chuchu.data.repository.DbtopCacheManager
@@ -27,12 +28,16 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 // `label` = ten day du (section band); `tab` = dang ngan cho nut chuyen view
-// — 4 tab chia deu man hep thi "Positions"/"Watchlist" dai hon nut, bi "…".
+// — 5 tab chia deu man hep thi "Positions"/"Watchlist" dai hon nut, bi "…".
+// 26/9 (user chot "gop chart vao spend, yield vao project, 5 subtab"): CHART
+// khong con tab rieng — chart NET RATE nam trong SPEND; PROJECTS gom ca YIELD;
+// X BUZZ la tab thu 5. Khong con tab EXPLORER rieng o thanh duoi.
 enum class DbtopView(val label: String, val tab: String) {
     POSITIONS("Positions", "POS"),
     WATCHLIST("Watchlist", "WATCH"),
-    CHARTS("Chart", "CHART"),
     SPENDING("Spending", "SPEND"),
+    PROJECTS("Projects", "PROJ"),
+    BUZZ("X Buzz", "BUZZ"),
 }
 
 fun normalizeBaseToken(sym: String): String {
@@ -183,6 +188,8 @@ data class DbtopUiState(
     val spending: SpendingState? = null,
     /** flow.json (22/9): dòng USDC/USDT vào/ra ví chính; null = chưa tải được. */
     val flow: FlowState? = null,
+    /** explorer.json (26/9): gói projects/yield/X buzz cho 2 tab PROJECTS + BUZZ. */
+    val explorer: ExplorerState? = null,
     val moneyDisplay: MoneyDisplay = MoneyDisplay.USD,
 ) {
     /**
@@ -227,6 +234,8 @@ class DbtopViewModel(
     private var spendingClientUrl: String? = null
     private var flowClient: JsonFileClient<FlowState>? = null
     private var flowClientUrl: String? = null
+    private var explorerClient: JsonFileClient<ExplorerState>? = null
+    private var explorerClientUrl: String? = null
     private val refreshMutex = Mutex()
 
     init {
@@ -323,6 +332,11 @@ class DbtopViewModel(
         if (flowResult is JsonFileClient.FetchResult.Fresh) {
             _ui.update { it.copy(flow = flowResult.state) }
         }
+        // explorer.json (26/9) cho tab PROJECTS + BUZZ; cùng nhịp poll, 304 giữ bản cũ.
+        val explorerResult = withContext(Dispatchers.IO) { getOrCreateExplorerClient().fetch() }
+        if (explorerResult is JsonFileClient.FetchResult.Fresh) {
+            _ui.update { it.copy(explorer = explorerResult.state) }
+        }
 
         when (val result = withContext(Dispatchers.IO) { httpClient.fetch(forceRefresh = !isBackgroundPoll) }) {
             is DbtopClient.FetchResult.Fresh -> {
@@ -391,6 +405,16 @@ class DbtopViewModel(
         return JsonFileClient(url, FlowState.serializer()).also {
             flowClient = it
             flowClientUrl = url
+        }
+    }
+
+    private fun getOrCreateExplorerClient(): JsonFileClient<ExplorerState> {
+        val url = settings.resolvedExplorerUrl
+        val existing = explorerClient
+        if (existing != null && url == explorerClientUrl) return existing
+        return JsonFileClient(url, ExplorerState.serializer()).also {
+            explorerClient = it
+            explorerClientUrl = url
         }
     }
 

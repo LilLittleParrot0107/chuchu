@@ -249,19 +249,17 @@ fun DbtopScreen(
                     DbtopView.WATCHLIST -> WatchlistView(
                         items = watchlistItems,
                     )
-                    DbtopView.CHARTS -> ChartsView(
-                        currentPerDay = currentPerDay,
-                        daily = ui.state.daily,
-                        spending = ui.spending,
-                        spendByDay = spendByDay,
-                        cap = capForKpi,
-                        kpis = kpiSummary,
-                    )
                     DbtopView.SPENDING -> SpendingView(
                         spending = ui.spending,
                         flow = ui.flow,
                         moneyDisplay = ui.moneyDisplay,
+                        currentPerDay = currentPerDay,
+                        daily = ui.state.daily,
+                        cap = capForKpi,
+                        kpis = kpiSummary,
                     )
+                    DbtopView.PROJECTS -> ProjectsView(explorer = ui.explorer)
+                    DbtopView.BUZZ -> BuzzView(explorer = ui.explorer)
                 }
             }
 
