@@ -555,8 +555,6 @@ private fun QueueDestination(
         onSendChat = sharedQueueVm::sendChat,
         onAnswerBlocked = sharedQueueVm::answerBlocked,
         onSubmitBlocked = sharedQueueVm::answerBlockedMulti,
-        // UI G1 (16/9): hàng HỘI THOẠI gửi tới chip đang chọn.
-        onSendToPane = { pane, text -> sharedQueueVm.sendToPane(pane, text) },
         // FILES + NEW SESSION (23/9, thay TIMELINE)
         portalUrl = portalUrl,
         initialMode = initialMode,

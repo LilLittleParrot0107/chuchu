@@ -1,7 +1,5 @@
 package com.jossephus.chuchu.ui.screens.Queue
 
-import com.jossephus.chuchu.ui.components.KohiBackHandler
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -10,14 +8,16 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import com.jossephus.chuchu.ui.components.BlockBar
 import androidx.compose.runtime.Composable
@@ -50,12 +50,53 @@ import java.util.Locale
 private const val STALE_AFTER_S = 15L
 
 /**
- * Dải trạng thái máy ghim ngay trên ô nhập của Queue.
+ * Số liếc của dải máy: bốn con + tuổi + vạch màu trái. Tách riêng vì hai nơi
+ * dùng: dải preview trên compose box terminal và đầu trang MACHINE (25/9).
+ */
+private data class Glance(
+    val ram: Double,
+    val cpu: Double?,
+    val h5: Int?,
+    val wk: Int?,
+    val ageS: Long,
+    val stale: Boolean,
+    val alpha: Float,
+    val edge: Color,
+)
+
+@Composable
+private fun glanceOf(readout: MachineReadout): Glance {
+    val colors = ChuColors.current
+    val s = readout.snapshot
+    // Tuổi tính theo đồng hồ chạy 5s, không theo lúc compose: đường lỗi copy(error=…)
+    // trùng giá trị thì StateFlow không emit, dải hiện "3s" alpha đầy mãi dù qsrv đã
+    // chết (audit 4/9 #13).
+    val now by rememberTicking()
+    val ageS = (now / 1000 - s.ts).coerceAtLeast(0)
+    val stale = ageS > STALE_AFTER_S
+    val alpha = if (stale) 0.5f else 1f
+    val ram = s.memPct
+    val cpu = readout.cpuPct
+    // CÒN LẠI, không phải đã dùng — xem ghi chú ở UsagePage.
+    val h5 = s.claude?.session?.usedPct?.let { 100 - it }
+    val wk = s.claude?.week?.usedPct?.let { 100 - it }
+    // Vạch bên trái đổi màu theo cái căng nhất — thấy được bằng đuôi mắt mà
+    // không phải đọc số.
+    val edge = when {
+        ram >= 85 || (cpu ?: 0.0) >= 85 -> colors.error
+        ram >= 70 || (cpu ?: 0.0) >= 70 || (h5 ?: 100) <= 30 -> colors.warning
+        else -> Color.Transparent
+    }
+    return Glance(ram, cpu, h5, wk, ageS, stale, alpha, edge)
+}
+
+/**
+ * Trạng thái máy cho Queue.
  *
- * Bốn số chọn theo NGỮ CẢNH: đứng ở Queue là lúc quyết giao việc, nên RAM/CPU
- * ("máy còn tải nổi không") và quota Claude 5H/tuần ("còn lượt không") mới là
- * thứ đáng nhìn — dung lượng đĩa không ảnh hưởng gì tới quyết định đó, nên nó
- * lui vào phần mở rộng.
+ * (25/9, user: "mang bảng usage/machine ra riêng"): bảng USAGE + MACHINE rời
+ * khỏi đáy màn Queue sang tab MACHINE của pager — [asPage] = true. Dải preview
+ * trên compose box terminal giữ nguyên. Dải ghim mở rộng (▾/▴ + panel đóng/mở
+ * theo bàn phím) đi theo chỗ cũ — không còn nơi nào treo nó lên ô gõ nữa.
  */
 @Composable
 internal fun MachineStrip(
@@ -64,107 +105,172 @@ internal fun MachineStrip(
     onUsageVisible: (Boolean) -> Unit = {},
     onRefreshUsage: () -> Unit = {},
     onSwitchAgyAccount: (String) -> Unit = {},
-    collapse: Boolean = false,
     /**
-     * Chỉ xem nhanh: không caret, không bấm, không bao giờ bung panel (dải
-     * trên compose box của terminal, user chốt 4/9). Chưa có số thì vẫn vẽ
-     * hàng gạch "—" để compose box không nhảy xuống 30dp lúc số về.
+     * Chỉ xem nhanh: không caret, không bấm (dải trên compose box của terminal,
+     * user chốt 4/9). Chưa có số thì vẫn vẽ hàng gạch "—" để compose box không
+     * nhảy xuống 30dp lúc số về.
      */
     preview: Boolean = false,
+    /**
+     * Tab MACHINE của Queue (25/9): bảng USAGE + MACHINE luôn mở, xếp dọc,
+     * cuộn được — không còn đóng/mở theo bàn phím, tab là bề mặt XEM.
+     */
+    asPage: Boolean = false,
+) {
+    val readout = state.readout
+    if (readout == null) {
+        when {
+            asPage -> MachinePagePlaceholder(modifier)
+            preview -> PreviewPlaceholder(modifier)
+        }
+        return
+    }
+    val glance = glanceOf(readout)
+    if (asPage) {
+        MachineTabPage(
+            readout = readout,
+            glance = glance,
+            onUsageVisible = onUsageVisible,
+            onRefreshUsage = onRefreshUsage,
+            onSwitchAgyAccount = onSwitchAgyAccount,
+            modifier = modifier,
+        )
+        return
+    }
+    GlanceRow(glance = glance, expandable = false, open = false, onToggle = {}, modifier = modifier)
+}
+
+/**
+ * Bốn số liếc + tuổi số + vạch màu trái. [expandable] = false thì bỏ caret ▾/▴
+ * và không bắt chạm (dải preview terminal, đầu trang MACHINE).
+ */
+@Composable
+private fun GlanceRow(
+    glance: Glance,
+    expandable: Boolean,
+    open: Boolean,
+    onToggle: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val colors = ChuColors.current
     val type = ChuTypography.current
-    val readout = state.readout
-    if (readout == null) {
-        if (preview) PreviewPlaceholder(modifier)
-        return
-    }
-    val s = readout.snapshot
-    var expanded by remember { mutableStateOf(false) }
-    // Sang chế độ preview (chat đang mở) thì thu panel — làm trong effect, không ghi state lúc compose.
-    LaunchedEffect(preview) { if (preview) expanded = false }
-    // Panel mở CHỈ KHI người dùng muốn VÀ bàn phím đang đóng. Bản trước chỉ thu
-    // lại đúng lúc [collapse] đổi giá trị, nên mở panel trong khi đang gõ thì nó
-    // cứ thế bung ra: cột dọc không cuộn được, panel + ô nhập cao hơn phần màn
-    // còn lại, và ô nhập bị đẩy tụt xuống dưới bàn phím (user báo 4/9).
-    // Giữ nguyên ý định của người dùng trong [expanded] để đóng bàn phím là
-    // panel trở lại như cũ, không phải mở tay lần nữa.
-    val open = expanded && !collapse && !preview
-
-    // Back khi panel đang mở thì thu panel lại, không thoát màn hình
-    KohiBackHandler(enabled = open) {
-        expanded = false
-    }
-
-    // Tuổi tính theo đồng hồ chạy 5s, không theo lúc compose: đường lỗi copy(error=…)
-    // trùng giá trị thì StateFlow không emit, dải hiện "3s" alpha đầy mãi dù qsrv đã
-    // chết (audit 4/9 #13).
-    val now by rememberTicking()
-    val ageS = (now / 1000 - s.ts).coerceAtLeast(0)
-    val stale = ageS > STALE_AFTER_S
-    val alpha = if (stale) 0.5f else 1f
-
-    val ram = s.memPct
-    val cpu = readout.cpuPct
-    // CÒN LẠI, không phải đã dùng — xem ghi chú ở UsagePage.
-    val h5 = s.claude?.session?.usedPct?.let { 100 - it }
-    val wk = s.claude?.week?.usedPct?.let { 100 - it }
-
-    // Vạch bên trái đổi màu theo cái căng nhất — thấy được bằng đuôi mắt mà
-    // không phải đọc số.
-    val edge = when {
-        ram >= 85 || (cpu ?: 0.0) >= 85 -> colors.error
-        ram >= 70 || (cpu ?: 0.0) >= 70 || (h5 ?: 100) <= 30 -> colors.warning
-        else -> Color.Transparent
-    }
-
-    Column(modifier = modifier.fillMaxWidth()) {
-        AnimatedVisibility(visible = open) {
-            MachineStripPages(readout, alpha, onRefreshUsage, onSwitchAgyAccount) { page -> onUsageVisible(page == 0) }
-        }
-        // Thu gọn thì thôi luôn: không ai nhìn USAGE nữa.
-        if (!open) LaunchedEffect(Unit) { onUsageVisible(false) }
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                // Sleek terminal (user 17/9): bỏ dải nền tối cộm — số vẫn nguyên,
-                // phân tách bằng hairline trên như mock; vạch màu trái giữ vì nó
-                // là tín hiệu liếc mắt, không phải trang trí.
-                .background(colors.background)
-                .drawBehind {
-                    val stroke = 1.dp.toPx()
-                    drawLine(
-                        colors.border.copy(alpha = CHU_HAIRLINE_ALPHA),
-                        Offset(0f, stroke / 2),
-                        Offset(size.width, stroke / 2),
-                        stroke,
-                    )
-                }
-                .then(if (preview) Modifier else Modifier.clickable { expanded = !expanded })
-                .defaultMinSize(minHeight = 30.dp)
-                .padding(horizontal = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(Modifier.width(2.dp).height(30.dp).background(edge))
-            Cell("RAM", pct(ram), tone(ram, 70.0, 85.0, colors), alpha)
-            Cell("CPU", cpu?.let { pct(it) } ?: "—", tone(cpu ?: 0.0, 70.0, 85.0, colors), alpha)
-            Cell("5H", h5?.let { "$it%" } ?: "—", leftTone((h5 ?: 100).toDouble(), colors), alpha)
-            Cell("WEEK", wk?.let { "$it%" } ?: "—", leftTone((wk ?: 100).toDouble(), colors), alpha)
-            Box(Modifier.weight(1f))
-            ChuText(
-                if (stale) age(ageS) else "${ageS}s",
-                style = type.labelSmall,
-                color = (if (stale) colors.warning else colors.textMuted).copy(alpha = alpha),
-            )
-            if (!preview) {
-                ChuText(
-                    if (open) " ▴" else " ▾",
-                    style = type.labelSmall,
-                    color = colors.accent,
-                    modifier = Modifier.padding(horizontal = 6.dp),
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            // Sleek terminal (user 17/9): bỏ dải nền tối cộm — số vẫn nguyên,
+            // phân tách bằng hairline trên như mock; vạch màu trái giữ vì nó
+            // là tín hiệu liếc mắt, không phải trang trí.
+            .background(colors.background)
+            .drawBehind {
+                val stroke = 1.dp.toPx()
+                drawLine(
+                    colors.border.copy(alpha = CHU_HAIRLINE_ALPHA),
+                    Offset(0f, stroke / 2),
+                    Offset(size.width, stroke / 2),
+                    stroke,
                 )
             }
+            .then(if (expandable) Modifier.clickable(onClick = onToggle) else Modifier)
+            .defaultMinSize(minHeight = 30.dp)
+            .padding(horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.width(2.dp).height(30.dp).background(glance.edge))
+        Cell("RAM", pct(glance.ram), tone(glance.ram, 70.0, 85.0, colors), glance.alpha)
+        Cell("CPU", glance.cpu?.let { pct(it) } ?: "—", tone(glance.cpu ?: 0.0, 70.0, 85.0, colors), glance.alpha)
+        Cell("5H", glance.h5?.let { "$it%" } ?: "—", leftTone((glance.h5 ?: 100).toDouble(), colors), glance.alpha)
+        Cell("WEEK", glance.wk?.let { "$it%" } ?: "—", leftTone((glance.wk ?: 100).toDouble(), colors), glance.alpha)
+        Box(Modifier.weight(1f))
+        ChuText(
+            if (glance.stale) age(glance.ageS) else "${glance.ageS}s",
+            style = type.labelSmall,
+            color = (if (glance.stale) colors.warning else colors.textMuted).copy(alpha = glance.alpha),
+        )
+        if (expandable) {
+            ChuText(
+                if (open) " ▴" else " ▾",
+                style = type.labelSmall,
+                color = colors.accent,
+                modifier = Modifier.padding(horizontal = 6.dp),
+            )
         }
+    }
+}
+
+/**
+ * Tab MACHINE (25/9): bảng USAGE + MACHINE xếp dọc, luôn mở hết. Hai trang
+ * ngày trước (USAGE | MACHINE, vuốt qua lại) đổi thành hai mục — tab là chỗ
+ * xem trọn bảng, không việc gì phải che một nửa sau một cú vuốt, và không
+ * nhận vuốt ngang của pager ngoài.
+ */
+@Composable
+private fun MachineTabPage(
+    readout: MachineReadout,
+    glance: Glance,
+    onUsageVisible: (Boolean) -> Unit,
+    onRefreshUsage: () -> Unit,
+    onSwitchAgyAccount: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = ChuColors.current
+    // Số quota chỉ làm mới khi CÓ AI NHÌN: tốn 5s + 380MB cho một tiến trình
+    // claude. Tab mở là USAGE hiện nguyên — muốn số; rời tab thì thôi (user chốt
+    // 3/9 cho trang USAGE, giữ nguyên ý đó khi dải lên tab).
+    DisposableEffect(Unit) {
+        onUsageVisible(true)
+        onDispose { onUsageVisible(false) }
+    }
+    Column(modifier.fillMaxSize().background(colors.surfaceVariant)) {
+        GlanceRow(glance = glance, expandable = false, open = false, onToggle = {})
+        Column(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 10.dp, vertical = PAGE_PAD_DP.dp),
+        ) {
+            SectionLabel("USAGE")
+            UsagePage(readout, glance.alpha)
+            Spacer(Modifier.height(8.dp))
+            SectionLabel("MACHINE")
+            MachinePage(readout, glance.alpha)
+        }
+        // Làm mới / chuyển acc như chân trang panel cũ, ép sát mép phải.
+        Box(Modifier.fillMaxWidth().height(FOOTER_HEIGHT_DP.dp)) {
+            UsageFooterActions(
+                readout = readout,
+                onRefreshUsage = onRefreshUsage,
+                onSwitchAgyAccount = onSwitchAgyAccount,
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 8.dp),
+            )
+        }
+    }
+}
+
+/** Nhãn mục của tab MACHINE — chữ mờ + hairline kéo hết bề ngang. */
+@Composable
+private fun SectionLabel(text: String) {
+    val colors = ChuColors.current
+    val type = ChuTypography.current
+    Row(
+        Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        ChuText(text, style = type.labelSmall.copy(letterSpacing = 0.6.sp), color = colors.textMuted)
+        Box(Modifier.weight(1f).height(1.dp).background(colors.border.copy(alpha = CHU_HAIRLINE_ALPHA)))
+    }
+}
+
+/** Chưa có số lúc vừa mở tab MACHINE: ghi rõ đang chờ thay vì màn trống. */
+@Composable
+private fun MachinePagePlaceholder(modifier: Modifier) {
+    val colors = ChuColors.current
+    val type = ChuTypography.current
+    Box(modifier.fillMaxSize().background(colors.surfaceVariant), contentAlignment = Alignment.Center) {
+        ChuText("LOADING MACHINE…", style = type.label, color = colors.textMuted)
     }
 }
 
@@ -206,72 +312,6 @@ private fun Cell(label: String, value: String, valueColor: Color, alpha: Float) 
             style = type.labelSmall.copy(fontFamily = FontFamily.Monospace, fontFeatureSettings = "tnum"),
             color = valueColor.copy(alpha = alpha),
         )
-    }
-}
-
-@Composable
-private fun MachineStripPages(
-    readout: MachineReadout,
-    alpha: Float,
-    onRefreshUsage: () -> Unit,
-    onSwitchAgyAccount: (String) -> Unit,
-    onPageChange: (Int) -> Unit,
-) {
-    val colors = ChuColors.current
-    val type = ChuTypography.current
-    val pager = rememberPagerState(pageCount = { 2 })
-    // Hai trang PHẢI cao bằng nhau, nếu không lướt qua lại là giật (user chốt
-    // 3/9). Lấy theo trang nhiều dòng hơn; trang ngắn hơn thì chừa chỗ trống.
-    val rows = maxOf(machineRowCount(readout), usageRowCount(readout))
-    // + đệm dọc của Column bên trong: hàng đã khoá cứng thì khung phải chứa đủ,
-    // không thì trang đủ 8 dòng bị xén 6dp mỗi đầu.
-    val pageHeight = (rows * ROW_HEIGHT_DP + 2 * PAGE_PAD_DP).dp
-
-    // Trang USAGE chỉ được LÀM MỚI khi người dùng trượt tới (user chốt 3/9):
-    // đọc cache quota thì gần như miễn phí, nhưng làm mới nó tốn 5s + 380MB
-    // cho một tiến trình claude — không đáng chạy khi không ai nhìn.
-    LaunchedEffect(pager.currentPage) { onPageChange(pager.currentPage) }
-
-    Column(Modifier.fillMaxWidth().background(colors.surfaceVariant)) {
-        HorizontalPager(
-            state = pager,
-            modifier = Modifier.fillMaxWidth().height(pageHeight),
-            verticalAlignment = Alignment.Top,
-        ) { page ->
-            // Trang ít dòng hơn: khối CĂN GIỮA, giãn dòng y hệt trang kia (13/9, user
-            // giao em chọn). Dàn đều (4/9) làm USAGE 5 dòng cách 35dp còn MACHINE 22dp,
-            // hai trang nhìn như hai bảng khác nhau; dồn lên trên thì để hố trống dưới
-            // đáy, chính cái user chê 4/9. Mỗi hàng khoá cứng ROW_HEIGHT_DP nên chiều
-            // cao khung = số dòng × 22 chính xác, không còn ước lượng dư vài dp.
-            Column(
-                Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = PAGE_PAD_DP.dp),
-                verticalArrangement = Arrangement.Center,
-            ) {
-                if (page == 0) UsagePage(readout, alpha) else MachinePage(readout, alpha)
-            }
-        }
-        // Chấm trang nằm ĐÚNG giữa, nút làm mới và chuyển acc ép sát mép phải.
-        // Chân trang KHOÁ CỨNG chiều cao FOOTER_HEIGHT_DP (20dp).
-        Box(Modifier.fillMaxWidth().height(FOOTER_HEIGHT_DP.dp)) {
-            Row(Modifier.align(Alignment.Center)) {
-                repeat(2) { i ->
-                    Box(
-                        Modifier.padding(horizontal = 3.dp).size(5.dp)
-                            .background(if (pager.currentPage == i) colors.accent else colors.border),
-                    )
-                }
-            }
-            if (pager.currentPage == 0) {
-                UsageFooterActions(
-                    readout = readout,
-                    onRefreshUsage = onRefreshUsage,
-                    onSwitchAgyAccount = onSwitchAgyAccount,
-                    modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .padding(end = 8.dp),
-                )
-            }
-        }
     }
 }
 
@@ -477,9 +517,9 @@ private fun UsagePage(readout: MachineReadout, alpha: Float) {
 /** Chiều cao MỖI hàng, khoá cứng qua [rowMod] — không còn "xấp xỉ" (13/9). */
 // Chữ 13sp / bar 11sp / hàng 22dp — to hơn bản đầu ~20% (user chốt 3/9).
 private const val ROW_HEIGHT_DP = 22
-/** Đệm dọc của mỗi trang (trên + dưới), cộng vào chiều cao pager. */
+/** Đệm dọc quanh bảng trong tab MACHINE. */
 private const val PAGE_PAD_DP = 6
-/** Chân trang (chấm + nút làm mới): labelSmall lineHeight 16 + đệm dọc 2×2, cả hai trang như nhau. */
+/** Chân trang (nút làm mới / chuyển acc): labelSmall lineHeight 16 + đệm dọc 2×2. */
 private const val FOOTER_HEIGHT_DP = 20
 /** Cột số + đuôi của BlockBar, tính cả hai khoảng đệm: 6 + 46 + 4 + 92. */
 private const val PANEL_RIGHT_W = 6 + 46 + 4 + 92
@@ -489,20 +529,6 @@ private const val PANEL_TEXT_SP = 13
 private const val PANEL_BAR_SP = 11
 /** Đủ cho nhãn dài nhất "cl·week" (7 ô monospace ở 13sp). */
 private const val PANEL_LABEL_W = 56
-
-private fun machineRowCount(r: MachineReadout): Int =
-    4 + (if (r.snapshot.gpu != null) 2 else 0) + r.topRam.take(2).size
-
-private fun usageRowCount(r: MachineReadout): Int {
-    val c = r.snapshot.claude
-    val q = r.snapshot.agy
-    var n = (if (c?.session != null) 1 else 0) + (if (c?.week != null) 1 else 0)
-    q?.accounts?.filter { it.configured }?.forEach {
-        if (it.pct5h != null || it.pctWeek != null) n++
-    }
-    if (r.snapshot.bai != null) n++
-    return maxOf(n, 1)
-}
 
 /**
  * Còn bao lâu nữa thì cửa sổ quota reset — thứ người dùng thật sự hỏi khi nhìn

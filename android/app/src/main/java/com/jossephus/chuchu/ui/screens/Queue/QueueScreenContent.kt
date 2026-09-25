@@ -87,9 +87,8 @@ private fun runtimeDot(agent: QueueAgent): String = when (agent.state) {
     else -> agent.glyph.ifBlank { "?" }   // unsure '?' giữ nguyên
 }
 
-/** Hai chế độ của màn Queue (user chốt G1, 16/9): đọc dòng thời gian ↔ quản hội thoại. */
-/** Hai trang của Queue (23/9, user bỏ TIMELINE): HỘI THOẠI (trái, mặc định) ↔ FILES = file portal dufs (phải). */
-enum class QueueMode { Threads, Files }
+/** Ba trang của Queue (25/9, user: "mang bảng usage/machine ra riêng"): HỘI THOẠI (trái, mặc định) ↔ FILES = file portal dufs ↔ MACHINE = bảng usage/machine. */
+enum class QueueMode { Threads, Files, Machine }
 
 @Composable
 internal fun QueueModeSwitch(
@@ -129,6 +128,12 @@ internal fun QueueModeSwitch(
             meta = null,
             active = mode == QueueMode.Files,
             onClick = { onSelect(QueueMode.Files) },
+        )
+        QueueModeTab(
+            label = "MACHINE",
+            meta = null,
+            active = mode == QueueMode.Machine,
+            onClick = { onSelect(QueueMode.Machine) },
         )
     }
 }

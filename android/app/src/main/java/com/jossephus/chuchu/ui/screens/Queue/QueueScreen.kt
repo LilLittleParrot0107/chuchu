@@ -52,7 +52,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -108,8 +107,6 @@ fun QueueScreen(
     /** Thẻ NEEDS YOU trong chat (21/9): chạm lựa chọn n → qsrv gõ số đó vào pane. */
     onAnswerBlocked: (Int) -> Unit = {},
     onSubmitBlocked: (List<Int>) -> Unit = {},
-    // Hàng HỘI THOẠI gửi tới chip đang chọn mà không cần mở chat (UI G1, 16/9).
-    onSendToPane: (String, String) -> Unit = { _, _ -> },
     // FILES (23/9, thay TIMELINE): file portal dufs nhúng vào trang phải của pager.
     portalUrl: String = "",
     /** Trang mở khi vào màn (deep link "file portal" từ terminal → Files); null = giữ trang đang có. */
@@ -135,7 +132,7 @@ fun QueueScreen(
     var launchOpen by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(launchOpen) { if (launchOpen) onLaunchOpen() }
 
-    // HorizontalPager: vuốt trái/phải giữa HỘI THOẠI (0) ↔ FILES (1), đồng bộ Dashboard.
+    // HorizontalPager: vuốt trái/phải giữa HỘI THOẠI (0) ↔ FILES (1) ↔ MACHINE (2).
     // Trang pager LÀ chế độ màn — nguồn sự thật duy nhất (21/9). Trước đây còn biến `mode`
     // chạy song song rồi hai effect đồng bộ qua lại + `modeBeforeChat` để nhớ đường về;
     // thực ra rememberPagerState tự lưu qua xoay màn, còn mở chat / bảng VIỆC chỉ tháo
@@ -449,10 +446,12 @@ fun QueueScreen(
                                 onDragStart = { acc = 0f },
                                 onDragEnd = {
                                     val next = when {
-                                        acc <= -threshold -> QueueMode.Files
-                                        acc >= threshold -> QueueMode.Threads
+                                        acc <= -threshold -> QueueMode.entries.getOrElse(mode.ordinal + 1) { mode }
+                                        acc >= threshold -> QueueMode.entries.getOrElse(mode.ordinal - 1) { mode }
                                         else -> null
                                     }
+                                    // goTo luôn đóng bảng VIỆC — quét ở mép trang
+                                    // (đã là trang ngoài) thì vẫn đóng bảng được.
                                     if (next != null) goTo(next)
                                 },
                             ) { _, dx -> acc += dx }
@@ -512,13 +511,13 @@ fun QueueScreen(
                 // kéo nên vẫn mượt, mà không phải recompose cả hai danh sách mỗi lần state đổi.
                 HorizontalPager(
                     state = pagerState,
-                    key = { page -> if (page == 0) "threads" else "files" },
+                    key = { page -> QueueMode.entries[page].name.lowercase() },
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
                 ) { page ->
-                    when (page) {
-                        0 -> QueueConversationList(
+                    when (QueueMode.entries[page]) {
+                        QueueMode.Threads -> QueueConversationList(
                             agents = agents,
                             selectedPane = pane,
                             chatSeen = chatSeen,
@@ -532,100 +531,84 @@ fun QueueScreen(
                         )
                         // FILES = file portal dufs (trước là tab riêng ở thanh dưới; user gộp 23/9).
                         // BackHandler của nó đứng trong trang này nên back = lên thư mục cha, ở gốc thì về HỘI THOẠI.
-                        1 -> com.jossephus.chuchu.ui.screens.Web.WebPortalScreen(
+                        QueueMode.Files -> com.jossephus.chuchu.ui.screens.Web.WebPortalScreen(
                             url = portalUrl,
                             onClose = { goTo(QueueMode.Threads) },
                             embedded = true,
+                        )
+                        // MACHINE (25/9): bảng usage/machine — tab xem, không ô gõ.
+                        QueueMode.Machine -> MachineStrip(
+                            machine,
+                            onUsageVisible = onUsageVisible,
+                            onRefreshUsage = onRefreshUsage,
+                            onSwitchAgyAccount = onSwitchAgyAccount,
+                            asPage = true,
+                            modifier = Modifier.fillMaxSize(),
                         )
                     }
                 }
             }
             }
 
-            // Dải máy + ô nhập có mặt ở MỌI chế độ (user chốt 17/9: gõ request ngay
-            // trên dòng thời gian). Rail chip đã xoá — đích của ô gõ đổi bằng cách
-            // chạm một tin (timeline) hoặc một dòng HỘI THOẠI.
-            // Dải máy ghim ngay trên ô nhập: lúc gõ việc mới là lúc cần biết
-            // máy còn tải nổi không và còn quota không (user chốt P2, 3/9).
-            // Thu panel theo BÀN PHÍM, KHÔNG theo focus. Android không bỏ focus
-            // khi đóng bàn phím: ô nhập giữ focus mãi sau lần chạm đầu, nên gắn
-            // vào focus là panel bị khoá vĩnh viễn (bản .28, user báo 4/9).
-            // Thứ thật sự tranh chỗ với panel là bàn phím, và chỉ nó.
-            val imeUp = WindowInsets.ime.getBottom(LocalDensity.current) > 0
-            MachineStrip(
-                machine,
-                onUsageVisible = onUsageVisible,
-                onRefreshUsage = onRefreshUsage,
-                onSwitchAgyAccount = onSwitchAgyAccount,
-                collapse = imeUp,
-                preview = chatOpen,
-            )
-
             // (17/9 revert) Hàng chip ⏳ sát ô gõ đã GỠ — "như cũ" ở đây là KHÔNG có
             // hàng chip nào (pending chỉ còn trong bảng VIỆC); hai dòng cuối transcript
             // cũng không quay lại. Việc của pane này vẫn mở được qua [TASKS].
 
-            // Một ô nhập cho cả ba ngữ cảnh: VIỆC (xếp hàng đợi) · HỘI THOẠI và
-            // DÒNG THỜI GIAN (gửi tới phiên đang nhắm, agent bận thì xếp — sendToPane)
-            // · CHAT (gõ thẳng vào pane).
-            QueueComposer(
-                modifier = Modifier.onSizeChanged { composerHeightPx = it.height },
-                value = prompt,
-                onValueChange = { prompt = it },
-                agent = if (chatOpen) chatAgent else selectedAgent,
-                sending = when {
-                    chatOpen -> chat.sending
-                    tasksOpen -> isAdding
-                    else -> pane != ALL_AGENTS && QueueOperationKey.chatSend(pane) in ui.busyOps
-                },
-                onFocusChanged = { composerFocused = it },
-                focusRequester = composerFocus,
-                placeholder = when {
-                    chatOpen -> "Reply to ${chat.name}…"
-                    selectedAgent != null -> "Queue / reply to ${selectedAgent.name}…"
-                    tasksOpen -> "Pick a session first…"
-                    else -> "Tap a message to reply…"
-                },
-                sendLabel = if (chatOpen) "[SEND ↵]" else "[SEND]",
-                // ⊕ giữa ô gõ và [GỬI], cùng màu với nút gửi lúc rảnh (user 16/9: "màu đồng nhất").
-                trailing = if (!chatOpen) null else {
-                    {
-                        ChuButton(
-                            onClick = { if (!chat.uploading) attachLauncher.launch("*/*") },
-                            enabled = !chat.uploading,
-                            variant = ChuButtonVariant.Ghost,
-                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 5.dp),
-                            minHeight = 34.dp,
-                        ) {
-                            ChuText(
-                                if (chat.uploading) "…" else "⊕",
-                                style = ChuTypography.current.label.copy(fontWeight = FontWeight.Bold),
-                                color = if (chat.uploading) colors.disabledText else colors.textMuted,
-                            )
+            // Ô gõ CHỈ hiện khi cần gõ (user 25/9: "ở conversation thì không hiện
+            // thanh chat"): mở HỘI THOẠI (reply trong thread) hoặc bảng VIỆC (xếp
+            // task). Ba tab CONVERSATIONS / FILES / MACHINE là bề mặt xem — không ô
+            // gõ, và bảng usage/machine đã có tab MACHINE riêng nên dải máy ghim
+            // trên ô nhập cũng không còn.
+            if (chatOpen || tasksOpen) {
+                QueueComposer(
+                    modifier = Modifier.onSizeChanged { composerHeightPx = it.height },
+                    value = prompt,
+                    onValueChange = { prompt = it },
+                    agent = if (chatOpen) chatAgent else selectedAgent,
+                    sending = if (chatOpen) chat.sending else isAdding,
+                    onFocusChanged = { composerFocused = it },
+                    focusRequester = composerFocus,
+                    placeholder = when {
+                        chatOpen -> "Reply to ${chat.name}…"
+                        selectedAgent != null -> "Queue / reply to ${selectedAgent.name}…"
+                        else -> "Pick a session first…"
+                    },
+                    sendLabel = if (chatOpen) "[SEND ↵]" else "[SEND]",
+                    // ⊕ giữa ô gõ và [GỬI], cùng màu với nút gửi lúc rảnh (user 16/9: "màu đồng nhất").
+                    trailing = if (!chatOpen) null else {
+                        {
+                            ChuButton(
+                                onClick = { if (!chat.uploading) attachLauncher.launch("*/*") },
+                                enabled = !chat.uploading,
+                                variant = ChuButtonVariant.Ghost,
+                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 5.dp),
+                                minHeight = 34.dp,
+                            ) {
+                                ChuText(
+                                    if (chat.uploading) "…" else "⊕",
+                                    style = ChuTypography.current.label.copy(fontWeight = FontWeight.Bold),
+                                    color = if (chat.uploading) colors.disabledText else colors.textMuted,
+                                )
+                            }
                         }
-                    }
-                },
-                onSend = {
-                    val text = prompt.trim()
-                    if (text.isEmpty()) return@QueueComposer
-                    when {
-                        chatOpen -> {
-                            onSendChat(text)
-                            prompt = ""
+                    },
+                    onSend = {
+                        val text = prompt.trim()
+                        if (text.isEmpty()) return@QueueComposer
+                        when {
+                            chatOpen -> {
+                                onSendChat(text)
+                                prompt = ""
+                            }
+                            // Bảng VIỆC: xếp task như cũ, nhắm agent đang chọn.
+                            tasksOpen -> selectedAgent?.let {
+                                onAdd(text, it.pane, null)
+                                prompt = ""
+                            }
                         }
-                        // Bảng VIỆC: xếp task như cũ, nhắm agent đang chọn.
-                        tasksOpen -> selectedAgent?.let {
-                            onAdd(text, it.pane, null)
-                            prompt = ""
-                        }
-                        // HỘI THOẠI: gửi tới chip đang chọn (agent bận → hàng đợi).
-                        pane != ALL_AGENTS -> {
-                            onSendToPane(pane, text)
-                            prompt = ""
-                        }
-                    }
-                },
-            )
+                    },
+                )
+            }
         }
 
         inspectedTask?.let { task ->
@@ -711,7 +694,7 @@ internal enum class QueueBackAction { CloseChat, CloseTasks, GoToThreads, Leave 
 
 /**
  * Luật back của màn Queue, tách khỏi Compose để test được. Bóc lớp từ trên xuống:
- * chat toàn màn → bảng VIỆC → trang FILES lùi về HỘI THOẠI → ở gốc mới
+ * chat toàn màn → bảng VIỆC → trang FILES/MACHINE lùi về HỘI THOẠI → ở gốc mới
  * nhường cho nav (thu app / popBackStack, tuỳ nơi gọi). Dialog là cửa sổ riêng,
  * tự xử lý back nên không nằm trong luật này.
  */

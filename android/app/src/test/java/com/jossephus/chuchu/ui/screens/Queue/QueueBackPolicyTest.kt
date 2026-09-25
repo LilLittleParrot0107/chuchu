@@ -3,7 +3,7 @@ package com.jossephus.chuchu.ui.screens.Queue
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-/** Luật back của màn Queue (23/9: hai trang HỘI THOẠI ↔ FILES, không còn TIMELINE). */
+/** Luật back của màn Queue (25/9: ba trang HỘI THOẠI ↔ FILES ↔ MACHINE). */
 class QueueBackPolicyTest {
     @Test
     fun `chat toan man dong truoc moi thu`() {
@@ -19,6 +19,11 @@ class QueueBackPolicyTest {
     @Test
     fun `trang FILES lui ve HOI THOAI`() {
         assertEquals(QueueBackAction.GoToThreads, queueBackAction(chatOpen = false, tasksOpen = false, mode = QueueMode.Files))
+    }
+
+    @Test
+    fun `trang MACHINE cung lui ve HOI THOAI`() {
+        assertEquals(QueueBackAction.GoToThreads, queueBackAction(chatOpen = false, tasksOpen = false, mode = QueueMode.Machine))
     }
 
     @Test
