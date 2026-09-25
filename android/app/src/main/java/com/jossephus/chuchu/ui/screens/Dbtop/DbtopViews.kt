@@ -37,7 +37,6 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import com.jossephus.chuchu.ui.components.KohiCompactAction
 import androidx.compose.ui.unit.dp
-import com.jossephus.chuchu.data.model.dbtop.CurvePoint
 import com.jossephus.chuchu.data.model.dbtop.DailyYield
 import com.jossephus.chuchu.data.model.dbtop.DeFiFormatter
 import com.jossephus.chuchu.data.model.dbtop.DayTx
@@ -52,7 +51,6 @@ import com.jossephus.chuchu.ui.components.KohiSectionBand
 import com.jossephus.chuchu.ui.components.noRippleClickable
 import com.jossephus.chuchu.ui.components.chart.CashflowEngine
 import com.jossephus.chuchu.ui.components.chart.CashflowKpiSummary
-import com.jossephus.chuchu.ui.components.chart.NetWorthCurveChart
 import com.jossephus.chuchu.ui.components.chart.NetRateChart
 import com.jossephus.chuchu.ui.theme.CHU_HAIRLINE_ALPHA
 import com.jossephus.chuchu.ui.theme.ChuColors
@@ -153,109 +151,19 @@ private fun WatchlistTokenRow(
 }
 
 @Composable
-internal fun PerformanceKpiCard(
-    kpis: CashflowKpiSummary,
-    modifier: Modifier = Modifier,
-) {
-    val colors = ChuColors.current
-    ChuCard(modifier = modifier) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(10.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            // Row 1: NET RUN-RATE APR & GROSS APR
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                val netAprText = kpis.netRunRateApr?.let {
-                    val sign = if (it >= 0) "+" else ""
-                    // Nhãn ô đã ghi "APR" rồi, lặp lại trong giá trị là thừa (user 3/9).
-                    String.format(Locale.US, "%s%.1f%%", sign, it)
-                } ?: "--"
-                val netColor = when {
-                    kpis.netRunRateApr == null -> colors.textMuted
-                    kpis.netRunRateApr >= 0 -> colors.success
-                    else -> colors.error
-                }
-                MetricCell(
-                    label = "NET RUN-RATE APR",
-                    value = netAprText,
-                    color = netColor,
-                    modifier = Modifier.weight(1f),
-                )
-                val grossAprText = kpis.grossApr?.let {
-                    String.format(Locale.US, "%.1f%%", it)
-                } ?: "--"
-                MetricCell(
-                    label = "GROSS APR",
-                    value = grossAprText,
-                    color = colors.accent,
-                    alignEnd = true,
-                    modifier = Modifier.weight(1f),
-                )
-            }
-
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(1.dp)
-                    .background(colors.border.copy(alpha = CHU_HAIRLINE_ALPHA)),
-            )
-
-            // Row 2: DAILY NET CASHFLOW & BURN RATIO (RUNWAY)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                val netPerDayText = "${if (kpis.netRunRatePerDay >= 0) "+" else "-"}${DeFiFormatter.formatUsd(abs(kpis.netRunRatePerDay))}/D"
-                val netPerDayColor = if (kpis.netRunRatePerDay >= 0) colors.success else colors.error
-                MetricCell(
-                    label = "DAILY NET CASHFLOW",
-                    value = netPerDayText,
-                    color = netPerDayColor,
-                    modifier = Modifier.weight(1f),
-                )
-                // Đuôi "(∞)/(DEFICIT)" bỏ từ 30/8, đuôi "OF YIELD" bỏ 3/9: nhãn
-                // BURN RATIO đã nói nó là tỉ lệ trên yield, viết lại là thừa.
-                val burnRatioText = kpis.burnRatioPct?.let {
-                    String.format(Locale.US, "%.0f%%", it)
-                } ?: "--"
-                val burnColor = when {
-                    kpis.burnRatioPct == null -> colors.textMuted
-                    kpis.burnRatioPct <= 50.0 -> colors.success
-                    kpis.burnRatioPct <= 100.0 -> colors.warning
-                    else -> colors.error
-                }
-                MetricCell(
-                    label = "BURN RATIO",
-                    value = burnRatioText,
-                    color = burnColor,
-                    alignEnd = true,
-                    modifier = Modifier.weight(1f),
-                )
-            }
-        }
-    }
-}
-
-@Composable
 internal fun ChartsView(
-    netWorth: Double,
     currentPerDay: Double?,
-    curve: List<CurvePoint>,
     daily: List<DailyYield>,
     spending: SpendingState? = null,
     spendByDay: Map<String, Double> = spending?.byDay ?: emptyMap(),
     cap: Double = 0.0,
-    apr: Double? = null,
+    kpis: CashflowKpiSummary,
 ) {
     val colors = ChuColors.current
     val type = ChuTypography.current
 
-    // Mot lan tinh dong tien theo ngay, dung chung cho ca the KPI lan chart NET RATE.
+    // KPI + curve NET WORTH da doi len bang summary dau man (user chot 26/9);
+    // chart chi con NET RATE nen chi can ratePoints.
     val cashflowPoints = remember(daily, spendByDay) {
         CashflowEngine.calculatePoints(daily, spendByDay)
     }
@@ -264,56 +172,13 @@ internal fun ChartsView(
     val ratePoints = remember(cashflowPoints, fallbackSpendPerDay) {
         CashflowEngine.calculateRatePoints(cashflowPoints, fallbackSpendPerDay = fallbackSpendPerDay)
     }
-    // Card KPI lay dung muc chi cua diem cuoi chart -> card va duong ve cung mot so.
-    val kpiSummary = remember(cap, currentPerDay, apr, ratePoints, cashflowPoints) {
-        CashflowEngine.computeKpis(cap, currentPerDay, apr, ratePoints.lastOrNull()?.trailSpend, cashflowPoints)
-    }
     // %APR ung voi moi 1 USD/ngay — chinh he so bien truc USD thanh truc APR.
     val aprFactor = remember(cap) { if (cap > 0.0) 365.0 / cap * 100.0 else null }
 
     LazyColumn(modifier = Modifier.fillMaxSize()) {
-        item(key = "performance_kpis") {
-            KohiSectionBand(
-                label = "RUN-RATE & APR",
-                meta = if (kpiSummary.netRunRatePerDay >= 0) "NET SURPLUS" else "NET DEFICIT",
-                containerColor = colors.background,
-                accent = if (kpiSummary.netRunRatePerDay >= 0) colors.success else colors.error,
-            )
-            PerformanceKpiCard(
-                kpis = kpiSummary,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 10.dp, vertical = 4.dp),
-            )
-        }
-        item(key = "net_worth_curve") {
-            KohiSectionBand("NET WORTH CURVE", DeFiFormatter.formatUsd(netWorth), containerColor = colors.background)
-            ChuCard(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 10.dp, vertical = 4.dp),
-            ) {
-                Box(modifier = Modifier.fillMaxWidth().padding(10.dp)) {
-                    if (curve.isEmpty()) {
-                        ChuText("NO CURVE DATA", style = type.labelSmall, color = colors.textMuted)
-                    } else {
-                        NetWorthCurveChart(
-                            points = curve,
-                            lineColor = colors.accent,
-                            tooltipBg = colors.surfaceVariant,
-                            tooltipText = colors.textPrimary,
-                            gridColor = colors.border.copy(alpha = 0.4f),
-                            textColor = colors.textSecondary,
-                            markerColor = colors.textPrimary,
-                            height = 180.dp,
-                        )
-                    }
-                }
-            }
-        }
         item(key = "net_rate") {
-            val netAprVal = kpiSummary.netRunRateApr
-            val perDay = kpiSummary.netRunRatePerDay
+            val netAprVal = kpis.netRunRateApr
+            val perDay = kpis.netRunRatePerDay
             val meta = when {
                 currentPerDay == null && daily.isEmpty() -> "SCAN OFFLINE"
                 netAprVal != null -> "${if (netAprVal >= 0) "+" else ""}${String.format(Locale.US, "%.1f%% NET APR", netAprVal)}"

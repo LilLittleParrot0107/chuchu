@@ -140,7 +140,11 @@ data class DappDetail(
     val breakdown: JsonElement? = null,
 ) {
     fun asLendingBreakdown(): LendingBreakdown? = runCatching {
-        breakdown?.let { DbtopJson.decodeFromJsonElement(LendingBreakdown.serializer(), it) }
+        val el = breakdown ?: return null
+        // 25/9: vị thế đòn bẩy (Morpho) xuất breakdown cùng khuôn nằm trong khoá `lending`
+        // để không phá các chỗ đọc kiểu defillama; Neverland vẫn là breakdown phẳng như cũ.
+        val src = (el as? JsonObject)?.get("lending") ?: el
+        DbtopJson.decodeFromJsonElement(LendingBreakdown.serializer(), src)
     }.getOrNull()
 
 }
@@ -205,6 +209,8 @@ data class LendingBreakdown(
     val keep: Double = 1.0,
     val why: String = "",
     val apr: Double = 0.0,
+    // Tên hiển thị của dòng thưởng: Neverland = DUST (mặc định), vị thế đòn bẩy = RWD (25/9).
+    val reward_sym: String = "DUST",
 )
 
 // ----------------------------------------------------------------------------

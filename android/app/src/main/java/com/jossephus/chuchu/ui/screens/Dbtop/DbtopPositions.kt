@@ -1,6 +1,7 @@
 package com.jossephus.chuchu.ui.screens.Dbtop
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -43,6 +45,7 @@ import kotlin.math.roundToInt
 import com.jossephus.chuchu.ui.components.ChuText
 import com.jossephus.chuchu.ui.components.KohiCompactAction
 import com.jossephus.chuchu.ui.components.KohiSelectableRow
+import com.jossephus.chuchu.ui.theme.CHU_HAIRLINE_ALPHA
 import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTypography
 import java.util.Locale
@@ -53,6 +56,9 @@ internal fun PositionsView(
     selectedKey: String?,
     showYield: Boolean,
     nowSec: Long,
+    wallet: Double,
+    moneyDisplay: MoneyDisplay,
+    vndRate: Double,
     onSelect: (DappRow) -> Unit,
 ) {
     if (rows.isEmpty()) {
@@ -60,6 +66,11 @@ internal fun PositionsView(
         return
     }
     LazyColumn(modifier = Modifier.fillMaxSize()) {
+        // WALLET · IDLE len dau danh sach vi tri (user chot 26/9): tien chua
+        // trien khai la mot "vi tri" that, nhung khong chon/xem detail duoc.
+        item(key = "wallet") {
+            WalletIdleRow(wallet = wallet, moneyDisplay = moneyDisplay, vndRate = vndRate)
+        }
         items(rows, key = DappRow::positionKey) { row ->
             DappPositionRow(
                 row = row,
@@ -70,6 +81,63 @@ internal fun PositionsView(
             )
         }
     }
+}
+
+@Composable
+private fun WalletIdleRow(
+    wallet: Double,
+    moneyDisplay: MoneyDisplay,
+    vndRate: Double,
+) {
+    val colors = ChuColors.current
+    val type = ChuTypography.current
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, colors.border.copy(alpha = CHU_HAIRLINE_ALPHA)),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            ChuText("◇", style = type.labelSmall, color = colors.success)
+            Spacer(Modifier.width(6.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                ChuText(
+                    "WALLET",
+                    style = type.label.copy(fontWeight = FontWeight.Bold),
+                    color = colors.textPrimary,
+                    maxLines = 1,
+                )
+                ChuText(
+                    "IDLE · NOT DEPLOYED",
+                    style = type.labelSmall,
+                    color = colors.textMuted,
+                    maxLines = 1,
+                )
+            }
+            Spacer(Modifier.width(6.dp))
+            ChuText(
+                formatMoney(wallet, moneyDisplay, vndRate),
+                style = type.label.copy(
+                    fontFamily = FontFamily.Monospace,
+                    fontFeatureSettings = "tnum",
+                    fontWeight = FontWeight.Bold,
+                ),
+                color = colors.success,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(1.dp)
+            .background(colors.border.copy(alpha = CHU_HAIRLINE_ALPHA)),
+    )
 }
 
 @Composable
@@ -417,7 +485,10 @@ internal fun PositionDetailPane(
             // dong duy nhat trong pane tung wrap roi bi cat lem (28/8).
             if (bd.stake != 0.0) SpecRow("STAKE", DeFiFormatter.formatPercent(bd.stake, false))
             if (bd.dust != 0.0) {
-                SpecRow("DUST", "${DeFiFormatter.formatPercent(bd.dust, false)} · KEEP ${(bd.keep * 100).toInt()}%")
+                // KEEP chỉ có nghĩa khi bị cắt (Neverland 50%); thưởng đo thẳng (Morpho/Merkl,
+                // keep = 1) thì ẩn — user chốt 25/9.
+                val keepTxt = if (bd.keep < 0.999) " · KEEP ${(bd.keep * 100).toInt()}%" else ""
+                SpecRow(bd.reward_sym, "${DeFiFormatter.formatPercent(bd.dust, false)}$keepTxt")
             }
             if (bd.borrow_base != 0.0) {
                 SpecRow("BORROW", "-${DeFiFormatter.formatPercent(Math.abs(bd.borrow_base), false)}", colors.error)

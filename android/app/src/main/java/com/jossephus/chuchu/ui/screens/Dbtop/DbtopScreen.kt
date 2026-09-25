@@ -37,6 +37,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.jossephus.chuchu.data.model.dbtop.DataFreshness
 import com.jossephus.chuchu.ui.components.ChuText
+import com.jossephus.chuchu.ui.components.chart.CashflowEngine
 import com.jossephus.chuchu.ui.components.KohiNoticeBand
 import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTypography
@@ -59,9 +60,22 @@ fun DbtopScreen(
     val currentPerDay = ui.currentPerDay(nowSec)
     val selectedRow = ui.state.rows.firstOrNull { it.positionKey() == ui.selectedPositionKey }
     val watchlistItems = remember(ui.state, ui.spending) { ui.state.buildWatchlist(ui.spending?.px24 ?: emptyMap()) }
-    // Tong debt chi phu thuoc snapshot — dung cong lai moi lan man recompose
-    // (doi tab, chon row, xoay che do tien deu recompose ca screen).
-    val totalDebt = remember(ui.state) { ui.state.rows.sumOf { it.debt ?: 0.0 } }
+    // Bang summary va chart NET RATE dung CHUNG mot bo so KPI (user chot 26/9):
+    // tinh mot lan o day roi truyen xuong, thay vi moi noi tu tinh lai.
+    val spendByDay = ui.spending?.byDay ?: emptyMap()
+    val capForKpi = ui.state.cap.takeIf { it > 0 }
+        ?: ui.state.rows.sumOf { it.cap }.takeIf { it > 0 }
+        ?: ui.state.netWorth
+    val cashflowPoints = remember(ui.state.daily, spendByDay) {
+        CashflowEngine.calculatePoints(ui.state.daily, spendByDay)
+    }
+    val fallbackSpendPerDay = ui.spending?.monthUsd?.takeIf { it > 0.0 }?.div(30.416) ?: 0.0
+    val ratePoints = remember(cashflowPoints, fallbackSpendPerDay) {
+        CashflowEngine.calculateRatePoints(cashflowPoints, fallbackSpendPerDay = fallbackSpendPerDay)
+    }
+    val kpiSummary = remember(capForKpi, currentPerDay, ui.state.apr, ratePoints, cashflowPoints) {
+        CashflowEngine.computeKpis(capForKpi, currentPerDay, ui.state.apr, ratePoints.lastOrNull()?.trailSpend, cashflowPoints)
+    }
     val views = remember { DbtopView.entries }
     val pagerState = rememberPagerState(initialPage = ui.selectedView.ordinal) { views.size }
     val coroutineScope = rememberCoroutineScope()
@@ -139,9 +153,8 @@ fun DbtopScreen(
 
             DashboardSummary(
                 netWorth = ui.state.netWorth,
-                wallet = ui.state.wallet,
                 perDay = currentPerDay,
-                debt = totalDebt,
+                kpis = kpiSummary,
                 moneyDisplay = ui.moneyDisplay,
                 vndRate = ui.spending?.usdVnd ?: 0.0,
                 onCycleMoney = {
@@ -186,6 +199,9 @@ fun DbtopScreen(
                                         selectedKey = ui.selectedPositionKey,
                                         showYield = currentPerDay != null,
                                         nowSec = nowSec,
+                                        wallet = ui.state.wallet,
+                                        moneyDisplay = ui.moneyDisplay,
+                                        vndRate = ui.spending?.usdVnd ?: 0.0,
                                         onSelect = { row ->
                                             haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                             viewModel.togglePosition(row.positionKey())
@@ -220,6 +236,9 @@ fun DbtopScreen(
                                 selectedKey = ui.selectedPositionKey,
                                 showYield = currentPerDay != null,
                                 nowSec = nowSec,
+                                wallet = ui.state.wallet,
+                                moneyDisplay = ui.moneyDisplay,
+                                vndRate = ui.spending?.usdVnd ?: 0.0,
                                 onSelect = { row ->
                                     haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                     viewModel.togglePosition(row.positionKey())
@@ -231,14 +250,12 @@ fun DbtopScreen(
                         items = watchlistItems,
                     )
                     DbtopView.CHARTS -> ChartsView(
-                        netWorth = ui.state.netWorth,
                         currentPerDay = currentPerDay,
-                        curve = ui.state.curve,
                         daily = ui.state.daily,
                         spending = ui.spending,
-                        spendByDay = ui.spending?.byDay ?: emptyMap(),
-                        cap = ui.state.cap.takeIf { it > 0 } ?: ui.state.rows.sumOf { it.cap }.takeIf { it > 0 } ?: ui.state.netWorth,
-                        apr = ui.state.apr,
+                        spendByDay = spendByDay,
+                        cap = capForKpi,
+                        kpis = kpiSummary,
                     )
                     DbtopView.SPENDING -> SpendingView(
                         spending = ui.spending,

@@ -29,9 +29,12 @@ import com.jossephus.chuchu.ui.components.ChuText
 import com.jossephus.chuchu.ui.components.KohiCommandBand
 import com.jossephus.chuchu.ui.components.KohiCompactAction
 import com.jossephus.chuchu.ui.components.KohiSectionBand
+import com.jossephus.chuchu.ui.components.chart.CashflowKpiSummary
 import com.jossephus.chuchu.ui.theme.CHU_HAIRLINE_ALPHA
 import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTypography
+import java.util.Locale
+import kotlin.math.abs
 
 @Composable
 internal fun DbtopTopBar(
@@ -76,9 +79,8 @@ internal fun DbtopTopBar(
 @Composable
 internal fun DashboardSummary(
     netWorth: Double,
-    wallet: Double,
     perDay: Double?,
-    debt: Double,
+    kpis: CashflowKpiSummary,
     moneyDisplay: MoneyDisplay,
     vndRate: Double,
     onCycleMoney: () -> Unit,
@@ -91,7 +93,7 @@ internal fun DashboardSummary(
         meta = if (perDay != null) "LIVE YIELD" else "YIELD HIDDEN",
         containerColor = colors.background,
         // Yield an di vi snapshot cu/chet la trang thai "canh giac", khong
-        // phai loi — error do de danh cho DEBT va SCAN OFFLINE.
+        // phai loi — error do de danh cho SCAN OFFLINE.
         accent = if (perDay != null) colors.success else colors.warning,
     )
     ChuCard(
@@ -131,37 +133,56 @@ internal fun DashboardSummary(
                     .height(1.dp)
                     .background(colors.border.copy(alpha = CHU_HAIRLINE_ALPHA)),
             )
+            // RUN-RATE & APR gop vao bang chinh (user chot 26/9, mock
+            // kohi-dashboard-merge-prototype.html): 4 so nay la phan "tai sao"
+            // cua NET WORTH / YIELD DAY, khong con the KPI rieng o tab CHART.
+            ChuText("RUN-RATE & APR", style = type.labelSmall, color = colors.textMuted)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    ChuText("WALLET  ", style = type.labelSmall, color = colors.textMuted)
-                    ChuText(
-                        formatMoney(wallet, moneyDisplay, vndRate),
-                        style = type.label.copy(
-                            fontFamily = FontFamily.Monospace,
-                            fontFeatureSettings = "tnum",
-                            fontWeight = FontWeight.Bold,
-                        ),
-                        color = colors.textPrimary,
-                    )
-                }
-                if (debt > 0.0) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        ChuText("DEBT  ", style = type.labelSmall, color = colors.error)
-                        ChuText(
-                            formatMoney(debt, moneyDisplay, vndRate),
-                            style = type.label.copy(
-                                fontFamily = FontFamily.Monospace,
-                                fontFeatureSettings = "tnum",
-                                fontWeight = FontWeight.Bold,
-                            ),
-                            color = colors.error,
-                        )
-                    }
-                }
+                val netApr = kpis.netRunRateApr
+                MetricCell(
+                    label = "NET RUN-RATE APR",
+                    value = netApr?.let { String.format(Locale.US, "%s%.1f%%", if (it >= 0) "+" else "", it) } ?: "--",
+                    color = when {
+                        netApr == null -> colors.textMuted
+                        netApr >= 0 -> colors.success
+                        else -> colors.error
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+                MetricCell(
+                    label = "GROSS APR",
+                    value = kpis.grossApr?.let { String.format(Locale.US, "%.1f%%", it) } ?: "--",
+                    color = colors.accent,
+                    alignEnd = true,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                MetricCell(
+                    label = "DAILY NET CASHFLOW",
+                    value = "${if (kpis.netRunRatePerDay >= 0) "+" else "-"}${DeFiFormatter.formatUsd(abs(kpis.netRunRatePerDay))}/D",
+                    color = if (kpis.netRunRatePerDay >= 0) colors.success else colors.error,
+                    modifier = Modifier.weight(1f),
+                )
+                val burn = kpis.burnRatioPct
+                MetricCell(
+                    label = "BURN RATIO",
+                    value = burn?.let { String.format(Locale.US, "%.0f%%", it) } ?: "--",
+                    color = when {
+                        burn == null -> colors.textMuted
+                        burn <= 50.0 -> colors.success
+                        burn <= 100.0 -> colors.warning
+                        else -> colors.error
+                    },
+                    alignEnd = true,
+                    modifier = Modifier.weight(1f),
+                )
             }
         }
     }
