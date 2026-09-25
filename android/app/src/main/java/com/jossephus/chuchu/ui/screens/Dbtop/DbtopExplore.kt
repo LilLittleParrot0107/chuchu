@@ -189,11 +189,6 @@ private fun ProjectRow(
 ) {
     val colors = ChuColors.current
     val type = ChuTypography.current
-    val actionColor = when (project.action) {
-        "ENTRY" -> colors.success
-        "SKIP" -> colors.error
-        else -> colors.accent
-    }
     KohiSelectableRow(
         selected = false,
         tone = colors.accent,
@@ -231,16 +226,12 @@ private fun ProjectRow(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                project.action?.let {
-                    ExTag(it, actionColor)
-                    Spacer(Modifier.width(4.dp))
-                }
+                // Dòng 2 chỉ còn chain + loại: bỏ tag action/age/flags (26/9) —
+                // mấy thứ đó nằm trong tấm chi tiết, hàng để sleek.
                 ChuText(
                     buildList {
-                        project.cat?.let { add(it) }
-                        project.age?.let { add("${it}D") }
                         project.chains.take(2).forEach { add(it) }
-                        project.flags.take(2).forEach { add(it) }
+                        project.cat?.let { add(it) }
                     }.joinToString(" · "),
                     style = type.labelSmall,
                     color = colors.textMuted,
@@ -270,7 +261,6 @@ private fun YieldRow(
 ) {
     val colors = ChuColors.current
     val type = ChuTypography.current
-    val lane = laneLabel(yield.lane)
     KohiSelectableRow(
         selected = false,
         tone = colors.accentSecondary,
@@ -308,8 +298,6 @@ private fun YieldRow(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                ExTag(lane, colors.accentSecondary)
-                Spacer(Modifier.width(4.dp))
                 ChuText(
                     listOfNotNull(yield.chain, yield.project).joinToString(" · "),
                     style = type.labelSmall,
@@ -362,12 +350,8 @@ private fun BuzzRow(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
-                Spacer(Modifier.width(6.dp))
-                buzz.kind?.let {
-                    ExTag(it.uppercase(), colors.textSecondary)
-                }
                 likes?.let {
-                    Spacer(Modifier.width(4.dp))
+                    Spacer(Modifier.width(6.dp))
                     ChuText(
                         "♥ $it",
                         style = type.labelSmall.copy(
@@ -388,21 +372,6 @@ private fun BuzzRow(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                ChuText(
-                    "${buzz.n ?: 0} ACCOUNTS",
-                    style = type.labelSmall,
-                    color = colors.textMuted,
-                    maxLines = 1,
-                    modifier = Modifier.weight(1f),
-                )
-                if (buzz.launch) {
-                    ExTag("LAUNCH", colors.success)
-                }
             }
         }
     }
@@ -432,24 +401,7 @@ private fun ProjectSheet(
         )
         project.why?.takeIf { it.isNotBlank() }?.let { why ->
             SheetSection("CALL")
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                project.action?.let {
-                    ExTag(it, colors.accent)
-                    Spacer(Modifier.width(4.dp))
-                }
-                ChuText(why, style = type.bodySmall, color = colors.textSecondary)
-            }
-        }
-        if (project.flags.isNotEmpty() || project.nPools != null) {
-            SheetSection("FLAGS")
-            ChuText(
-                buildList {
-                    addAll(project.flags)
-                    project.nPools?.let { add("$it pools ≥10%") }
-                }.joinToString("  ·  "),
-                style = type.bodySmall,
-                color = colors.textSecondary,
-            )
+            ChuText(why, style = type.bodySmall, color = colors.textSecondary)
         }
         if (project.desc.isNotBlank()) {
             SheetSection("ABOUT")
@@ -497,14 +449,6 @@ private fun YieldSheet(
             SheetSection("DETAILS")
             ChuText(yield.why, style = type.bodySmall, color = colors.textSecondary)
         }
-        if (yield.flags.isNotEmpty()) {
-            SheetSection("FLAGS")
-            ChuText(
-                (yield.flags + listOfNotNull(laneLabel(yield.lane), yield.kind)).joinToString("  ·  "),
-                style = type.bodySmall,
-                color = colors.textSecondary,
-            )
-        }
         if (yield.url != null) {
             SheetSection("LINKS")
             ChuText(yield.url, style = type.bodySmall, color = colors.textMuted)
@@ -521,7 +465,7 @@ private fun BuzzSheet(
     val type = ChuTypography.current
     SheetFrame(
         title = buzz.name,
-        subtitle = listOfNotNull(buzz.kind, "♥ ${buzz.likes ?: 0}", "${buzz.n ?: 0} accounts").joinToString(" · "),
+        subtitle = listOfNotNull("♥ ${buzz.likes ?: 0}", "${buzz.n ?: 0} accounts").joinToString(" · "),
         onDismiss = onDismiss,
     ) {
         SheetSection("POST")
@@ -538,9 +482,6 @@ private fun BuzzSheet(
         if (buzz.yields.isNotEmpty()) {
             SheetSection("YIELDS")
             ChuText(buzz.yields.joinToString("  ·  "), style = type.bodySmall, color = colors.textSecondary)
-        }
-        if (buzz.launch) {
-            ExTag("LAUNCH", colors.success)
         }
         if (buzz.url != null) {
             SheetSection("LINKS")
@@ -642,32 +583,12 @@ private fun SheetGrid(cells: List<Pair<String, String>>) {
 }
 
 @Composable
-private fun ExTag(text: String, color: Color) {
-    val type = ChuTypography.current
-    Box(
-        modifier = Modifier
-            .background(color.copy(alpha = 0.12f))
-            .padding(horizontal = 4.dp, vertical = 1.dp),
-    ) {
-        ChuText(text, style = type.labelSmall, color = color, maxLines = 1)
-    }
-}
-
-@Composable
 private fun EmptyPane(text: String) {
     val colors = ChuColors.current
     val type = ChuTypography.current
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         ChuText(text, style = type.labelSmall, color = colors.textMuted)
     }
-}
-
-private fun laneLabel(lane: String?): String = when (lane) {
-    "carry" -> "CARRY"
-    "stable" -> "STABLE"
-    "lp" -> "LP"
-    "new" -> "NEW"
-    else -> lane?.uppercase() ?: ""
 }
 
 private fun pctColor(value: Double?, colors: ChuColorPalette): Color = when {
