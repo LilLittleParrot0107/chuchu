@@ -47,4 +47,17 @@ class QueueTranscriptRulesTest {
         assertEquals(listOf("a"), out[0].paras)
     }
 
+
+    /** Mở chat neo vào tin anh gửi cuối cùng (25/9), không phải đáy tuyệt đối. */
+    @Test
+    fun lastUserIndexFindsTheUsersLatestMessage() {
+        val msgs = listOf(msg("user", 1, "a"), msg("assistant", 2), msg("user", 3, "b"), msg("assistant", 4))
+        // Gộp lượt assistant không làm đổi chỗ tin user → neo đọc trên danh sách đã gộp vẫn đúng.
+        val collapsed = collapseAssistantTurns(msgs)
+        assertEquals(2, lastUserMessageIndex(collapsed))
+        assertEquals("b", collapsed[lastUserMessageIndex(collapsed)].text)
+        // Chưa có tin của anh / rỗng → −1, caller giữ nhảy đáy.
+        assertEquals(-1, lastUserMessageIndex(emptyList()))
+        assertEquals(-1, lastUserMessageIndex(listOf(msg("assistant", 1))))
+    }
 }

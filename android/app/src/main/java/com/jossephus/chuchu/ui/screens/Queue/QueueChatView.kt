@@ -106,8 +106,21 @@ internal fun QueueChatView(
     // đoạn mới về) thì tin mới của đúng lượt cuối vẫn kéo được đáy đang ghim.
     // Thẻ NEEDS YOU là item cuối (sau tin cuối) — hiện ra cũng kéo đáy như một tin mới.
     val lastIndex = messages.size + (if (blocked != null) 1 else 0)
+    // Mở chat (25/9 user: "xuống đoạn chat cuối cùng t nhắn"): neo vào tin CỦA ANH gửi
+    // cuối cùng thay vì đáy tuyệt đối — đáy là đuôi agent đang chạy, không phải chỗ cần
+    // đọc. Nhớ pane: mở hội thoại khác thì neo lại từ đầu; đóng mở lại cũng neo lại vì
+    // view rời cây UI. Sau đó tin mới / kéo trang cũ vẫn theo luật pinnedToBottom cũ.
+    var anchoredPane by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(messages.lastOrNull()?.key, messages.lastOrNull()?.ts, messages.size, blocked?.signature) {
-        if (lastIndex > 0 && pinnedToBottom) listState.scrollToItem(lastIndex)
+        if (lastIndex <= 0) return@LaunchedEffect
+        if (anchoredPane != chat.pane) {
+            anchoredPane = chat.pane
+            val idx = lastUserMessageIndex(messages)
+            // +1 vì LazyColumn chèn item 0 là nút "load older"; không có tin của anh thì giữ đáy.
+            listState.scrollToItem(if (idx >= 0) idx + 1 else lastIndex)
+            return@LaunchedEffect
+        }
+        if (pinnedToBottom) listState.scrollToItem(lastIndex)
     }
 
     Box(modifier = modifier.fillMaxSize()) {

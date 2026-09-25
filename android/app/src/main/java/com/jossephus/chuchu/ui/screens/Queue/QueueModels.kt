@@ -432,6 +432,16 @@ data class FileSearchResult(
  * nó bị bỏ NÊN hai đoạn assistant kề nhau qua một block think vẫn gộp làm một.
  * Key giữ của tin ĐẦU để bubble không đổi chỗ khi lượt dài thêm giữa hai lần poll.
  */
+/**
+ * Tin của anh gửi cuối cùng trong danh sách ĐÃ gộp — neo của lần mở chat (25/9, user:
+ * "xuống đoạn chat cuối cùng t nhắn"): mở hội thoại là đọc tiếp từ "lần trước mình nhắn
+ * gì" + phần agent trả lời bên dưới, không phải đuôi agent đang chạy ở đáy tuyệt đối.
+ * −1 = hội thoại chưa có tin của anh → giữ nguyên nhảy đáy. Trong LazyColumn của
+ * QueueChatView tin này nằm ở index + 1 (item 0 là nút "load older").
+ */
+internal fun lastUserMessageIndex(messages: List<ChatMessage>): Int =
+    messages.indexOfLast { it.role == "user" }
+
 fun collapseAssistantTurns(messages: List<ChatMessage>): List<ChatMessage> {
     val out = ArrayList<ChatMessage>(messages.size)
     var i = 0
