@@ -21,7 +21,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jossephus.chuchu.data.model.dbtop.DataFreshness
-import com.jossephus.chuchu.data.model.dbtop.DeFiFormatter
 import com.jossephus.chuchu.ui.components.ChuButton
 import com.jossephus.chuchu.ui.components.ChuButtonVariant
 import com.jossephus.chuchu.ui.components.ChuCard
@@ -34,7 +33,6 @@ import com.jossephus.chuchu.ui.theme.CHU_HAIRLINE_ALPHA
 import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTypography
 import java.util.Locale
-import kotlin.math.abs
 
 @Composable
 internal fun DbtopTopBar(
@@ -86,7 +84,6 @@ internal fun DashboardSummary(
     onCycleMoney: () -> Unit,
 ) {
     val colors = ChuColors.current
-    val type = ChuTypography.current
 
     KohiSectionBand(
         label = "OVERVIEW",
@@ -133,10 +130,8 @@ internal fun DashboardSummary(
                     .height(1.dp)
                     .background(colors.border.copy(alpha = CHU_HAIRLINE_ALPHA)),
             )
-            // RUN-RATE & APR gop vao bang chinh (user chot 26/9, mock
-            // kohi-dashboard-merge-prototype.html): 4 so nay la phan "tai sao"
-            // cua NET WORTH / YIELD DAY, khong con the KPI rieng o tab CHART.
-            ChuText("RUN-RATE & APR", style = type.labelSmall, color = colors.textMuted)
+            // 26/9 (user chot lai): bang chi giu 4 gia tri — NET WORTH · YIELD/DAY
+            // roi NET RUN-RATE APR · GROSS APR; DAILY NET CASHFLOW + BURN RATIO bo.
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -156,30 +151,6 @@ internal fun DashboardSummary(
                     label = "GROSS APR",
                     value = kpis.grossApr?.let { String.format(Locale.US, "%.1f%%", it) } ?: "--",
                     color = colors.accent,
-                    alignEnd = true,
-                    modifier = Modifier.weight(1f),
-                )
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                MetricCell(
-                    label = "DAILY NET CASHFLOW",
-                    value = "${if (kpis.netRunRatePerDay >= 0) "+" else "-"}${DeFiFormatter.formatUsd(abs(kpis.netRunRatePerDay))}/D",
-                    color = if (kpis.netRunRatePerDay >= 0) colors.success else colors.error,
-                    modifier = Modifier.weight(1f),
-                )
-                val burn = kpis.burnRatioPct
-                MetricCell(
-                    label = "BURN RATIO",
-                    value = burn?.let { String.format(Locale.US, "%.0f%%", it) } ?: "--",
-                    color = when {
-                        burn == null -> colors.textMuted
-                        burn <= 50.0 -> colors.success
-                        burn <= 100.0 -> colors.warning
-                        else -> colors.error
-                    },
                     alignEnd = true,
                     modifier = Modifier.weight(1f),
                 )

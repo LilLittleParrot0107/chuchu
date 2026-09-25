@@ -102,22 +102,15 @@ private fun WalletIdleRow(
                 .padding(horizontal = 10.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            ChuText("◇", style = type.labelSmall, color = colors.success)
+            ChuText("◇", style = type.labelSmall, color = colors.textMuted)
             Spacer(Modifier.width(6.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                ChuText(
-                    "WALLET",
-                    style = type.label.copy(fontWeight = FontWeight.Bold),
-                    color = colors.textPrimary,
-                    maxLines = 1,
-                )
-                ChuText(
-                    "IDLE · NOT DEPLOYED",
-                    style = type.labelSmall,
-                    color = colors.textMuted,
-                    maxLines = 1,
-                )
-            }
+            ChuText(
+                "Wallet",
+                style = type.label.copy(fontWeight = FontWeight.Bold),
+                color = colors.textPrimary,
+                maxLines = 1,
+                modifier = Modifier.weight(1f),
+            )
             Spacer(Modifier.width(6.dp))
             ChuText(
                 formatMoney(wallet, moneyDisplay, vndRate),
@@ -126,7 +119,7 @@ private fun WalletIdleRow(
                     fontFeatureSettings = "tnum",
                     fontWeight = FontWeight.Bold,
                 ),
-                color = colors.success,
+                color = colors.textPrimary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
