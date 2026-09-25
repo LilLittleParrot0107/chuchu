@@ -109,6 +109,8 @@ fun QueueScreen(
     onSubmitBlocked: (List<Int>) -> Unit = {},
     // FILES (23/9, thay TIMELINE): file portal dufs nhúng vào trang phải của pager.
     portalUrl: String = "",
+    /** Ô search tab FILES (25/9): UI debounce rồi gọi cái này → qsrv /files/search. */
+    onSearchFiles: (suspend (String) -> com.jossephus.chuchu.ui.screens.Queue.FileSearchResult)? = null,
     /** Trang mở khi vào màn (deep link "file portal" từ terminal → Files); null = giữ trang đang có. */
     initialMode: QueueMode? = null,
     // NEW SESSION (23/9): tấm trượt đáy chọn agent · thư mục · lệnh → qsrv mở phiên.
@@ -535,6 +537,7 @@ fun QueueScreen(
                             url = portalUrl,
                             onClose = { goTo(QueueMode.Threads) },
                             embedded = true,
+                            onSearch = onSearchFiles,
                         )
                         // MACHINE (25/9): bảng usage/machine — tab xem, không ô gõ.
                         QueueMode.Machine -> MachineStrip(

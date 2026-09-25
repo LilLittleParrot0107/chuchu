@@ -557,6 +557,8 @@ private fun QueueDestination(
         onSubmitBlocked = sharedQueueVm::answerBlockedMulti,
         // FILES + NEW SESSION (23/9, thay TIMELINE)
         portalUrl = portalUrl,
+        // Ô search FILES (25/9): debounce ở UI, VM chỉ lo gọi qsrv + hồi phục auth.
+        onSearchFiles = sharedQueueVm::searchFiles,
         initialMode = initialMode,
         launchDirs = sharedQueueVm.launchDirs.collectAsStateWithLifecycle().value,
         onLaunchOpen = sharedQueueVm::loadLaunchDirs,

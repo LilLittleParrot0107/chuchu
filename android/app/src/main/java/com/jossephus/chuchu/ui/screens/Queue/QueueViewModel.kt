@@ -161,6 +161,25 @@ class QueueViewModel(
         viewModelScope.launch(Dispatchers.IO) { client()?.machine("force") }
     }
 
+    /**
+     * Tab FILES (25/9): tìm file qua chỉ mục của qsrv. Chặn luồng — UI tự debounce
+     * rồi gọi từ Dispatchers.IO. Chưa cấu hình Queue URL thì trả lỗi nhẹ nhàng
+     * thay vì ném, ô search chỉ hiện dòng thông báo.
+     */
+    suspend fun searchFiles(query: String): FileSearchResult {
+        val c = client()
+            ?: return FileSearchResult(emptyList(), 0, 0.0, error = "No Queue URL in Settings")
+        val result = withContext(Dispatchers.IO) {
+            when (val r = c.filesSearch(query)) {
+                is QueueClient.FilesSearch.Ok -> r.result
+                is QueueClient.FilesSearch.Failed ->
+                    FileSearchResult(emptyList(), 0, 0.0, error = r.message)
+            }
+        }
+        persistAuthRecovery(c)
+        return result
+    }
+
     private val switchMutex = Mutex()
 
     /**

@@ -78,6 +78,11 @@ class QueueClient(
         data class Failed(val message: String, val needsAuth: Boolean = false) : SwitchAccountResult
     }
 
+    sealed interface FilesSearch {
+        data class Ok(val result: FileSearchResult) : FilesSearch
+        data class Failed(val message: String, val needsAuth: Boolean = false) : FilesSearch
+    }
+
     /**
      * `GET /chat` (16/9): [limit] tin cuối của transcript agent [pane]; [before] = cursor
      * trang trước để lấy tin cũ hơn; [sinceRev] + [waitSec] = long-poll như /state, server
@@ -306,6 +311,39 @@ class QueueClient(
         MachineFetch.Failed(offlineMessage(e))
     } catch (e: Exception) {
         MachineFetch.Failed("Could not read machine state (${e.javaClass.simpleName})")
+    }
+
+    /**
+     * `GET /files/search` (25/9) cho tab FILES: tìm trong chỉ mục tên file phía
+     * server (đúng vùng dufs portal, bỏ dấu tiếng Việt, TTL 5 phút). [query] nhiều
+     * từ thì từ nào cũng phải khớp trong đường dẫn; server xếp: khớp ở TÊN trước,
+     * rồi mới sửa gần đây. Chặn luồng — gọi từ Dispatchers.IO.
+     */
+    fun filesSearch(query: String, limit: Int = 80): FilesSearch {
+        val q = StringBuilder("/files/search?q=").append(URLEncoder.encode(query, "UTF-8"))
+            .append("&limit=").append(limit)
+        return try {
+            val (code, body) = request(q.toString(), null)
+            when (code) {
+                HttpURLConnection.HTTP_OK -> FilesSearch.Ok(FileSearchResult.parse(body))
+                HttpURLConnection.HTTP_NOT_FOUND -> FilesSearch.Failed(
+                    "This qsrv has no /files/search yet — update qsrv on the host",
+                )
+                HttpURLConnection.HTTP_UNAUTHORIZED ->
+                    FilesSearch.Failed("The token is invalid or has changed", needsAuth = true)
+                HttpURLConnection.HTTP_FORBIDDEN ->
+                    FilesSearch.Failed("Access denied (403) — open Tailscale and verify the account", needsAuth = true)
+                else -> FilesSearch.Failed("Search server error ($code)")
+            }
+        } catch (e: SocketTimeoutException) {
+            FilesSearch.Failed("Search timed out — check Tailscale")
+        } catch (e: UnknownHostException) {
+            FilesSearch.Failed("Host not found — check Tailscale VPN/DNS")
+        } catch (e: IOException) {
+            FilesSearch.Failed(offlineMessage(e))
+        } catch (e: Exception) {
+            FilesSearch.Failed("Could not search (${e.javaClass.simpleName})")
+        }
     }
 
     fun act(op: String, id: Int?, rev: String?): Act {

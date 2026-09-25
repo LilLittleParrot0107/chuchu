@@ -375,6 +375,57 @@ data class ChatPage(
 }
 
 /**
+ * Một dòng của `qsrv /files/search` (25/9): [path] tương đối trong vùng portal,
+ * [isDir] = mục này là thư mục (qsrv đặt khóa JSON "dir" nhưng giá trị là BOOL).
+ */
+data class FileHit(
+    val path: String,
+    val name: String,
+    val isDir: Boolean,
+    val size: Long,
+    val mtimeMs: Long,
+) {
+    /** Thư mục CHỨA mục này ("" = gốc portal) — chạm kết quả là nhảy vào đó (prototype duyệt 25/9). */
+    val parentDir: String get() = path.substringBeforeLast('/', "")
+}
+
+/**
+ * Kết quả `GET /files/search`: [total] là TỔNG khớp trên chỉ mục, [hits] chỉ là
+ * trang đầu (server cắt theo limit). [error] chỉ khác null khi client tự điền
+ * lúc gọi hỏng — parse JSON thành công thì không bao giờ có.
+ */
+data class FileSearchResult(
+    val hits: List<FileHit>,
+    val total: Int,
+    val tookMs: Double,
+    val error: String? = null,
+) {
+    companion object {
+        fun parse(json: String): FileSearchResult {
+            val o = JSONObject(json)
+            val arr = o.optJSONArray("results")
+            val out = ArrayList<FileHit>(arr?.length() ?: 0)
+            if (arr != null) for (i in 0 until arr.length()) {
+                val h = arr.optJSONObject(i) ?: continue
+                out += FileHit(
+                    path = h.optString("path"),
+                    name = h.optString("name"),
+                    isDir = h.optBoolean("dir", false),
+                    size = h.optLong("size", 0L),
+                    // qsrv trả mtime GIÂY (st.st_mtime) — UI quen mili giây như dufs.
+                    mtimeMs = h.optLong("mtime", 0L) * 1000,
+                )
+            }
+            return FileSearchResult(
+                hits = out,
+                total = o.optInt("total", out.size),
+                tookMs = o.optDouble("took_ms", 0.0),
+            )
+        }
+    }
+}
+
+/**
  * Gộp các đoạn assistant LIÊN TIẾP của cùng một lượt (không có user/tool chen giữa)
  * thành một bubble: đoạn cuối là `text`, các đoạn trước nằm trong [ChatMessage.paras]
  * (bubble thường chỉ hiện đoạn cuối). `think` bị bỏ khỏi tầm nhìn mặc định — và vì
