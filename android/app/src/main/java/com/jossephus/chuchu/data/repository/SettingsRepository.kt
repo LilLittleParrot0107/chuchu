@@ -94,6 +94,14 @@ class SettingsRepository(context: Context) {
             return "$base/chuchu/spending/flow.json"
         }
 
+    /** explorer.json do mkt/explorer.py gộp cho tab EXPLORER (26/9). */
+    val resolvedExplorerUrl: String
+        get() {
+            val portal = _webPortalUrl.value.trim().trimEnd('/')
+            val base = if (portal.isNotEmpty()) portal else DEFAULT_WEB_PORTAL_URL.trimEnd('/')
+            return "$base/chuchu/market/out/explorer.json"
+        }
+
     /** Che do hien tien cua dashboard (USD/VND/HIDDEN) — nho qua cac lan mo app. */
     var dbtopMoneyDisplay: String
         get() = prefs.getString(KEY_DBTOP_MONEY, null) ?: "USD"

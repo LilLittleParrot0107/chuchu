@@ -68,6 +68,8 @@ enum class KohiTab(val route: String, val contentDescription: String) {
     HOSTS("servers", "Hosts"),
     // FILES bỏ khỏi thanh dưới 23/9 (user chốt): file portal nằm trong QUEUE › FILES.
     DASHBOARD("dashboard", "Dashboard"),
+    // EXPLORER lên thanh dưới 26/9 (user chốt "Cả hai"): new projects + yield + X buzz.
+    EXPLORER("explorer", "Explorer"),
     QUEUE("queue", "Queue"),
 }
 
@@ -93,6 +95,29 @@ private fun CurveDashboardIcon(tint: Color) {
             color = tint,
             style = Stroke(width = 2.2.dp.toPx(), cap = StrokeCap.Round),
         )
+    }
+}
+
+/** Icon EXPLORER la bàn (vòng + kim) — 22dp, cùng cỡ các tab khác. */
+@Composable
+private fun CompassExplorerIcon(tint: Color) {
+    Canvas(modifier = Modifier.size(22.dp)) {
+        val w = size.width
+        val h = size.height
+        drawCircle(
+            color = tint,
+            radius = size.minDimension * 0.39f,
+            center = center,
+            style = Stroke(width = 2.0.dp.toPx()),
+        )
+        val needle = Path().apply {
+            moveTo(0.67f * w, 0.33f * h)
+            lineTo(0.56f * w, 0.56f * h)
+            lineTo(0.33f * w, 0.67f * h)
+            lineTo(0.44f * w, 0.44f * h)
+            close()
+        }
+        drawPath(needle, color = tint)
     }
 }
 
@@ -156,6 +181,7 @@ private fun tabIcon(tab: KohiTab, selected: Boolean, tint: Color) {
         KohiTab.HOSTS ->
             if (selected) VectorIcon(Icons.Filled.Home, tint) else VectorIcon(Icons.Outlined.Home, tint)
         KohiTab.DASHBOARD -> CurveDashboardIcon(tint)
+        KohiTab.EXPLORER -> CompassExplorerIcon(tint)
         KohiTab.QUEUE -> QueueListIcon(tint)
     }
 }
