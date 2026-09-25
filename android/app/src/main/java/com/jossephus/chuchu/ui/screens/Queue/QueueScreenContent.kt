@@ -102,17 +102,8 @@ internal fun QueueModeSwitch(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            // Hairline chân hàng tab như prototype: phân tách bằng nét mảnh,
-            // không dựng lại hộp viền kín.
-            .drawBehind {
-                val stroke = 1.dp.toPx()
-                drawLine(
-                    colors.border.copy(alpha = CHU_HAIRLINE_ALPHA),
-                    Offset(0f, size.height - stroke / 2),
-                    Offset(size.width, size.height - stroke / 2),
-                    stroke,
-                )
-            }
+            // User 25/9: bỏ hairline chân hàng tab ("khe trắng" dưới hàng tab) —
+            // nền tab liền một tấm với nội dung, không nét kẻ phân cách.
             .padding(horizontal = 14.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(18.dp),

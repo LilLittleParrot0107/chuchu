@@ -151,6 +151,8 @@ private fun GlanceRow(
     open: Boolean,
     onToggle: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Đầu trang MACHINE: bỏ nét kẻ trên — user 25/9, "khe trắng" dưới hàng tab. */
+    topHairline: Boolean = true,
 ) {
     val colors = ChuColors.current
     val type = ChuTypography.current
@@ -161,15 +163,21 @@ private fun GlanceRow(
             // phân tách bằng hairline trên như mock; vạch màu trái giữ vì nó
             // là tín hiệu liếc mắt, không phải trang trí.
             .background(colors.background)
-            .drawBehind {
-                val stroke = 1.dp.toPx()
-                drawLine(
-                    colors.border.copy(alpha = CHU_HAIRLINE_ALPHA),
-                    Offset(0f, stroke / 2),
-                    Offset(size.width, stroke / 2),
-                    stroke,
-                )
-            }
+            .then(
+                if (topHairline) {
+                    Modifier.drawBehind {
+                        val stroke = 1.dp.toPx()
+                        drawLine(
+                            colors.border.copy(alpha = CHU_HAIRLINE_ALPHA),
+                            Offset(0f, stroke / 2),
+                            Offset(size.width, stroke / 2),
+                            stroke,
+                        )
+                    }
+                } else {
+                    Modifier
+                },
+            )
             .then(if (expandable) Modifier.clickable(onClick = onToggle) else Modifier)
             .defaultMinSize(minHeight = 30.dp)
             .padding(horizontal = 4.dp),
@@ -220,8 +228,8 @@ private fun MachineTabPage(
         onUsageVisible(true)
         onDispose { onUsageVisible(false) }
     }
-    Column(modifier.fillMaxSize().background(colors.surfaceVariant)) {
-        GlanceRow(glance = glance, expandable = false, open = false, onToggle = {})
+    Column(modifier.fillMaxSize().background(colors.background)) {
+        GlanceRow(glance = glance, expandable = false, open = false, onToggle = {}, topHairline = false)
         Column(
             Modifier
                 .weight(1f)
@@ -269,7 +277,7 @@ private fun SectionLabel(text: String) {
 private fun MachinePagePlaceholder(modifier: Modifier) {
     val colors = ChuColors.current
     val type = ChuTypography.current
-    Box(modifier.fillMaxSize().background(colors.surfaceVariant), contentAlignment = Alignment.Center) {
+    Box(modifier.fillMaxSize().background(colors.background), contentAlignment = Alignment.Center) {
         ChuText("LOADING MACHINE…", style = type.label, color = colors.textMuted)
     }
 }
