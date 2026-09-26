@@ -1,7 +1,6 @@
 package com.jossephus.chuchu.ui.screens.Dbtop
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -44,7 +43,6 @@ import kotlin.math.roundToInt
 import com.jossephus.chuchu.ui.components.ChuText
 import com.jossephus.chuchu.ui.components.KohiCompactAction
 import com.jossephus.chuchu.ui.components.KohiSelectableRow
-import com.jossephus.chuchu.ui.theme.CHU_HAIRLINE_ALPHA
 import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTypography
 import java.util.Locale
@@ -56,8 +54,6 @@ internal fun PositionsView(
     showYield: Boolean,
     nowSec: Long,
     wallet: Double,
-    moneyDisplay: MoneyDisplay,
-    vndRate: Double,
     onSelect: (DappRow) -> Unit,
 ) {
     if (rows.isEmpty()) {
@@ -68,7 +64,7 @@ internal fun PositionsView(
         // WALLET · IDLE len dau danh sach vi tri (user chot 26/9): tien chua
         // trien khai la mot "vi tri" that, nhung khong chon/xem detail duoc.
         item(key = "wallet") {
-            WalletIdleRow(wallet = wallet, moneyDisplay = moneyDisplay, vndRate = vndRate)
+            WalletIdleRow(wallet = wallet)
         }
         items(rows, key = DappRow::positionKey) { row ->
             DappPositionRow(
@@ -83,52 +79,47 @@ internal fun PositionsView(
 }
 
 @Composable
-private fun WalletIdleRow(
-    wallet: Double,
-    moneyDisplay: MoneyDisplay,
-    vndRate: Double,
-) {
+private fun WalletIdleRow(wallet: Double) {
     val colors = ChuColors.current
     val type = ChuTypography.current
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(1.dp, colors.border.copy(alpha = CHU_HAIRLINE_ALPHA)),
+    // User chot 27/9 (ban A): dung CHUNG khuon KohiSelectableRow voi cac hang vi
+    // the — rail 3dp + border + divider => cao dung 46dp, thang cot tuyet doi,
+    // chi khac: khong bam duoc (onClick = null), glyph ◆ accent, va dong phu
+    // la metric cua vi (0 do moi truong hop khac cung hien dang "+$X/D · Y% APR").
+    // So dung formatUsdCompact va KHONG an theo nut NET WORTH (USD->VND->AN):
+    // danh sach vi tri luon USD (luat 27/8), truoc day rieng Wallet doi theo nut.
+    KohiSelectableRow(
+        selected = false,
+        tone = colors.accent,
+        onClick = null,
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 10.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            ChuText("◇", style = type.labelSmall, color = colors.textMuted)
-            Spacer(Modifier.width(6.dp))
-            // Giống hệt DappPositionRow (user nhắc 26/9): tên weight thường như
-            // hàng chưa chọn, số dùng ĐÚNG font theme + Bold như các hàng khác —
-            // trước đây ép Monospace nên số trông nặng/khác cỡ.
+        ChuText("◆", style = type.labelSmall, color = colors.accent)
+        Spacer(Modifier.width(6.dp))
+        Column(modifier = Modifier.weight(1f)) {
             ChuText(
                 "Wallet",
                 style = type.label,
                 color = colors.textPrimary,
                 maxLines = 1,
-                modifier = Modifier.weight(1f),
+                overflow = TextOverflow.Ellipsis,
             )
-            Spacer(Modifier.width(6.dp))
             ChuText(
-                formatMoney(wallet, moneyDisplay, vndRate),
-                style = type.label.copy(fontWeight = FontWeight.Bold),
-                color = colors.textPrimary,
+                "+$0.00/D · 0.0% APR",
+                style = type.labelSmall,
+                color = colors.textMuted,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
+        Spacer(Modifier.width(6.dp))
+        ChuText(
+            DeFiFormatter.formatUsdCompact(wallet),
+            style = type.label.copy(fontWeight = FontWeight.Bold),
+            color = colors.textPrimary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(1.dp)
-            .background(colors.border.copy(alpha = CHU_HAIRLINE_ALPHA)),
-    )
 }
 
 @Composable

@@ -200,8 +200,6 @@ fun DbtopScreen(
                                         showYield = currentPerDay != null,
                                         nowSec = nowSec,
                                         wallet = ui.state.wallet,
-                                        moneyDisplay = ui.moneyDisplay,
-                                        vndRate = ui.spending?.usdVnd ?: 0.0,
                                         onSelect = { row ->
                                             haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                             viewModel.togglePosition(row.positionKey())
@@ -237,8 +235,6 @@ fun DbtopScreen(
                                 showYield = currentPerDay != null,
                                 nowSec = nowSec,
                                 wallet = ui.state.wallet,
-                                moneyDisplay = ui.moneyDisplay,
-                                vndRate = ui.spending?.usdVnd ?: 0.0,
                                 onSelect = { row ->
                                     haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                     viewModel.togglePosition(row.positionKey())

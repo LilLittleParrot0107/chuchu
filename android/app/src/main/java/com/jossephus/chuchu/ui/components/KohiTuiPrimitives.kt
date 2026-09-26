@@ -320,7 +320,10 @@ fun KohiSectionBand(
 fun KohiSelectableRow(
     selected: Boolean,
     tone: Color,
-    onClick: () -> Unit,
+    // null = hang tinh, khong bam duoc (hang Wallet — user chot 26/9): van dung
+    // y nguyen khung rail/border/dem de kich thuoc & thang cot giong het cac
+    // hang vi the, chi bo clickable/ripple.
+    onClick: (() -> Unit)?,
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
     // 0..1: nhung "muc do" (tien trinh option / health lending) vao NEN row
@@ -340,7 +343,7 @@ fun KohiSelectableRow(
                 width = 1.dp,
                 color = if (selected) tone.copy(alpha = 0.6f) else colors.border.copy(alpha = CHU_HAIRLINE_ALPHA),
             )
-            .clickable(onClick = onClick),
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
     ) {
         // Ve DUOI content va TAT khi selected: nen surface + rail da mang
         // trang thai chon, chong them fill la lau mau.
