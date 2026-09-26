@@ -195,20 +195,22 @@ internal fun DashboardViewBand(
 ) {
     val colors = ChuColors.current
     val type = ChuTypography.current
+    // 26/9: băng tab 5 ô weight(1f) — ngoặc [ ] + đệm 6/khe 6 ăn ~50% bề rộng ô, chữ 5 ký tự
+    // ("WATCH"/"SPEND") bị "…" trên máy 360px (user chọn phương án A, mock proto-subtabs.html).
+    // Bỏ ngoặc (tab đang chọn đã có nền Filled làm dấu), đệm 6→2, khe 6→4.
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .background(colors.background)
-            .padding(horizontal = 10.dp, vertical = 5.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+            .padding(horizontal = 6.dp, vertical = 5.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         DbtopView.entries.forEach { view ->
             val active = selected == view
             ChuButton(
                 onClick = { onSelect(view) },
                 variant = if (active) ChuButtonVariant.Filled else ChuButtonVariant.Ghost,
-                bracketed = true,
-                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 3.dp),
+                contentPadding = PaddingValues(horizontal = 2.dp, vertical = 3.dp),
                 minHeight = 24.dp,
                 modifier = Modifier.weight(1f),
             ) {
