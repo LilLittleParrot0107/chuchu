@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -45,6 +46,8 @@ import com.jossephus.chuchu.ui.components.RemoteLogo
 import com.jossephus.chuchu.ui.theme.ChuColorPalette
 import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTypography
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 
 /**
@@ -69,7 +72,9 @@ internal fun ProjectsView(explorer: ExplorerState?) {
         if (explorer.projects.isNotEmpty()) {
             item(key = "projects_band") {
                 KohiSectionBand(
-                    label = "NEW PROJECTS · TVL RISING",
+                    // 26/9 user: "project mới nó cứ vậy mấy ngày nay" — pipeline giờ
+                    // sắp theo ngày niêm yết mới nhất trước, nhãn đổi cho khớp.
+                    label = "NEW PROJECTS · NEWEST LISTED",
                     meta = "UPDATED ${explorer.tsnp}",
                     containerColor = colors.background,
                 )
@@ -117,7 +122,9 @@ internal fun BuzzView(explorer: ExplorerState?) {
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         item(key = "buzz_band") {
             KohiSectionBand(
-                label = "X BUZZ · RISING ACCOUNTS",
+                // 26/9 user: "buzz nên có ngày đăng, sort từ mới đến cũ" — server
+                // đã sắp, hàng hiện ngày đăng cạnh tim.
+                label = "X BUZZ · NEWEST FIRST",
                 meta = "UPDATED ${explorer.tsdc}",
                 containerColor = colors.background,
             )
@@ -202,6 +209,23 @@ private fun ProjectRow(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                // 26/9 user (mock chốt): dự án ≤7 ngày tuổi gắn nhãn NEW.
+                project.age?.takeIf { it <= 7 }?.let {
+                    Box(
+                        modifier = Modifier
+                            .background(colors.warning, RoundedCornerShape(2.dp))
+                            .padding(horizontal = 3.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        ChuText(
+                            "NEW",
+                            style = type.labelSmall.copy(fontWeight = FontWeight.Bold),
+                            color = colors.onAccent,
+                            maxLines = 1,
+                        )
+                    }
+                    Spacer(Modifier.width(4.dp))
+                }
                 ChuText(
                     project.name,
                     style = type.label.copy(fontWeight = FontWeight.Bold),
@@ -239,6 +263,21 @@ private fun ProjectRow(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
+                // Tuổi dự án (mock: "Flare · Risk Curators · 18D") — màu warning
+                // để mắt bắt được cái mới, TVL vẫn nằm ngoài cùng phải.
+                project.age?.let { age ->
+                    Spacer(Modifier.width(6.dp))
+                    ChuText(
+                        "${age}D",
+                        style = type.labelSmall.copy(
+                            fontFamily = FontFamily.Monospace,
+                            fontFeatureSettings = "tnum",
+                            fontWeight = FontWeight.Bold,
+                        ),
+                        color = colors.warning,
+                        maxLines = 1,
+                    )
+                }
                 Spacer(Modifier.width(6.dp))
                 ChuText(
                     "TVL " + DeFiFormatter.formatUsdCompact(project.tvl),
@@ -329,6 +368,10 @@ private fun BuzzRow(
     val colors = ChuColors.current
     val type = ChuTypography.current
     val likes = buzz.likes?.let { if (it >= 1000) String.format(Locale.US, "%.1fk", it / 1000.0) else "$it" }
+    // 26/9 user: hàng phải thấy NGÀY ĐĂNG ("26/09 08:59 · ♥420") — danh sách đã
+    // sắp mới → cũ từ pipeline.
+    val stamp = buzzWhen(buzz.postTs)
+    val meta = listOfNotNull(stamp, likes?.let { "♥ $it" }).joinToString(" · ")
     KohiSelectableRow(
         selected = false,
         tone = colors.accent,
@@ -350,10 +393,10 @@ private fun BuzzRow(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
-                likes?.let {
+                if (meta.isNotBlank()) {
                     Spacer(Modifier.width(6.dp))
                     ChuText(
-                        "♥ $it",
+                        meta,
                         style = type.labelSmall.copy(
                             fontFamily = FontFamily.Monospace,
                             fontFeatureSettings = "tnum",
@@ -465,7 +508,8 @@ private fun BuzzSheet(
     val type = ChuTypography.current
     SheetFrame(
         title = buzz.name,
-        subtitle = listOfNotNull("♥ ${buzz.likes ?: 0}", "${buzz.n ?: 0} accounts").joinToString(" · "),
+        subtitle = listOfNotNull(buzzWhen(buzz.postTs), "♥ ${buzz.likes ?: 0}", "${buzz.n ?: 0} accounts")
+            .joinToString(" · "),
         onDismiss = onDismiss,
     ) {
         SheetSection("POST")
@@ -590,6 +634,10 @@ private fun EmptyPane(text: String) {
         ChuText(text, style = type.labelSmall, color = colors.textMuted)
     }
 }
+
+/** Epoch giây (explorer.json "when") → "26/09 08:59" theo giờ máy. */
+private fun buzzWhen(ts: Long?): String? =
+    ts?.let { SimpleDateFormat("dd/MM HH:mm", Locale.US).format(Date(it * 1000L)) }
 
 private fun pctColor(value: Double?, colors: ChuColorPalette): Color = when {
     value == null -> colors.textMuted

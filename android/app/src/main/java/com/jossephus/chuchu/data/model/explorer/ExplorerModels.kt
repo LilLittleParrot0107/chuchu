@@ -84,4 +84,7 @@ data class ExplorerBuzz(
     @SerialName("by") val by: List<String> = emptyList(),
     val launch: Boolean = false,
     val yields: List<String> = emptyList(),
+    // 26/9 user: BUZZ phải hiện NGÀY ĐĂNG bài dẫn — epoch giây do explorer.py tính
+    // từ headline_ts; x cũ sắp mới → cũ theo trường này.
+    @SerialName("when") val postTs: Long? = null,
 )
