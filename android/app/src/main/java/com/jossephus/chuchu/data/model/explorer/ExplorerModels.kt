@@ -5,8 +5,8 @@ import kotlinx.serialization.Serializable
 
 /**
  * Payload out/explorer.json do mkt/explorer.py gộp (26/9): newprojects + scout +
- * discover + giá 4 coin đầu. Tab EXPLORER chỉ đọc đúng file này — logic gộp nằm
- * bên pipeline, app không port lại.
+ * discover + WATCH (trend/gain/imgs, 27/9). Dashboard chỉ đọc đúng file này —
+ * logic gộp nằm bên pipeline, app không port lại.
  */
 @Serializable
 data class ExplorerState(
@@ -14,17 +14,50 @@ data class ExplorerState(
     val tsnp: String = "",
     val tssc: String = "",
     val tsdc: String = "",
-    val market: List<ExplorerCoin> = emptyList(),
+    /** Giờ cập nhật bảng TRENDING (mkt_snap/trending) — band WATCH · TRENDING. */
+    val tstr: String = "",
+    /** Sàn volume của danh sách gainer (gainers.json min_vol) — band GAINERS in "VOL ≥ …". */
+    val gmin: Double? = null,
+    /** {SYM: ảnh} top 500 CoinGecko — logo cho hàng token trong WATCH (mock chốt 27/9). */
+    val imgs: Map<String, String> = emptyMap(),
+    val trend: List<ExplorerTrend> = emptyList(),
+    val gain: List<ExplorerGain> = emptyList(),
     val projects: List<ExplorerProject> = emptyList(),
     val yields: List<ExplorerYield> = emptyList(),
     val x: List<ExplorerBuzz> = emptyList(),
 )
 
+/** Một dòng TRENDING: thứ tự = hạng trending CoinGecko, mc_rank = hạng vốn hoá. */
 @Serializable
-data class ExplorerCoin(
+data class ExplorerTrend(
     val sym: String,
+    val name: String = "",
     val px: Double? = null,
-    val c24: Double? = null,
+    val chg: Double? = null,
+    val img: String? = null,
+    @SerialName("mc_rank") val mcRank: Int? = null,
+    val vol: Double? = null,
+)
+
+/** Một dòng GAINERS: 24h trước, phần chỉ lọt top 7 ngày xếp sau (pipeline sắp). */
+@Serializable
+data class ExplorerGain(
+    val sym: String,
+    /** id CoinGecko (out/gainers.json "asset") — nút COINGECKO ↗ trong sheet. */
+    val asset: String? = null,
+    val name: String = "",
+    val rank: Int? = null,
+    val mcap: Double? = null,
+    val vol24: Double? = null,
+    /** vol 24h / vol trung bình 30 ngày. */
+    val volx: Double? = null,
+    val chg24: Double? = null,
+    val chg7d: Double? = null,
+    val chg30d: Double? = null,
+    val img: String? = null,
+    val driver: String? = null,
+    val why: String = "",
+    val family: String = "",
 )
 
 @Serializable
@@ -79,7 +112,6 @@ data class ExplorerBuzz(
     val n: Int? = null,
     val likes: Int? = null,
     val head: String = "",
-    val vi: String = "",
     val url: String? = null,
     @SerialName("by") val by: List<String> = emptyList(),
     val launch: Boolean = false,

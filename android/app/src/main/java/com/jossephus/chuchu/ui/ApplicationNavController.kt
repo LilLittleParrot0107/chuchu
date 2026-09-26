@@ -396,6 +396,7 @@ fun ApplicationNavController() {
             val themeMode by settingsRepo.themeMode.collectAsStateWithLifecycle()
             val terminalFontSize by settingsRepo.terminalFontSize.collectAsStateWithLifecycle()
             val lightThemeName by settingsRepo.lightThemeName.collectAsStateWithLifecycle()
+            val geminiApiKey by settingsRepo.geminiApiKey.collectAsStateWithLifecycle()
             SettingsScreen(
                 currentTheme = themeName,
                 currentFont = fontName,
@@ -429,6 +430,8 @@ fun ApplicationNavController() {
                 currentTerminalFontSize = terminalFontSize,
                 onTerminalFontSizeChanged = settingsRepo::setTerminalFontSize,
                 onTerminalCustomActionsChanged = settingsRepo::setTerminalCustomKeyGroups,
+                geminiApiKey = geminiApiKey,
+                onGeminiApiKeyChanged = settingsRepo::setGeminiApiKey,
                 backupViewModel = backupViewModel,
                 onBack = {
                     val currentRoute = navController.currentBackStackEntry?.destination?.route

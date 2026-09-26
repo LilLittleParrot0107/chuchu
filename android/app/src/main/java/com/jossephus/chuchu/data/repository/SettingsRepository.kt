@@ -65,6 +65,16 @@ class SettingsRepository(context: Context) {
     private val _dbtopUrl = MutableStateFlow(prefs.getString(KEY_DBTOP_URL, "") ?: "")
     val dbtopUrl: StateFlow<String> = _dbtopUrl.asStateFlow()
 
+    /** Khoá Gemini cho nút DỊCH trong buzz (27/9) — user dán ở Settings, aistudio.google.com. */
+    private val _geminiApiKey = MutableStateFlow(prefs.getString(KEY_GEMINI_API_KEY, "") ?: "")
+    val geminiApiKey: StateFlow<String> = _geminiApiKey.asStateFlow()
+
+    fun setGeminiApiKey(value: String) {
+        val v = value.trim()
+        prefs.edit().putString(KEY_GEMINI_API_KEY, v).apply()
+        _geminiApiKey.value = v
+    }
+
     /**
      * Trả về URL dbtop hiệu dụng:
      * 1. Nếu dbtopUrl được set thủ công -> dùng dbtopUrl.
@@ -344,6 +354,7 @@ class SettingsRepository(context: Context) {
         private const val DEFAULT_QUEUE_URL = "https://the-real-witch.tail26a258.ts.net/q"
         private const val KEY_WEB_PORTAL_URL = "web_portal_url"
         private const val KEY_DBTOP_URL = "dbtop_url"
+        private const val KEY_GEMINI_API_KEY = "gemini_api_key"
         private const val KEY_DBTOP_MONEY = "dbtop_money_display"
         private const val DEFAULT_DBTOP_URL = "https://the-real-witch.tail26a258.ts.net/home/chuchu/debank/state.json"
         // dufs khong con serve o goc: 20/8 thu pham vi ve /home/a/chuchu va

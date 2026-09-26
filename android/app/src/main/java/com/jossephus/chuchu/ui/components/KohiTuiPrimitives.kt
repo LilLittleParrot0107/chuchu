@@ -1,10 +1,12 @@
 package com.jossephus.chuchu.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -313,6 +315,58 @@ fun KohiSectionBand(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             content = trailing,
         )
+    }
+}
+
+/**
+ * Dải sub-tab trong một tab dashboard (mock chốt 27/9, proto-build.html): nhãn + "· n",
+ * tab đang chọn màu accent + gạch chân 2dp. Đổi tab bằng CHẠM — không vuốt ngang vì
+ * pane nằm trong HorizontalPager của màn, vuốt sẽ bị pager nuốt mất.
+ */
+@Composable
+fun KohiSubTabs(
+    tabs: List<Pair<String, Int>>,
+    selectedIndex: Int,
+    onSelect: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = ChuColors.current
+    val type = ChuTypography.current
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .border(BorderStroke(1.dp, colors.border.copy(alpha = CHU_HAIRLINE_ALPHA))),
+    ) {
+        tabs.forEachIndexed { index, (label, count) ->
+            val active = index == selectedIndex
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable { onSelect(index) },
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Row(
+                    modifier = Modifier.padding(top = 5.dp, bottom = 3.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(3.dp),
+                ) {
+                    ChuText(
+                        label.uppercase(),
+                        style = type.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = if (active) colors.accent else colors.textMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    ChuText("· $count", style = type.labelSmall, color = colors.textMuted, maxLines = 1)
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(0.64f)
+                        .height(2.dp)
+                        .background(if (active) colors.accent else Color.Transparent),
+                )
+            }
+        }
     }
 }
 

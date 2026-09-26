@@ -55,6 +55,8 @@ fun DbtopScreen(
     val colors = ChuColors.current
     val haptics = LocalHapticFeedback.current
     val ui by viewModel.ui.collectAsStateWithLifecycle()
+    // Khoá Gemini của nút DỊCH trong buzz (27/9) — Settings đổi là sheet nhận ngay.
+    val geminiKey by viewModel.geminiApiKey.collectAsStateWithLifecycle()
     // Lấy từ VM: nó nhích theo MỌI poll, kể cả khi server chết (xem DbtopUiState.nowSec).
     val nowSec = ui.nowSec
     val currentPerDay = ui.currentPerDay(nowSec)
@@ -244,6 +246,7 @@ fun DbtopScreen(
                     }
                     DbtopView.WATCHLIST -> WatchlistView(
                         items = watchlistItems,
+                        explorer = ui.explorer,
                     )
                     DbtopView.SPENDING -> SpendingView(
                         spending = ui.spending,
@@ -254,8 +257,10 @@ fun DbtopScreen(
                         cap = capForKpi,
                         kpis = kpiSummary,
                     )
-                    DbtopView.PROJECTS -> ProjectsView(explorer = ui.explorer)
-                    DbtopView.BUZZ -> BuzzView(explorer = ui.explorer)
+                    DbtopView.PROJECTS -> ProjectsView(
+                        explorer = ui.explorer,
+                        geminiKey = geminiKey,
+                    )
                 }
             }
 

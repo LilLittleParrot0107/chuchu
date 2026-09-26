@@ -29,15 +29,15 @@ import kotlinx.coroutines.withContext
 
 // `label` = ten day du (section band); `tab` = dang ngan cho nut chuyen view
 // — 5 tab chia deu man hep thi "Positions"/"Watchlist" dai hon nut, bi "…".
-// 26/9 (user chot "gop chart vao spend, yield vao project, 5 subtab"): CHART
-// khong con tab rieng — chart NET RATE nam trong SPEND; PROJECTS gom ca YIELD;
-// X BUZZ la tab thu 5. Khong con tab EXPLORER rieng o thanh duoi.
+// 26/9 (user chot "gop chart vao spend, yield vao project"): CHART khong con tab
+// rieng — chart NET RATE nam trong SPEND.
+// 27/9 (user chot qua mock proto-build.html): BUZZ gop vao PROJ thanh sub-tab,
+// dai tren con 4 tab — WATCH: TOKENS/TRENDING/GAINERS, PROJ: PROJECTS/YIELD/BUZZ.
 enum class DbtopView(val label: String, val tab: String) {
     POSITIONS("Positions", "POS"),
     WATCHLIST("Watchlist", "WATCH"),
     SPENDING("Spending", "SPEND"),
     PROJECTS("Projects", "PROJ"),
-    BUZZ("X Buzz", "BUZZ"),
 }
 
 fun normalizeBaseToken(sym: String): String {
@@ -226,6 +226,9 @@ class DbtopViewModel(
 
     private val _ui = MutableStateFlow(DbtopUiState())
     val ui: StateFlow<DbtopUiState> = _ui.asStateFlow()
+
+    /** Khoá Gemini cho nút DỊCH của buzz — Settings đổi là màn dashboard nhận ngay. */
+    val geminiApiKey: StateFlow<String> = settings.geminiApiKey
 
     private var pollJob: Job? = null
     private var client: DbtopClient? = null

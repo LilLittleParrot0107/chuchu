@@ -17,12 +17,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -44,10 +43,13 @@ import com.jossephus.chuchu.data.model.dbtop.FlowDay
 import com.jossephus.chuchu.data.model.dbtop.flowDayRows
 import com.jossephus.chuchu.data.model.dbtop.FlowState
 import com.jossephus.chuchu.data.model.dbtop.SpendingState
+import com.jossephus.chuchu.data.model.explorer.ExplorerState
 import com.jossephus.chuchu.ui.components.KohiBottomSheet
 import com.jossephus.chuchu.ui.components.ChuCard
 import com.jossephus.chuchu.ui.components.ChuText
 import com.jossephus.chuchu.ui.components.KohiSectionBand
+import com.jossephus.chuchu.ui.components.KohiSubTabs
+import com.jossephus.chuchu.ui.components.RemoteLogo
 import com.jossephus.chuchu.ui.components.noRippleClickable
 import com.jossephus.chuchu.ui.components.chart.CashflowEngine
 import com.jossephus.chuchu.ui.components.chart.CashflowKpiSummary
@@ -60,21 +62,62 @@ import java.util.Date
 import java.util.Locale
 import kotlin.math.abs
 
+/**
+ * WATCH (27/9, mock chốt proto-build.html): 3 sub-tab TOKENS · TRENDING · GAINERS.
+ * explorer.json chưa về thì giữ nguyên danh sách token như bản cũ, không hiện
+ * sub-tab rỗng; đổi sub-tab bằng chạm (pane nằm trong pager của màn, vuốt bị nuốt).
+ */
 @Composable
 internal fun WatchlistView(
     items: List<WatchlistTokenItem>,
+    explorer: ExplorerState?,
 ) {
-    if (items.isEmpty()) {
+    if (items.isEmpty() && explorer == null) {
         DashboardEmpty("NO TOKENS IN WATCHLIST")
         return
     }
+    var sub by rememberSaveable { mutableIntStateOf(0) }
 
+    Column(modifier = Modifier.fillMaxSize()) {
+        if (explorer != null) {
+            KohiSubTabs(
+                tabs = listOf(
+                    "TOKENS" to items.size,
+                    "TRENDING" to explorer.trend.size,
+                    "GAINERS" to explorer.gain.size,
+                ),
+                selectedIndex = sub.coerceIn(0, 2),
+                onSelect = { sub = it },
+            )
+        }
+        Box(modifier = Modifier.weight(1f)) {
+            when (if (explorer == null) 0 else sub.coerceIn(0, 2)) {
+                0 -> TokensPane(items = items, imgs = explorer?.imgs ?: emptyMap())
+                1 -> if (explorer != null) TrendingPane(explorer = explorer)
+                else -> if (explorer != null) GainersPane(explorer = explorer)
+            }
+        }
+    }
+}
+
+@Composable
+private fun TokensPane(
+    items: List<WatchlistTokenItem>,
+    imgs: Map<String, String>,
+) {
+    val colors = ChuColors.current
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = 8.dp),
     ) {
+        item(key = "band") {
+            KohiSectionBand(label = "WATCHLIST", containerColor = colors.background)
+        }
         items(items, key = { it.symbol }) { token ->
-            WatchlistTokenRow(token = token)
+            WatchlistTokenRow(token = token, img = imgs[token.symbol])
+        }
+        if (items.isEmpty()) {
+            item(key = "empty") { EmptyPane("NO TOKENS IN WATCHLIST") }
         }
     }
 }
@@ -82,6 +125,7 @@ internal fun WatchlistView(
 @Composable
 private fun WatchlistTokenRow(
     token: WatchlistTokenItem,
+    img: String?,
     modifier: Modifier = Modifier,
 ) {
     val colors = ChuColors.current
@@ -94,11 +138,9 @@ private fun WatchlistTokenRow(
                 .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(
-                modifier = Modifier
-                    .size(6.dp)
-                    .background(colors.accent, CircleShape),
-            )
+            // Mock 27/9: hàng token có logo như trending/gainers; ảnh thiếu (ngoài top 500
+            // hoặc mạng hỏng) thì RemoteLogo rơi về glyph, hàng không nhảy layout.
+            RemoteLogo(url = img, fallback = "●", tint = colors.accent)
             Spacer(Modifier.width(10.dp))
             ChuText(
                 text = token.symbol,

@@ -32,6 +32,7 @@ import com.jossephus.chuchu.ui.components.ChuButton
 import com.jossephus.chuchu.ui.components.ChuButtonVariant
 import com.jossephus.chuchu.ui.components.ChuSwitch
 import com.jossephus.chuchu.ui.components.ChuText
+import com.jossephus.chuchu.ui.components.ChuTextField
 import com.jossephus.chuchu.ui.screens.Terminal.TerminalTabMode
 import com.jossephus.chuchu.ui.terminal.TerminalCustomKeyGroup
 import com.jossephus.chuchu.ui.theme.ChuColors
@@ -77,6 +78,8 @@ fun SettingsScreen(
     currentTerminalFontSize: Float = 14f,
     onTerminalFontSizeChanged: (Float) -> Unit = {},
     onTerminalCustomActionsChanged: (List<TerminalCustomKeyGroup>) -> Unit,
+    geminiApiKey: String = "",
+    onGeminiApiKeyChanged: (String) -> Unit = {},
     backupViewModel: SettingsBackupViewModel? = null,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
@@ -177,6 +180,8 @@ fun SettingsScreen(
                         onAppLockEnabledChanged = onAppLockEnabledChanged,
                         onRequireAuthOnConnectChanged = onRequireAuthOnConnectChanged,
                         onOpenBackup = { showBackupSheet = true },
+                        geminiApiKey = geminiApiKey,
+                        onGeminiApiKeyChanged = onGeminiApiKeyChanged,
                     )
                     SettingsCategory.Terminal -> TerminalSettings(
                         currentAccessoryLayoutIds = currentAccessoryLayoutIds,
@@ -256,6 +261,8 @@ private fun GeneralSettings(
     onAppLockEnabledChanged: (Boolean) -> Unit,
     onRequireAuthOnConnectChanged: (Boolean) -> Unit,
     onOpenBackup: () -> Unit = {},
+    geminiApiKey: String = "",
+    onGeminiApiKeyChanged: (String) -> Unit = {},
 ) {
     val typography = ChuTypography.current
     val colors = ChuColors.current
@@ -317,4 +324,24 @@ private fun GeneralSettings(
     }
     Spacer(modifier = Modifier.height(4.dp))
     ChuText("encrypted export/import.", style = typography.bodySmall, color = colors.textMuted)
+    Spacer(modifier = Modifier.height(16.dp))
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        ChuText("── ", style = typography.labelSmall, color = colors.textMuted)
+        ChuText("GEMINI", style = typography.labelSmall, color = colors.textMuted)
+        ChuText(" ", style = typography.labelSmall, color = colors.textMuted)
+        Box(modifier = Modifier.height(1.dp).background(colors.textMuted).fillMaxWidth())
+    }
+    Spacer(modifier = Modifier.height(12.dp))
+    // 27/9: nút DỊCH của buzz gọi Gemini bằng khoá này — dán khoá miễn phí từ
+    // aistudio.google.com (không phải gói Gemini Advanced). autoFocus=false để
+    // mở Settings không bật bàn phím.
+    ChuTextField(
+        value = geminiApiKey,
+        onValueChange = onGeminiApiKeyChanged,
+        label = "api key",
+        placeholder = "AIza…",
+        singleLine = true,
+        autoFocus = false,
+        supportingText = "dịch buzz trong dashboard · aistudio.google.com",
+    )
 }
