@@ -26,7 +26,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -104,9 +103,12 @@ private fun WalletIdleRow(
         ) {
             ChuText("◇", style = type.labelSmall, color = colors.textMuted)
             Spacer(Modifier.width(6.dp))
+            // Giống hệt DappPositionRow (user nhắc 26/9): tên weight thường như
+            // hàng chưa chọn, số dùng ĐÚNG font theme + Bold như các hàng khác —
+            // trước đây ép Monospace nên số trông nặng/khác cỡ.
             ChuText(
                 "Wallet",
-                style = type.label.copy(fontWeight = FontWeight.Bold),
+                style = type.label,
                 color = colors.textPrimary,
                 maxLines = 1,
                 modifier = Modifier.weight(1f),
@@ -114,11 +116,7 @@ private fun WalletIdleRow(
             Spacer(Modifier.width(6.dp))
             ChuText(
                 formatMoney(wallet, moneyDisplay, vndRate),
-                style = type.label.copy(
-                    fontFamily = FontFamily.Monospace,
-                    fontFeatureSettings = "tnum",
-                    fontWeight = FontWeight.Bold,
-                ),
+                style = type.label.copy(fontWeight = FontWeight.Bold),
                 color = colors.textPrimary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
