@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -49,6 +50,7 @@ import com.jossephus.chuchu.ui.components.ChuTextField
 import com.jossephus.chuchu.ui.screens.Files.formatFileSize
 import com.jossephus.chuchu.ui.screens.Queue.FileHit
 import com.jossephus.chuchu.ui.screens.Queue.FileSearchResult
+import com.jossephus.chuchu.ui.theme.CHU_HAIRLINE_ALPHA
 import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTypography
 import kotlinx.coroutines.Dispatchers
@@ -333,57 +335,67 @@ fun WebPortalScreen(
                 }
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
                     items(hits, key = { it.path }) { hit ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    // 27/9 (user: "bấm vào file đó thì t ko bấm được, chỉ được
-                                    // đưa đến folder chứa nó"): file = MỞ THẲNG file như listing
-                                    // (apk tải, media mở app xem, còn lại ACTION_VIEW); thư mục
-                                    // = vào chính nó. Bỏ hành vi cũ "nhảy vào thư mục chứa".
-                                    if (hit.isDir) {
-                                        path = hit.path
-                                        searchHits = null
-                                        searchStat = ""
-                                    } else {
-                                        openFileAt(hit.path, hit.name)
+                        // 27/9 (user: "phần file cx phân vạch mỏng như bên watch"): hàng file
+                        // cũng chỉ 1 vạch mỏng dưới, đồng bộ với hàng dashboard.
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        // 27/9 (user: "bấm vào file đó thì t ko bấm được, chỉ được
+                                        // đưa đến folder chứa nó"): file = MỞ THẲNG file như listing
+                                        // (apk tải, media mở app xem, còn lại ACTION_VIEW); thư mục
+                                        // = vào chính nó. Bỏ hành vi cũ "nhảy vào thư mục chứa".
+                                        if (hit.isDir) {
+                                            path = hit.path
+                                            searchHits = null
+                                            searchStat = ""
+                                        } else {
+                                            openFileAt(hit.path, hit.name)
+                                        }
                                     }
-                                }
-                                .padding(horizontal = 14.dp, vertical = 11.dp),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            ChuText(
-                                glyphOf(hit.name, hit.isDir),
-                                style = typography.label,
-                                color = if (hit.isDir) colors.accent else colors.textMuted,
-                            )
-                            BasicText(
-                                text = highlightName(hit.name, query.trim(), colors.accent),
-                                style = typography.body.copy(color = colors.textPrimary),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f),
-                            )
-                            ChuText(
-                                if (hit.parentDir.isEmpty()) "/" else "${hit.parentDir}/",
-                                style = typography.labelSmall,
-                                color = colors.textSecondary,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.widthIn(max = 110.dp),
-                            )
-                            ChuText(
-                                if (hit.isDir) "" else formatFileSize(hit.size),
-                                style = typography.labelSmall,
-                                color = colors.textMuted,
-                            )
-                            ChuText(
-                                if (hit.mtimeMs > 0) {
-                                    SimpleDateFormat("dd/MM", Locale.US).format(Date(hit.mtimeMs))
-                                } else "",
-                                style = typography.labelSmall,
-                                color = colors.textMuted,
+                                    .padding(horizontal = 14.dp, vertical = 11.dp),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                ChuText(
+                                    glyphOf(hit.name, hit.isDir),
+                                    style = typography.label,
+                                    color = if (hit.isDir) colors.accent else colors.textMuted,
+                                )
+                                BasicText(
+                                    text = highlightName(hit.name, query.trim(), colors.accent),
+                                    style = typography.body.copy(color = colors.textPrimary),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                ChuText(
+                                    if (hit.parentDir.isEmpty()) "/" else "${hit.parentDir}/",
+                                    style = typography.labelSmall,
+                                    color = colors.textSecondary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.widthIn(max = 110.dp),
+                                )
+                                ChuText(
+                                    if (hit.isDir) "" else formatFileSize(hit.size),
+                                    style = typography.labelSmall,
+                                    color = colors.textMuted,
+                                )
+                                ChuText(
+                                    if (hit.mtimeMs > 0) {
+                                        SimpleDateFormat("dd/MM", Locale.US).format(Date(hit.mtimeMs))
+                                    } else "",
+                                    style = typography.labelSmall,
+                                    color = colors.textMuted,
+                                )
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(1.dp)
+                                    .background(colors.border.copy(alpha = CHU_HAIRLINE_ALPHA)),
                             )
                         }
                     }
@@ -398,38 +410,47 @@ fun WebPortalScreen(
             else -> LazyColumn(modifier = Modifier.fillMaxSize()) {
                 items(entries, key = { it.name }) { entry ->
                     val glyph = glyphOf(entry.name, entry.isDir)
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { openEntry(entry) }
-                            .padding(horizontal = 14.dp, vertical = 11.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        ChuText(
-                            glyph,
-                            style = typography.label,
-                            color = if (entry.isDir) colors.accent else colors.textMuted,
-                        )
-                        ChuText(
-                            entry.name,
-                            style = typography.body,
-                            color = colors.textPrimary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f),
-                        )
-                        ChuText(
-                            if (entry.isDir) "" else formatFileSize(entry.size),
-                            style = typography.labelSmall,
-                            color = colors.textMuted,
-                        )
-                        ChuText(
-                            if (entry.mtimeMs > 0) {
-                                SimpleDateFormat("dd/MM", Locale.US).format(Date(entry.mtimeMs))
-                            } else "",
-                            style = typography.labelSmall,
-                            color = colors.textMuted,
+                    // 27/9: vạch mỏng phân cách hàng file, đồng bộ hàng dashboard (như trên).
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { openEntry(entry) }
+                                .padding(horizontal = 14.dp, vertical = 11.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            ChuText(
+                                glyph,
+                                style = typography.label,
+                                color = if (entry.isDir) colors.accent else colors.textMuted,
+                            )
+                            ChuText(
+                                entry.name,
+                                style = typography.body,
+                                color = colors.textPrimary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f),
+                            )
+                            ChuText(
+                                if (entry.isDir) "" else formatFileSize(entry.size),
+                                style = typography.labelSmall,
+                                color = colors.textMuted,
+                            )
+                            ChuText(
+                                if (entry.mtimeMs > 0) {
+                                    SimpleDateFormat("dd/MM", Locale.US).format(Date(entry.mtimeMs))
+                                } else "",
+                                style = typography.labelSmall,
+                                color = colors.textMuted,
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(1.dp)
+                                .background(colors.border.copy(alpha = CHU_HAIRLINE_ALPHA)),
                         )
                     }
                 }
