@@ -28,7 +28,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.RowScope
@@ -47,6 +46,7 @@ import com.jossephus.chuchu.ui.components.KohiBottomSheet
 import com.jossephus.chuchu.ui.components.ChuCard
 import com.jossephus.chuchu.ui.components.ChuText
 import com.jossephus.chuchu.ui.components.KohiSectionBand
+import com.jossephus.chuchu.ui.components.KohiSelectableRow
 import com.jossephus.chuchu.ui.components.RemoteLogo
 import com.jossephus.chuchu.ui.components.noRippleClickable
 import com.jossephus.chuchu.ui.components.chart.CashflowEngine
@@ -71,13 +71,20 @@ internal fun WatchlistSubPane(
     sub: Int,
     items: List<WatchlistTokenItem>,
     explorer: ExplorerState?,
+    moneyDisplay: MoneyDisplay = MoneyDisplay.USD,
+    vndRate: Double = 0.0,
 ) {
     if (items.isEmpty() && explorer == null) {
         DashboardEmpty("NO TOKENS IN WATCHLIST")
         return
     }
     when (sub.coerceIn(0, 2)) {
-        0 -> TokensPane(items = items, imgs = explorer?.imgs ?: emptyMap())
+        0 -> TokensPane(
+            items = items,
+            imgs = explorer?.imgs ?: emptyMap(),
+            moneyDisplay = moneyDisplay,
+            vndRate = vndRate,
+        )
         1 -> if (explorer != null) TrendingPane(explorer = explorer) else DashboardEmpty("NO EXPLORER DATA (SCAN PENDING)")
         else -> if (explorer != null) GainersPane(explorer = explorer) else DashboardEmpty("NO EXPLORER DATA (SCAN PENDING)")
     }
@@ -87,6 +94,8 @@ internal fun WatchlistSubPane(
 private fun TokensPane(
     items: List<WatchlistTokenItem>,
     imgs: Map<String, String>,
+    moneyDisplay: MoneyDisplay,
+    vndRate: Double,
 ) {
     val colors = ChuColors.current
     LazyColumn(
@@ -97,7 +106,15 @@ private fun TokensPane(
             KohiSectionBand(label = "WATCHLIST", containerColor = colors.background)
         }
         items(items, key = { it.symbol }) { token ->
-            WatchlistTokenRow(token = token, img = imgs[token.symbol])
+            WatchlistTokenRow(
+                token = token,
+                img = imgs[token.symbol],
+                hold = if (token.totalUsd > 0.0) {
+                    formatMoney(token.totalUsd, moneyDisplay, vndRate, compact = true)
+                } else {
+                    "—"
+                },
+            )
         }
         if (items.isEmpty()) {
             item(key = "empty") { EmptyPane("NO TOKENS IN WATCHLIST") }
@@ -105,37 +122,56 @@ private fun TokensPane(
     }
 }
 
+/**
+ * Hàng TOKENS theo đúng khuôn 2 dòng của [TrendRow]/GainRow (user chốt proto 27/9 —
+ * "đổi TOKENS theo TRENDING/GAINERS"): logo · SYM, dòng 2 = giá trị đang giữ
+ * (`hold $…` từ totalUsd, theo chế độ tiền đang chọn), cột phải là vùng liếc số
+ * (giá · %24h). Bỏ hairline + cỡ chữ body của bản 1 dòng cũ để ba sub-tab cùng nhịp.
+ */
 @Composable
 private fun WatchlistTokenRow(
     token: WatchlistTokenItem,
     img: String?,
+    hold: String,
     modifier: Modifier = Modifier,
 ) {
     val colors = ChuColors.current
     val type = ChuTypography.current
+    val pct = token.changePct24h
+    val isZero = pct == null || kotlin.math.abs(pct) < 0.05
 
-    Column(modifier = modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            // Mock 27/9: hàng token có logo như trending/gainers; ảnh thiếu (ngoài top 500
-            // hoặc mạng hỏng) thì RemoteLogo rơi về glyph, hàng không nhảy layout.
-            RemoteLogo(url = img, fallback = "●", tint = colors.accent)
-            Spacer(Modifier.width(10.dp))
+    KohiSelectableRow(
+        selected = false,
+        tone = colors.accent,
+        onClick = null,
+        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+        modifier = modifier,
+    ) {
+        RemoteLogo(url = img, fallback = "●", tint = colors.accent)
+        Spacer(Modifier.width(6.dp))
+        Column(modifier = Modifier.weight(1f)) {
             ChuText(
-                text = token.symbol,
-                style = type.body.copy(fontWeight = FontWeight.Bold),
+                token.symbol,
+                style = type.label.copy(fontWeight = FontWeight.Bold),
                 color = colors.textPrimary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
             )
             ChuText(
-                text = if (token.price > 0.0) DeFiFormatter.formatTokenPrice(token.price) else "—",
-                style = type.body.copy(
+                "hold $hold",
+                style = type.labelSmall.copy(
+                    fontFamily = FontFamily.Monospace,
+                    fontFeatureSettings = "tnum",
+                ),
+                color = colors.textMuted,
+                maxLines = 1,
+            )
+        }
+        Spacer(Modifier.width(6.dp))
+        Column(horizontalAlignment = Alignment.End) {
+            ChuText(
+                if (token.price > 0.0) DeFiFormatter.formatTokenPrice(token.price) else "—",
+                style = type.label.copy(
                     fontFamily = FontFamily.Monospace,
                     fontFeatureSettings = "tnum",
                     fontWeight = FontWeight.Bold,
@@ -145,17 +181,14 @@ private fun WatchlistTokenRow(
             )
             // Cot % 24h (user 27/8) — so voi px24 tu snapshot debank ~24h
             // truoc, KHONG phai pxPrev (gia lan quet truoc, 30 phut).
-            val pct = token.changePct24h
-            val isZero = pct == null || kotlin.math.abs(pct) < 0.05
             ChuText(
-                text = pct?.let {
+                pct?.let {
                     if (kotlin.math.abs(it) < 0.05) "0.0%" else String.format(Locale.US, "%+.1f%%", it)
                 } ?: "—",
                 style = type.labelSmall.copy(
                     fontFamily = FontFamily.Monospace,
                     fontFeatureSettings = "tnum",
                     fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.End,
                 ),
                 color = when {
                     isZero -> colors.textMuted
@@ -163,15 +196,8 @@ private fun WatchlistTokenRow(
                     else -> colors.error
                 },
                 maxLines = 1,
-                modifier = Modifier.width(64.dp),
             )
         }
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(1.dp)
-                .background(colors.border.copy(alpha = CHU_HAIRLINE_ALPHA)),
-        )
     }
 }
 

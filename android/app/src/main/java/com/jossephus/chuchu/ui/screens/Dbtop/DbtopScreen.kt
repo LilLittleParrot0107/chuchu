@@ -305,6 +305,8 @@ fun DbtopScreen(
                         sub = page - DbtopGroup.WATCH.firstPage,
                         items = watchlistItems,
                         explorer = ui.explorer,
+                        moneyDisplay = ui.moneyDisplay,
+                        vndRate = ui.spending?.usdVnd ?: 0.0,
                     )
                     else -> ProjectsSubPane(
                         sub = page - DbtopGroup.PROJ.firstPage,
