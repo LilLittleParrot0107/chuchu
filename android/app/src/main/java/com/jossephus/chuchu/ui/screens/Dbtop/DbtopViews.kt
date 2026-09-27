@@ -238,7 +238,8 @@ internal fun NetRateSection(
                     tooltipBg = colors.surfaceVariant,
                     tooltipText = colors.textPrimary,
                     aprFactor = aprFactor,
-                    height = 200.dp,
+                    // 27/9 user: "chart bên spend ngắn lại 1 chút" — 200 → 168dp.
+                    height = 168.dp,
                 )
             }
         }

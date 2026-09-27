@@ -27,7 +27,6 @@ import com.jossephus.chuchu.ui.components.ChuCard
 import com.jossephus.chuchu.ui.components.ChuText
 import com.jossephus.chuchu.ui.components.KohiCommandBand
 import com.jossephus.chuchu.ui.components.KohiCompactAction
-import com.jossephus.chuchu.ui.components.KohiSectionBand
 import com.jossephus.chuchu.ui.components.chart.CashflowKpiSummary
 import com.jossephus.chuchu.ui.theme.CHU_HAIRLINE_ALPHA
 import com.jossephus.chuchu.ui.theme.ChuColors
@@ -85,14 +84,7 @@ internal fun DashboardSummary(
 ) {
     val colors = ChuColors.current
 
-    KohiSectionBand(
-        label = "OVERVIEW",
-        meta = if (perDay != null) "LIVE YIELD" else "YIELD HIDDEN",
-        containerColor = colors.background,
-        // Yield an di vi snapshot cu/chet la trang thai "canh giac", khong
-        // phai loi — error do de danh cho SCAN OFFLINE.
-        accent = if (perDay != null) colors.success else colors.warning,
-    )
+    // 27/9 user: bỏ dòng "OVERVIEW · LIVE YIELD" — card tự nói đủ, đỡ một dải chữ.
     ChuCard(
         modifier = Modifier
             .fillMaxWidth()
