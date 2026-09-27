@@ -145,7 +145,8 @@ fun QueueScreen(
     val haptics = LocalHapticFeedback.current
     fun goTo(target: QueueMode) {
         tasksOpen = false   // bảng VIỆC và pager cùng chiếm thân màn
-        pagerScope.launch { pagerState.animateScrollToPage(target.ordinal) }
+        // Bấm tab = tới thẳng trang, KHÔNG lướt (user 27/9); vuốt tay vẫn đi lần lượt.
+        pagerScope.launch { pagerState.scrollToPage(target.ordinal) }
     }
     // Deep link "file portal" (terminal) → mở thẳng trang FILES.
     LaunchedEffect(initialMode) { if (initialMode != null) pagerState.scrollToPage(initialMode.ordinal) }

@@ -187,8 +187,10 @@ fun DbtopScreen(
                         DbtopGroup.WATCH -> watchPage
                         DbtopGroup.PROJ -> projPage
                     }
+                    // Bấm tab = tới thẳng trang, KHÔNG lướt (user 27/9); vuốt tay vẫn
+                    // đi lần lượt như cũ.
                     coroutineScope.launch {
-                        pagerState.animateScrollToPage(target)
+                        pagerState.scrollToPage(target)
                     }
                 },
             )
@@ -213,8 +215,9 @@ fun DbtopScreen(
                     tabs = subTabs,
                     selectedIndex = (currentPage - currentGroup.firstPage).coerceIn(0, subTabs.size - 1),
                     onSelect = { index ->
+                        // Sub-tab cũng nhảy thẳng, cùng luật với tab chính (user 27/9).
                         coroutineScope.launch {
-                            pagerState.animateScrollToPage(currentGroup.firstPage + index)
+                            pagerState.scrollToPage(currentGroup.firstPage + index)
                         }
                     },
                 )
