@@ -214,8 +214,6 @@ fun QueueScreen(
     // o dang focus — "back khoi detail la ban phim doi len" (user 28/8). Xoa
     // focus ngay khi mo detail: dong sheet xong khong con o nao doi keyboard.
     val focusManager = LocalFocusManager.current
-    // Ô gõ đang được focus -> dải máy tự thu lại.
-    var composerFocused by remember { mutableStateOf(false) }
     // "Type something" trên thẻ NEEDS YOU: gửi số xong nhảy vào ô gõ, bàn phím lên luôn.
     val composerFocus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
@@ -559,17 +557,19 @@ fun QueueScreen(
 
             // Ô gõ CHỈ hiện khi cần gõ (user 25/9: "ở conversation thì không hiện
             // thanh chat"): mở HỘI THOẠI (reply trong thread) hoặc bảng VIỆC (xếp
-            // task). Ba tab CONVERSATIONS / FILES / MACHINE là bề mặt xem — không ô
-            // gõ, và bảng usage/machine đã có tab MACHINE riêng nên dải máy ghim
-            // trên ô nhập cũng không còn.
+            // task). Ba tab CONVERSATIONS / FILES / MACHINE là bề mặt xem — không ô gõ.
             if (chatOpen || tasksOpen) {
+                // Hàng liếc máy trở lại trên ô gõ (user 27/9: "sao bỏ cái dòng machine ở
+                // dưới thanh snippet lúc t chat rồi?"): bản 25/9 gỡ cả dải khi dời bảng
+                // usage/machine sang tab MACHINE. Chỉ trả HÀNG LIẾC read-only — bảng to
+                // vẫn ở tab MACHINE; gõ việc mới là lúc cần biết máy còn tải nổi không.
+                MachineStrip(machine, preview = true)
                 QueueComposer(
                     modifier = Modifier.onSizeChanged { composerHeightPx = it.height },
                     value = prompt,
                     onValueChange = { prompt = it },
                     agent = if (chatOpen) chatAgent else selectedAgent,
                     sending = if (chatOpen) chat.sending else isAdding,
-                    onFocusChanged = { composerFocused = it },
                     focusRequester = composerFocus,
                     placeholder = when {
                         chatOpen -> "Reply to ${chat.name}…"
