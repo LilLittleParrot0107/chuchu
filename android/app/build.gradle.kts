@@ -1,3 +1,15 @@
+import java.io.File
+
+/** Dòng đầu tiên không phải chú thích trong .secrets/gemini-key.txt (pattern của vbook). */
+fun readSecretKey(): String {
+    val f = File(rootProject.projectDir, ".secrets/gemini-key.txt")
+    if (!f.exists()) return ""
+    return f.readLines()
+        .map { it.trim() }
+        .firstOrNull { it.isNotEmpty() && !it.startsWith("#") }
+        .orEmpty()
+}
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -53,6 +65,15 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
+        // Khoá Gemini nhét sẵn vào APK (như vbook, 27/9): đọc
+        // .secrets/gemini-key.txt lúc build — thư mục đã gitignore nên khoá
+        // KHÔNG vào git; CI ghi file này từ GitHub secret GEMINI_KEY. Không có
+        // file thì rỗng, app vẫn dán tay được trong Settings.
+        buildConfigField(
+            "String",
+            "GEMINI_KEY",
+            "\"${readSecretKey().replace("\\", "\\\\").replace("\"", "\\\"")}\"",
+        )
     }
 
     signingConfigs {
@@ -113,6 +134,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 

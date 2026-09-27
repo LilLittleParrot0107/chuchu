@@ -43,6 +43,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Khoá Gemini nhét sẵn vào APK (như vbook): GitHub secret GEMINI_KEY ghi
+      # vào android/.secrets/gemini-key.txt — thư mục gitignore, khoá không vào
+      # git. Secret chưa đặt thì file rỗng, build vẫn xanh (dán tay ở Settings).
+      - name: Gemini key for build
+        run: |
+          mkdir -p android/.secrets
+          printf '%s\n' "${{ secrets.GEMINI_KEY }}" > android/.secrets/gemini-key.txt
+
       - uses: DeterminateSystems/nix-installer-action@main
       # magic-nix-cache đã bị bỏ: bước "Post" của nó từng tốn 3 phút 07 để đẩy
       # store lên GHA cache — nhiều hơn cả phần nó tiết kiệm được, vì store path

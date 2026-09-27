@@ -13,6 +13,9 @@ local.properties
 references/
 scripts/
 
+# Gemini key nhét lúc build (như vbook) — không vào git
+.secrets/
+
 # Android
 android/app/src/main/jniLibs/
 android/app/key.jks

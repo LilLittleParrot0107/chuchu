@@ -2,6 +2,7 @@ package com.jossephus.chuchu.data.repository
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.jossephus.chuchu.BuildConfig
 import com.jossephus.chuchu.data.network.normalizeQueueBaseUrl
 import com.jossephus.chuchu.ui.screens.Terminal.TerminalTabMode
 import com.jossephus.chuchu.ui.terminal.BuiltinShortcutStore
@@ -65,8 +66,15 @@ class SettingsRepository(context: Context) {
     private val _dbtopUrl = MutableStateFlow(prefs.getString(KEY_DBTOP_URL, "") ?: "")
     val dbtopUrl: StateFlow<String> = _dbtopUrl.asStateFlow()
 
-    /** Khoá Gemini cho nút DỊCH trong buzz (27/9) — user dán ở Settings, aistudio.google.com. */
-    private val _geminiApiKey = MutableStateFlow(prefs.getString(KEY_GEMINI_API_KEY, "") ?: "")
+    /**
+     * Khoá Gemini cho nút DỊCH trong buzz (27/9): khoá user dán ở Settings thắng;
+     * chưa dán gì thì dùng khoá nhét sẵn lúc build (BuildConfig.GEMINI_KEY —
+     * .secrets/gemini-key.txt, cùng pattern vbook). Để trống trong Settings =
+     * tắt DỊCH (đã lưu tường minh thì không rơi về khoá build nữa).
+     */
+    private val _geminiApiKey = MutableStateFlow(
+        prefs.getString(KEY_GEMINI_API_KEY, null) ?: BuildConfig.GEMINI_KEY,
+    )
     val geminiApiKey: StateFlow<String> = _geminiApiKey.asStateFlow()
 
     fun setGeminiApiKey(value: String) {
