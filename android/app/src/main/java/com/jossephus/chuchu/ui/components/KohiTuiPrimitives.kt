@@ -375,8 +375,8 @@ fun KohiSelectableRow(
     selected: Boolean,
     tone: Color,
     // null = hang tinh, khong bam duoc (hang Wallet — user chot 26/9): van dung
-    // y nguyen khung rail/border/dem de kich thuoc & thang cot giong het cac
-    // hang vi the, chi bo clickable/ripple.
+    // y nguyen rail/dem (vien gio chi hien khi chon) de kich thuoc & thang cot
+    // giong het cac hang vi the, chi bo clickable/ripple.
     onClick: (() -> Unit)?,
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
@@ -393,9 +393,15 @@ fun KohiSelectableRow(
             .fillMaxWidth()
             .height(IntrinsicSize.Min)
             .background(if (selected) colors.surface else Color.Transparent)
-            .border(
-                width = 1.dp,
-                color = if (selected) tone.copy(alpha = 0.6f) else colors.border.copy(alpha = CHU_HAIRLINE_ALPHA),
+            // Vien chi ve khi dang chon (user 27/9: hang thuong ve dung kieu "vach mong"
+            // cua watch ban dau — chi mot vach duoi hang, bo khung 4 canh; truoc day
+            // vien hairline + vach duoi chong nhau thanh 2 net kep giua hai hang).
+            .then(
+                if (selected) {
+                    Modifier.border(width = 1.dp, color = tone.copy(alpha = 0.6f))
+                } else {
+                    Modifier
+                },
             )
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
     ) {
