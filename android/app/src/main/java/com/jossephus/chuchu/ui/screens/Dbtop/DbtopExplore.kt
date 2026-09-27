@@ -695,13 +695,12 @@ private fun ProjectSheet(
             SheetSection("POINTS / NEWS")
             ChuText(project.points, style = type.bodySmall, color = colors.textSecondary)
         }
-        if (project.tw != null || project.url != null) {
+        val tw = project.tw?.trim()?.removePrefix("@")?.takeIf { it.isNotBlank() }
+        val url = project.url?.takeIf { it.isNotBlank() }
+        if (tw != null || url != null) {
             SheetSection("LINKS")
-            ChuText(
-                listOfNotNull(project.tw?.let { "x.com/$it" }, project.url).joinToString("  ·  "),
-                style = type.bodySmall,
-                color = colors.textMuted,
-            )
+            tw?.let { LinkLine("x.com/$it", xUrl(it)) }
+            url?.let { LinkLine(it, httpUrl(it)) }
         }
     }
 }
@@ -733,9 +732,10 @@ private fun YieldSheet(
             SheetSection("DETAILS")
             ChuText(yield.why, style = type.bodySmall, color = colors.textSecondary)
         }
-        if (yield.url != null) {
+        val link = yield.url?.takeIf { it.isNotBlank() }
+        if (link != null) {
             SheetSection("LINKS")
-            ChuText(yield.url, style = type.bodySmall, color = colors.textMuted)
+            LinkLine(link, httpUrl(link))
         }
     }
 }
@@ -840,7 +840,7 @@ private fun BuzzSheet(
         }
         if (buzz.url != null) {
             SheetSection("LINKS")
-            ChuText(buzz.url, style = type.bodySmall, color = colors.textMuted)
+            LinkLine(buzz.url, buzz.url)
         }
         Row(
             modifier = Modifier.fillMaxWidth().padding(top = 3.dp),
@@ -1018,6 +1018,32 @@ private fun SheetGrid(cells: List<Pair<String, String>>) {
     }
 }
 
+/** Dòng link bấm được trong tấm chi tiết (user 27/9: "link phải bấm đc"). */
+@Composable
+private fun LinkLine(label: String, url: String) {
+    val colors = ChuColors.current
+    val type = ChuTypography.current
+    val context = LocalContext.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { openUrl(context, url) }
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        ChuText("↗", style = type.bodySmall, color = colors.accent)
+        ChuText(
+            label,
+            style = type.bodySmall,
+            color = colors.accent,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
 @Composable
 internal fun EmptyPane(text: String) {
     val colors = ChuColors.current
@@ -1048,4 +1074,16 @@ private fun openUrl(context: Context, url: String?) {
             Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
         )
     }
+}
+
+/** Link thiếu scheme (vd "bittensor.com") vẫn phải mở được — thêm https. */
+private fun httpUrl(raw: String): String {
+    val t = raw.trim()
+    return if (Regex("^[A-Za-z][A-Za-z0-9+.-]*://").containsMatchIn(t)) t else "https://$t"
+}
+
+/** handle X (explorer.json không kèm @) → link; lỡ là URL đầy đủ thì giữ nguyên. */
+private fun xUrl(handle: String): String {
+    val h = handle.trim().removePrefix("@")
+    return if (h.startsWith("http://") || h.startsWith("https://")) h else "https://x.com/$h"
 }
