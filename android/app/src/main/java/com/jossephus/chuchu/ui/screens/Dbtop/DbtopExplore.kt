@@ -54,7 +54,6 @@ import com.jossephus.chuchu.ui.components.ChuCard
 import com.jossephus.chuchu.ui.components.ChuText
 import com.jossephus.chuchu.ui.components.KohiBottomSheet
 import com.jossephus.chuchu.ui.components.KohiCompactAction
-import com.jossephus.chuchu.ui.components.KohiSectionBand
 import com.jossephus.chuchu.ui.components.KohiSelectableRow
 import com.jossephus.chuchu.ui.components.RemoteLogo
 import com.jossephus.chuchu.ui.theme.ChuColorPalette
@@ -87,19 +86,9 @@ internal fun ProjectsSubPane(sub: Int, explorer: ExplorerState?, geminiKey: Stri
 
 @Composable
 private fun ProjectsPane(explorer: ExplorerState) {
-    val colors = ChuColors.current
     var projectSheet by remember { mutableStateOf<ExplorerProject?>(null) }
 
     LazyColumn(modifier = Modifier.fillMaxSize()) {
-        item(key = "band") {
-            // 26/9 user: "project mới nó cứ vậy mấy ngày nay" — pipeline sắp theo ngày
-            // niêm yết mới nhất trước; 27/9 bỏ đuôi "· NEWEST LISTED" (thừa, user chốt).
-            KohiSectionBand(
-                label = "NEW PROJECTS",
-                meta = "UPDATED ${explorer.tsnp}",
-                containerColor = colors.background,
-            )
-        }
         items(explorer.projects, key = { it.slug.ifBlank { it.name } }) { p ->
             ProjectRow(project = p, onClick = { projectSheet = p })
         }
@@ -115,17 +104,9 @@ private fun ProjectsPane(explorer: ExplorerState) {
 
 @Composable
 private fun YieldsPane(explorer: ExplorerState) {
-    val colors = ChuColors.current
     var yieldSheet by remember { mutableStateOf<ExplorerYield?>(null) }
 
     LazyColumn(modifier = Modifier.fillMaxSize()) {
-        item(key = "band") {
-            KohiSectionBand(
-                label = "YIELD",
-                meta = "UPDATED ${explorer.tssc}",
-                containerColor = colors.background,
-            )
-        }
         items(explorer.yields, key = { "${it.chain}|${it.project}|${it.name}" }) { y ->
             YieldRow(yield = y, onClick = { yieldSheet = y })
         }
@@ -141,21 +122,12 @@ private fun YieldsPane(explorer: ExplorerState) {
 
 @Composable
 private fun BuzzPane(explorer: ExplorerState, geminiKey: String) {
-    val colors = ChuColors.current
     val context = LocalContext.current
     // Bản dịch nằm trong store theo tweet; tick này ép hàng đọc lại sau khi sheet dịch xong.
     var viTick by remember { mutableIntStateOf(0) }
     var buzzSheet by remember { mutableStateOf<ExplorerBuzz?>(null) }
 
     LazyColumn(modifier = Modifier.fillMaxSize()) {
-        item(key = "band") {
-            KohiSectionBand(
-                // 26/9: buzz sắp mới → cũ theo ngày đăng; 27/9 bỏ đuôi "· NEWEST FIRST".
-                label = "X BUZZ",
-                meta = "UPDATED ${explorer.tsdc}",
-                containerColor = colors.background,
-            )
-        }
         items(explorer.x, key = { it.name }) { b ->
             val vi = remember(b.translationKey(), viTick) {
                 BuzzTranslationStore.get(context, b.translationKey())
@@ -177,18 +149,13 @@ private fun BuzzPane(explorer: ExplorerState, geminiKey: String) {
     }
 }
 
-/** Pane TRENDING của WATCH (mock 27/9): thứ tự dòng = hạng trending CoinGecko. */
+/**
+ * Pane TRENDING của WATCH (mock 27/9): thứ tự dòng = hạng trending CoinGecko.
+ * 27/9 (user): bỏ vạch tiêu đề ngay dưới sub-tab — cả 6 pane WATCH/PROJ vào thẳng danh sách.
+ */
 @Composable
 internal fun TrendingPane(explorer: ExplorerState) {
-    val colors = ChuColors.current
     LazyColumn(modifier = Modifier.fillMaxSize()) {
-        item(key = "band") {
-            KohiSectionBand(
-                label = "TRENDING",
-                meta = explorer.tstr.takeIf { it.isNotBlank() }?.let { "UPDATED $it" },
-                containerColor = colors.background,
-            )
-        }
         itemsIndexed(explorer.trend, key = { i, t -> "$i|${t.sym}" }) { _, t ->
             TrendRow(trend = t)
         }
@@ -201,17 +168,9 @@ internal fun TrendingPane(explorer: ExplorerState) {
 /** Pane GAINERS của WATCH: 24h trước, phần chỉ lọt top 7 ngày xếp sau (pipeline sắp). */
 @Composable
 internal fun GainersPane(explorer: ExplorerState) {
-    val colors = ChuColors.current
     var gainSheet by remember { mutableStateOf<ExplorerGain?>(null) }
 
     LazyColumn(modifier = Modifier.fillMaxSize()) {
-        item(key = "band") {
-            KohiSectionBand(
-                label = "TOP GAINERS · 24H",
-                meta = explorer.gmin?.let { "VOL ≥ " + DeFiFormatter.formatUsdCompact(it) } ?: "VOL ≥ $5M",
-                containerColor = colors.background,
-            )
-        }
         items(explorer.gain, key = { it.asset ?: it.sym }) { g ->
             GainRow(gain = g, onClick = { gainSheet = g })
         }

@@ -97,14 +97,10 @@ private fun TokensPane(
     moneyDisplay: MoneyDisplay,
     vndRate: Double,
 ) {
-    val colors = ChuColors.current
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = 8.dp),
     ) {
-        item(key = "band") {
-            KohiSectionBand(label = "WATCHLIST", containerColor = colors.background)
-        }
         items(items, key = { it.symbol }) { token ->
             WatchlistTokenRow(
                 token = token,
