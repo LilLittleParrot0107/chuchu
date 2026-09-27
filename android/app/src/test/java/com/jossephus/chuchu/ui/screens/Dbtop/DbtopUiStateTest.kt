@@ -24,10 +24,11 @@ class DbtopUiStateTest {
     )
 
     @Test
-    fun `dashboard defaults to the positions view without stale selection`() {
+    fun `dashboard defaults to the positions page without stale selection`() {
         val ui = DbtopUiState(state = state)
 
-        assertEquals(DbtopView.POSITIONS, ui.selectedView)
+        assertEquals(0, ui.dashboardPage)
+        assertEquals(DbtopGroup.POS, DbtopGroup.groupOf(ui.dashboardPage))
         assertNull(ui.selectedPositionKey)
     }
 

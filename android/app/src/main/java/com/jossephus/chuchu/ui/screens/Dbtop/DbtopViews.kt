@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -48,7 +47,6 @@ import com.jossephus.chuchu.ui.components.KohiBottomSheet
 import com.jossephus.chuchu.ui.components.ChuCard
 import com.jossephus.chuchu.ui.components.ChuText
 import com.jossephus.chuchu.ui.components.KohiSectionBand
-import com.jossephus.chuchu.ui.components.KohiSubTabs
 import com.jossephus.chuchu.ui.components.RemoteLogo
 import com.jossephus.chuchu.ui.components.noRippleClickable
 import com.jossephus.chuchu.ui.components.chart.CashflowEngine
@@ -63,12 +61,14 @@ import java.util.Locale
 import kotlin.math.abs
 
 /**
- * WATCH (27/9, mock chốt proto-build.html): 3 sub-tab TOKENS · TRENDING · GAINERS.
- * explorer.json chưa về thì giữ nguyên danh sách token như bản cũ, không hiện
- * sub-tab rỗng; đổi sub-tab bằng chạm (pane nằm trong pager của màn, vuốt bị nuốt).
+ * WATCH (27/9, mock chốt proto-subtab-swipe.html): 3 sub-tab TOKENS · TRENDING ·
+ * GAINERS giờ là 3 TRANG của pager phẳng — dải sub-tab do DbtopScreen vẽ, ở đây
+ * chỉ còn nội dung theo `sub`. Explorer chưa về thì trang TRENDING/GAINERS báo
+ * chờ scan thay vì rỗng.
  */
 @Composable
-internal fun WatchlistView(
+internal fun WatchlistSubPane(
+    sub: Int,
     items: List<WatchlistTokenItem>,
     explorer: ExplorerState?,
 ) {
@@ -76,27 +76,10 @@ internal fun WatchlistView(
         DashboardEmpty("NO TOKENS IN WATCHLIST")
         return
     }
-    var sub by rememberSaveable { mutableIntStateOf(0) }
-
-    Column(modifier = Modifier.fillMaxSize()) {
-        if (explorer != null) {
-            KohiSubTabs(
-                tabs = listOf(
-                    "TOKENS" to items.size,
-                    "TRENDING" to explorer.trend.size,
-                    "GAINERS" to explorer.gain.size,
-                ),
-                selectedIndex = sub.coerceIn(0, 2),
-                onSelect = { sub = it },
-            )
-        }
-        Box(modifier = Modifier.weight(1f)) {
-            when (if (explorer == null) 0 else sub.coerceIn(0, 2)) {
-                0 -> TokensPane(items = items, imgs = explorer?.imgs ?: emptyMap())
-                1 -> if (explorer != null) TrendingPane(explorer = explorer)
-                else -> if (explorer != null) GainersPane(explorer = explorer)
-            }
-        }
+    when (sub.coerceIn(0, 2)) {
+        0 -> TokensPane(items = items, imgs = explorer?.imgs ?: emptyMap())
+        1 -> if (explorer != null) TrendingPane(explorer = explorer) else DashboardEmpty("NO EXPLORER DATA (SCAN PENDING)")
+        else -> if (explorer != null) GainersPane(explorer = explorer) else DashboardEmpty("NO EXPLORER DATA (SCAN PENDING)")
     }
 }
 

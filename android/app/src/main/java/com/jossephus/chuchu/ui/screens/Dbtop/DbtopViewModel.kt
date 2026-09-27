@@ -27,17 +27,30 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
-// `label` = ten day du (section band); `tab` = dang ngan cho nut chuyen view
-// — 5 tab chia deu man hep thi "Positions"/"Watchlist" dai hon nut, bi "…".
-// 26/9 (user chot "gop chart vao spend, yield vao project"): CHART khong con tab
-// rieng — chart NET RATE nam trong SPEND.
-// 27/9 (user chot qua mock proto-build.html): BUZZ gop vao PROJ thanh sub-tab,
-// dai tren con 4 tab — WATCH: TOKENS/TRENDING/GAINERS, PROJ: PROJECTS/YIELD/BUZZ.
-enum class DbtopView(val label: String, val tab: String) {
-    POSITIONS("Positions", "POS"),
-    WATCHLIST("Watchlist", "WATCH"),
-    SPENDING("Spending", "SPEND"),
-    PROJECTS("Projects", "PROJ"),
+// `tab` = nhãn ngắn trên dải chuyển màn. 26/9: CHART gộp vào SPEND, BUZZ gộp vào PROJ.
+// 27/9 (user chốt qua mock proto-subtab-swipe.html): dải còn 4 nhóm theo thứ tự
+// POS · SPEND · WATCH · PROJ, và toàn bộ nội dung là MỘT pager phẳng 8 trang —
+// sub-tab (TOKENS/TRENDING/GAINERS, PROJECTS/YIELD/BUZZ) cũng là trang thật nên
+// vuốt ngang đi lần lượt qua sub-tab, không còn cảnh sub-tab đứng im.
+// `pages` = khoảng trang của nhóm trong pager; sub-tab i = firstPage + i.
+enum class DbtopGroup(val tab: String, val pages: IntRange) {
+    POS("POS", 0..0),
+    SPEND("SPEND", 1..1),
+    WATCH("WATCH", 2..4),
+    PROJ("PROJ", 5..7);
+
+    val firstPage: Int get() = pages.first
+
+    companion object {
+        const val PAGE_COUNT = 8
+
+        val SUB_TABS: Map<DbtopGroup, List<String>> = mapOf(
+            WATCH to listOf("TOKENS", "TRENDING", "GAINERS"),
+            PROJ to listOf("PROJECTS", "YIELD", "BUZZ"),
+        )
+
+        fun groupOf(page: Int): DbtopGroup = entries.first { page in it.pages }
+    }
 }
 
 fun normalizeBaseToken(sym: String): String {
@@ -183,7 +196,8 @@ data class DbtopUiState(
      * OFFLINE không bao giờ hiện (audit 4/9 #5). Poll nào (kể cả 304/lỗi) cũng ghi lại.
      */
     val nowSec: Long = System.currentTimeMillis() / 1_000L,
-    val selectedView: DbtopView = DbtopView.POSITIONS,
+    /** Trang đang đứng trong pager phẳng 8 trang — nguồn state duy nhất của dashboard. */
+    val dashboardPage: Int = 0,
     val selectedPositionKey: String? = null,
     val spending: SpendingState? = null,
     /** flow.json (22/9): dòng USDC/USDT vào/ra ví chính; null = chưa tải được. */
@@ -432,11 +446,12 @@ class DbtopViewModel(
         settings.dbtopMoneyDisplay = _ui.value.moneyDisplay.name
     }
 
-    fun selectView(view: DbtopView) {
+    fun selectPage(page: Int) {
+        val target = page.coerceIn(0, DbtopGroup.PAGE_COUNT - 1)
         _ui.update {
             it.copy(
-                selectedView = view,
-                selectedPositionKey = it.selectedPositionKey.takeIf { view == DbtopView.POSITIONS },
+                dashboardPage = target,
+                selectedPositionKey = it.selectedPositionKey.takeIf { DbtopGroup.groupOf(target) == DbtopGroup.POS },
             )
         }
     }

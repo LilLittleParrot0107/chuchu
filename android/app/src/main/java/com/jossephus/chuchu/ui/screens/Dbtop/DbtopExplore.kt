@@ -30,7 +30,6 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -57,7 +56,6 @@ import com.jossephus.chuchu.ui.components.KohiBottomSheet
 import com.jossephus.chuchu.ui.components.KohiCompactAction
 import com.jossephus.chuchu.ui.components.KohiSectionBand
 import com.jossephus.chuchu.ui.components.KohiSelectableRow
-import com.jossephus.chuchu.ui.components.KohiSubTabs
 import com.jossephus.chuchu.ui.components.RemoteLogo
 import com.jossephus.chuchu.ui.theme.ChuColorPalette
 import com.jossephus.chuchu.ui.theme.ChuColors
@@ -70,35 +68,20 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * Tab PROJ (27/9, mock chốt proto-build.html): 3 sub-tab PROJECTS · YIELD · BUZZ.
- * Dữ liệu từ out/explorer.json (mkt/explorer.py); đổi sub-tab bằng chạm — không
- * vuốt ngang vì pane nằm trong HorizontalPager của màn (pager sẽ nuốt cú vuốt).
+ * PROJ (27/9, mock chốt proto-subtab-swipe.html): 3 sub-tab PROJECTS · YIELD ·
+ * BUZZ giờ là 3 TRANG của pager phẳng — dải sub-tab do DbtopScreen vẽ, ở đây chỉ
+ * còn nội dung theo `sub`. Dữ liệu từ out/explorer.json (mkt/explorer.py).
  */
 @Composable
-internal fun ProjectsView(explorer: ExplorerState?, geminiKey: String) {
+internal fun ProjectsSubPane(sub: Int, explorer: ExplorerState?, geminiKey: String) {
     if (explorer == null) {
         DashboardEmpty("NO EXPLORER DATA (SCAN PENDING)")
         return
     }
-    var sub by rememberSaveable { mutableIntStateOf(0) }
-
-    Column(modifier = Modifier.fillMaxSize()) {
-        KohiSubTabs(
-            tabs = listOf(
-                "PROJECTS" to explorer.projects.size,
-                "YIELD" to explorer.yields.size,
-                "BUZZ" to explorer.x.size,
-            ),
-            selectedIndex = sub.coerceIn(0, 2),
-            onSelect = { sub = it },
-        )
-        Box(modifier = Modifier.weight(1f)) {
-            when (sub.coerceIn(0, 2)) {
-                0 -> ProjectsPane(explorer)
-                1 -> YieldsPane(explorer)
-                else -> BuzzPane(explorer, geminiKey)
-            }
-        }
+    when (sub.coerceIn(0, 2)) {
+        0 -> ProjectsPane(explorer)
+        1 -> YieldsPane(explorer)
+        else -> BuzzPane(explorer, geminiKey)
     }
 }
 

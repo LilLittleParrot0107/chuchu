@@ -23,8 +23,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -39,6 +42,7 @@ import com.jossephus.chuchu.data.model.dbtop.DataFreshness
 import com.jossephus.chuchu.ui.components.ChuText
 import com.jossephus.chuchu.ui.components.chart.CashflowEngine
 import com.jossephus.chuchu.ui.components.KohiNoticeBand
+import com.jossephus.chuchu.ui.components.KohiSubTabs
 import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTypography
 import java.util.Locale
@@ -78,23 +82,32 @@ fun DbtopScreen(
     val kpiSummary = remember(capForKpi, currentPerDay, ui.state.apr, ratePoints, cashflowPoints) {
         CashflowEngine.computeKpis(capForKpi, currentPerDay, ui.state.apr, ratePoints.lastOrNull()?.trailSpend, cashflowPoints)
     }
-    val views = remember { DbtopView.entries }
-    val pagerState = rememberPagerState(initialPage = ui.selectedView.ordinal) { views.size }
+    val pagerState = rememberPagerState(initialPage = ui.dashboardPage) { DbtopGroup.PAGE_COUNT }
     val coroutineScope = rememberCoroutineScope()
+    // Nhớ sub-tab xem dở mỗi nhóm (user chốt 27/9: chạm WATCH/PROJ về đúng chỗ đang xem).
+    var watchPage by rememberSaveable { mutableIntStateOf(DbtopGroup.WATCH.firstPage) }
+    var projPage by rememberSaveable { mutableIntStateOf(DbtopGroup.PROJ.firstPage) }
+    val currentPage = pagerState.currentPage
+    val currentGroup = DbtopGroup.groupOf(currentPage)
 
     // Đồng bộ khi người dùng vuốt xong sang trang khác (settled)
     LaunchedEffect(pagerState.settledPage) {
-        val target = views[pagerState.settledPage]
-        if (ui.selectedView != target) {
+        val settled = pagerState.settledPage
+        when (DbtopGroup.groupOf(settled)) {
+            DbtopGroup.WATCH -> watchPage = settled
+            DbtopGroup.PROJ -> projPage = settled
+            else -> Unit
+        }
+        if (ui.dashboardPage != settled) {
             haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-            viewModel.selectView(target)
+            viewModel.selectPage(settled)
         }
     }
 
-    // Đồng bộ khi ViewModel đổi view từ nguồn ngoài (vd: banner cảnh báo rủi ro)
-    LaunchedEffect(ui.selectedView) {
-        if (pagerState.currentPage != ui.selectedView.ordinal) {
-            pagerState.animateScrollToPage(ui.selectedView.ordinal)
+    // Đồng bộ khi ViewModel đổi trang từ nguồn ngoài (vd: banner cảnh báo rủi ro)
+    LaunchedEffect(ui.dashboardPage) {
+        if (pagerState.currentPage != ui.dashboardPage) {
+            pagerState.animateScrollToPage(ui.dashboardPage)
         }
     }
 
@@ -147,7 +160,7 @@ fun DbtopScreen(
                     color = colors.warning,
                     modifier = Modifier.clickable {
                         haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        viewModel.selectView(DbtopView.POSITIONS)
+                        viewModel.selectPage(0)
                         viewModel.togglePosition(critical.positionKey())
                     },
                 )
@@ -165,27 +178,59 @@ fun DbtopScreen(
                 },
             )
             DashboardViewBand(
-                selected = views[pagerState.currentPage],
-                onSelect = { nextView ->
+                selected = currentGroup,
+                onSelect = { nextGroup ->
                     haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                    viewModel.selectView(nextView)
+                    val target = when (nextGroup) {
+                        DbtopGroup.POS -> 0
+                        DbtopGroup.SPEND -> 1
+                        DbtopGroup.WATCH -> watchPage
+                        DbtopGroup.PROJ -> projPage
+                    }
                     coroutineScope.launch {
-                        pagerState.animateScrollToPage(nextView.ordinal)
+                        pagerState.animateScrollToPage(target)
                     }
                 },
             )
 
-            // HorizontalPager: vuốt trái/phải di chuyển mượt mà giữa các tab POS, WATCH, CHART, SPEND
-            // Không compose sẵn trang kề: CHART vẽ canvas, compose ngầm là tốn công vô ích.
+            // Dải sub-tab giờ nằm NGOÀI pager, suy ra từ currentPage; bấm thì nhảy
+            // thẳng trang còn vuốt thì đi lần lượt qua từng sub-tab (user chốt 27/9).
+            val subTabs = when (currentGroup) {
+                DbtopGroup.WATCH -> listOf(
+                    "TOKENS" to watchlistItems.size,
+                    "TRENDING" to (ui.explorer?.trend?.size ?: 0),
+                    "GAINERS" to (ui.explorer?.gain?.size ?: 0),
+                )
+                DbtopGroup.PROJ -> listOf(
+                    "PROJECTS" to (ui.explorer?.projects?.size ?: 0),
+                    "YIELD" to (ui.explorer?.yields?.size ?: 0),
+                    "BUZZ" to (ui.explorer?.x?.size ?: 0),
+                )
+                else -> null
+            }
+            if (subTabs != null) {
+                KohiSubTabs(
+                    tabs = subTabs,
+                    selectedIndex = (currentPage - currentGroup.firstPage).coerceIn(0, subTabs.size - 1),
+                    onSelect = { index ->
+                        coroutineScope.launch {
+                            pagerState.animateScrollToPage(currentGroup.firstPage + index)
+                        }
+                    },
+                )
+            }
+
+            // HorizontalPager: vuốt trái/phải đi lần lượt 8 trang — POS · SPEND ·
+            // TOKENS · TRENDING · GAINERS · PROJECTS · YIELD · BUZZ.
             HorizontalPager(
                 state = pagerState,
-                key = { views[it] },
+                key = { it },
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
             ) { page ->
-                when (views[page]) {
-                    DbtopView.POSITIONS -> {
+                when (page) {
+                    0 -> {
                         if (wide) {
                             // Layout Master-Detail tối ưu cho màn hình gập mở rộng của Vivo X Fold 5
                             Row(
@@ -244,11 +289,7 @@ fun DbtopScreen(
                             )
                         }
                     }
-                    DbtopView.WATCHLIST -> WatchlistView(
-                        items = watchlistItems,
-                        explorer = ui.explorer,
-                    )
-                    DbtopView.SPENDING -> SpendingView(
+                    1 -> SpendingView(
                         spending = ui.spending,
                         flow = ui.flow,
                         moneyDisplay = ui.moneyDisplay,
@@ -257,7 +298,13 @@ fun DbtopScreen(
                         cap = capForKpi,
                         kpis = kpiSummary,
                     )
-                    DbtopView.PROJECTS -> ProjectsView(
+                    in 2..4 -> WatchlistSubPane(
+                        sub = page - DbtopGroup.WATCH.firstPage,
+                        items = watchlistItems,
+                        explorer = ui.explorer,
+                    )
+                    else -> ProjectsSubPane(
+                        sub = page - DbtopGroup.PROJ.firstPage,
                         explorer = ui.explorer,
                         geminiKey = geminiKey,
                     )
@@ -265,7 +312,7 @@ fun DbtopScreen(
             }
 
             // Màn hẹp: detail là BOTTOM SHEET (user đòi 27/8 từ popup giữa màn)
-            if (!wide && ui.selectedView == DbtopView.POSITIONS) {
+            if (!wide && currentGroup == DbtopGroup.POS) {
                 selectedRow?.let { row ->
                     val dismiss = { viewModel.togglePosition(row.positionKey()) }
                     com.jossephus.chuchu.ui.components.KohiBottomSheet(onDismiss = dismiss) {

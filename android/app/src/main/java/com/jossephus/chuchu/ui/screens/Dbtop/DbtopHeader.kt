@@ -190,8 +190,8 @@ internal fun MetricCell(
 
 @Composable
 internal fun DashboardViewBand(
-    selected: DbtopView,
-    onSelect: (DbtopView) -> Unit,
+    selected: DbtopGroup,
+    onSelect: (DbtopGroup) -> Unit,
 ) {
     val colors = ChuColors.current
     val type = ChuTypography.current
@@ -205,7 +205,7 @@ internal fun DashboardViewBand(
             .padding(horizontal = 6.dp, vertical = 5.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        DbtopView.entries.forEach { view ->
+        DbtopGroup.entries.forEach { view ->
             val active = selected == view
             ChuButton(
                 onClick = { onSelect(view) },
