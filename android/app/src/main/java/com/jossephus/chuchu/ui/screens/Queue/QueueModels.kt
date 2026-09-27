@@ -385,7 +385,7 @@ data class FileHit(
     val size: Long,
     val mtimeMs: Long,
 ) {
-    /** Thư mục CHỨA mục này ("" = gốc portal) — chạm kết quả là nhảy vào đó (prototype duyệt 25/9). */
+    /** Thư mục CHỨA mục này ("" = gốc portal) — cột phụ trên hàng kết quả search. */
     val parentDir: String get() = path.substringBeforeLast('/', "")
 }
 

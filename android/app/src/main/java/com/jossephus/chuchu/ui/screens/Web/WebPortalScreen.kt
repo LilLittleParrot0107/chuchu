@@ -209,30 +209,25 @@ fun WebPortalScreen(
         if (path.isEmpty()) onClose() else goUp()
     }
 
-    fun openEntry(entry: PortalEntry) {
-        if (entry.isDir) {
-            path = if (path.isEmpty()) entry.name else "$path/${entry.name}"
-            return
-        }
-        val fileUrl = baseUrl + "/" + encodedPath(
-            if (path.isEmpty()) entry.name else "$path/${entry.name}",
-        )
-        val ext = entry.name.substringAfterLast('.', "").lowercase()
+    /** Mở FILE theo đường dẫn tương đối trong vùng portal — dùng chung listing và kết quả search. */
+    fun openFileAt(rel: String, name: String) {
+        val fileUrl = baseUrl + "/" + encodedPath(rel)
+        val ext = name.substringAfterLast('.', "").lowercase()
         when {
             ext == "apk" -> {
                 runCatching {
                     val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
                     val req = DownloadManager.Request(Uri.parse(fileUrl))
-                        .setTitle(entry.name)
+                        .setTitle(name)
                         .setNotificationVisibility(
                             DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED,
                         )
                         .setDestinationInExternalPublicDir(
                             Environment.DIRECTORY_DOWNLOADS,
-                            entry.name,
+                            name,
                         )
                     dm.enqueue(req)
-                    Toast.makeText(context, "downloading ${entry.name}…", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "downloading $name…", Toast.LENGTH_SHORT).show()
                 }.onFailure {
                     Toast.makeText(context, "download failed: ${it.message}", Toast.LENGTH_LONG).show()
                 }
@@ -242,6 +237,15 @@ fun WebPortalScreen(
             ext in IMAGE_EXT -> viewUrl(context, fileUrl, "image/*")
             else -> viewUrl(context, fileUrl, null)
         }
+    }
+
+    fun openEntry(entry: PortalEntry) {
+        val rel = if (path.isEmpty()) entry.name else "$path/${entry.name}"
+        if (entry.isDir) {
+            path = rel
+            return
+        }
+        openFileAt(rel, entry.name)
     }
 
     Column(
@@ -333,11 +337,17 @@ fun WebPortalScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {
-                                    // Chạm kết quả = vào thư mục CHỨA nó, query giữ nguyên
-                                    // (xem state 2 của prototype duyệt 25/9).
-                                    path = hit.parentDir
-                                    searchHits = null
-                                    searchStat = ""
+                                    // 27/9 (user: "bấm vào file đó thì t ko bấm được, chỉ được
+                                    // đưa đến folder chứa nó"): file = MỞ THẲNG file như listing
+                                    // (apk tải, media mở app xem, còn lại ACTION_VIEW); thư mục
+                                    // = vào chính nó. Bỏ hành vi cũ "nhảy vào thư mục chứa".
+                                    if (hit.isDir) {
+                                        path = hit.path
+                                        searchHits = null
+                                        searchStat = ""
+                                    } else {
+                                        openFileAt(hit.path, hit.name)
+                                    }
                                 }
                                 .padding(horizontal = 14.dp, vertical = 11.dp),
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
