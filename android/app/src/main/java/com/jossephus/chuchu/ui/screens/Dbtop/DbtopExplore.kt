@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -56,6 +57,7 @@ import com.jossephus.chuchu.ui.components.KohiBottomSheet
 import com.jossephus.chuchu.ui.components.KohiCompactAction
 import com.jossephus.chuchu.ui.components.KohiSelectableRow
 import com.jossephus.chuchu.ui.components.RemoteLogo
+import com.jossephus.chuchu.ui.theme.CHU_HAIRLINE_ALPHA
 import com.jossephus.chuchu.ui.theme.ChuColorPalette
 import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTypography
@@ -512,8 +514,9 @@ private fun GainRow(
 }
 
 /**
- * Thẻ BUZZ phẳng như row của app (user chốt 27/9: bỏ viền màu cạnh trái của mock đầu),
- * nền surface + viền hairline. Có bản dịch thì thân chuyển xanh + chip BẢN GỐC.
+ * Thẻ BUZZ nền trong suốt như các hàng khác, phân cách bằng vạch mỏng (user chốt 27/9:
+ * "để cùng màu, phân cách bằng vạch mỏng như mấy cái kia" — trước là ChuCard nền surface
+ * + viền). Có bản dịch thì thân chuyển xanh + chip BẢN GỐC.
  */
 @Composable
 private fun BuzzCard(
@@ -526,16 +529,12 @@ private fun BuzzCard(
     val likes = buzz.likes?.let { if (it >= 1000) String.format(Locale.US, "%.1fk", it / 1000.0) else "$it" }
     val meta = listOfNotNull(buzzWhen(buzz.postTs), likes?.let { "♥ $it" }).joinToString(" · ")
     val body = vi ?: buzz.head
-    ChuCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 3.dp)
-            .clickable(onClick = onClick),
-    ) {
+    Column(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 10.dp, vertical = 9.dp),
+                .clickable(onClick = onClick)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Row(
@@ -600,6 +599,12 @@ private fun BuzzCard(
                 }
             }
         }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(colors.border.copy(alpha = CHU_HAIRLINE_ALPHA)),
+        )
     }
 }
 

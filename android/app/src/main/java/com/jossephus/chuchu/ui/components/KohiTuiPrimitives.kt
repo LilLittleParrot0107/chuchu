@@ -320,8 +320,8 @@ fun KohiSectionBand(
 
 /**
  * Dải sub-tab trong một tab dashboard (mock chốt 27/9, proto-build.html): nhãn + "· n",
- * tab đang chọn màu accent + gạch chân 2dp. Đổi tab bằng CHẠM — không vuốt ngang vì
- * pane nằm trong HorizontalPager của màn, vuốt sẽ bị pager nuốt mất.
+ * tab đang chọn tô accent (27/9 user: bỏ gạch chân 2dp, trông nặng). Đổi tab bằng CHẠM —
+ * không vuốt ngang vì pane nằm trong HorizontalPager của màn, vuốt sẽ bị pager nuốt mất.
  */
 @Composable
 fun KohiSubTabs(
@@ -346,7 +346,7 @@ fun KohiSubTabs(
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Row(
-                    modifier = Modifier.padding(top = 5.dp, bottom = 3.dp),
+                    modifier = Modifier.padding(vertical = 5.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(3.dp),
                 ) {
@@ -359,12 +359,6 @@ fun KohiSubTabs(
                     )
                     ChuText("· $count", style = type.labelSmall, color = colors.textMuted, maxLines = 1)
                 }
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(0.64f)
-                        .height(2.dp)
-                        .background(if (active) colors.accent else Color.Transparent),
-                )
             }
         }
     }
