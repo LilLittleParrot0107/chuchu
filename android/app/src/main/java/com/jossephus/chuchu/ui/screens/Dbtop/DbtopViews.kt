@@ -254,6 +254,9 @@ internal fun NetRateSection(
  * dải GẤP (user 22/9 tối gọi lại: "có ẩn hiện như lúc trước"); xổ ra là BẢNG ngày · in · out như
  * bản 1.62.3, chạm hàng mở tấm chi tiết ngày cùng khung với tấm vị thế.
  * Chạm ô ngày chi tiêu không làm gì. Chưa có flow.json → ô phải hiện tổng năm, không có phân vùng.
+ * 27/9 (user chốt phương án "chart dưới lưới năm" của prototype): lưới BY DAY và lưới tháng đều
+ * 4 ô/dòng — ô ngày dùng số rút gọn; chart NET RATE rời đầu tab, xuống dưới lưới năm, ngay trên
+ * phân vùng FLOW.
  */
 @Composable
 internal fun SpendingView(
@@ -276,14 +279,14 @@ internal fun SpendingView(
         spending.byMonth.entries
             .filter { it.key.startsWith(year) }
             .sortedByDescending { it.key }
-            .chunked(3)
+            .chunked(4)
     }
     val yearTotal = remember(monthRows) { monthRows.sumOf { row -> row.sumOf { it.value } } }
     val dayRows = remember(spending) {
         spending.byDay.entries
             .filter { it.key.startsWith(spending.month) }
             .sortedByDescending { it.key }
-            .chunked(2)
+            .chunked(4)
     }
     // flow chỉ dùng khi cùng tháng với spending — lệch tháng là server chưa quét tới.
     val flowMonth = flow?.takeIf { it.month == spending.month }
@@ -317,17 +320,6 @@ internal fun SpendingView(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = 8.dp),
     ) {
-        // Chart NET RATE lên đầu tab SPEND (user chốt 26/9: "gộp chart vào spend").
-        item(key = "net_rate") {
-            NetRateSection(
-                currentPerDay = currentPerDay,
-                daily = daily,
-                spending = spending,
-                spendByDay = spending.byDay,
-                cap = cap,
-                kpis = kpis,
-            )
-        }
         item(key = "summary") {
             ChuCard(
                 modifier = Modifier
@@ -388,12 +380,14 @@ internal fun SpendingView(
                     rowDays.forEach { (day, usd) ->
                         SpendCell(
                             label = day.substring(8) + "/" + day.substring(5, 7),
-                            value = neg + money(usd),
+                            value = neg + money(usd, compact = true),
                             highlight = false,
                             modifier = Modifier.weight(1f),
                         )
                     }
-                    if (rowDays.size == 1) Spacer(Modifier.weight(1f))
+                    // 4 ô/dòng (user chốt 27/9): dòng cuối lẻ thì để trống giữ cột thẳng,
+                    // không kéo giãn ô.
+                    repeat(4 - rowDays.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
         }
@@ -416,9 +410,21 @@ internal fun SpendingView(
                             modifier = Modifier.weight(1f),
                         )
                     }
-                    repeat(3 - rowMonths.size) { Spacer(Modifier.weight(1f)) }
+                    repeat(4 - rowMonths.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
+        }
+        // Chart NET RATE xuống dưới lưới năm (user chốt 27/9, phương án "chart dưới lưới
+        // năm" của prototype): SPEND mở đầu bằng số chi tiêu, chart nằm cuối khu spend.
+        item(key = "net_rate") {
+            NetRateSection(
+                currentPerDay = currentPerDay,
+                daily = daily,
+                spending = spending,
+                spendByDay = spending.byDay,
+                cap = cap,
+                kpis = kpis,
+            )
         }
         if (flowMonth != null) {
             // Phân vùng FLOW: dải gấp, trạng thái nhớ trong phiên (rememberSaveable); xổ ra là bảng ngày.
