@@ -1,0 +1,182 @@
+package com.jossephus.chuchu.ui.screens.Queue
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.jossephus.chuchu.ui.components.ChuText
+import com.jossephus.chuchu.ui.components.noRippleClickable
+import com.jossephus.chuchu.ui.theme.AgentKind
+import com.jossephus.chuchu.ui.theme.ChuColors
+import com.jossephus.chuchu.ui.theme.ChuTypography
+import com.jossephus.chuchu.ui.theme.sessionColor
+
+/**
+ * Dải chuyển agent NGAY TRONG CHAT (28/9): đang đọc một phiên vẫn nhảy sang
+ * phiên khác mà không cần back ra HỘI THOẠI. Cảm hứng từ tab browser.
+ *
+ * Màn hẹp: hàng ngang cuộn được, đặt ngay TRÊN dải machine (dưới vùng chat,
+ * trên machine + composer). Màn rộng (máy gập mở, ≥ 600dp): cùng dải đó xoay
+ * dọc TRÁI full-height, kiểu KohiSideRail. Tab active gạch màu session
+ * (dưới khi ngang, trái khi dọc) + nền nhẹ; chấm trạng thái và chấm "tin mới"
+ * cùng luật với hàng HỘI THOẠI nên mắt không phải học lại.
+ */
+internal enum class AgentRailOrientation { Horizontal, Vertical }
+
+@Composable
+internal fun QueueAgentRail(
+    agents: List<QueueAgent>,
+    currentPane: String?,
+    chatSeen: Map<String, String>,
+    onSwitch: (String) -> Unit,
+    orientation: AgentRailOrientation,
+    modifier: Modifier = Modifier,
+) {
+    if (agents.isEmpty()) return
+    val colors = ChuColors.current
+    val listState = rememberLazyListState()
+    // Đổi agent (kể cả từ chỗ khác) là dải tự cuộn tới tab đang mở.
+    LaunchedEffect(currentPane, agents.size) {
+        val idx = agents.indexOfFirst { it.pane == currentPane }
+        if (idx >= 0) listState.scrollToItem(idx)
+    }
+    when (orientation) {
+        AgentRailOrientation.Horizontal -> LazyRow(
+            modifier = modifier.fillMaxWidth(),
+            state = listState,
+            contentPadding = PaddingValues(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            items(agents, key = QueueAgent::pane) { agent ->
+                AgentRailTab(
+                    agent = agent,
+                    active = agent.pane == currentPane,
+                    hasNew = agent.chatRev != null && agent.chatRev != chatSeen[agent.pane],
+                    onClick = { if (agent.pane != currentPane) onSwitch(agent.pane) },
+                )
+            }
+        }
+        AgentRailOrientation.Vertical -> LazyColumn(
+            modifier = modifier,
+            state = listState,
+            contentPadding = PaddingValues(vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            items(agents, key = QueueAgent::pane) { agent ->
+                AgentRailSideItem(
+                    agent = agent,
+                    active = agent.pane == currentPane,
+                    hasNew = agent.chatRev != null && agent.chatRev != chatSeen[agent.pane],
+                    onClick = { if (agent.pane != currentPane) onSwitch(agent.pane) },
+                )
+            }
+        }
+    }
+}
+
+/** Một tab ngang kiểu browser: chấm trạng thái + tên phiên + chấm tin mới. */
+@Composable
+private fun AgentRailTab(
+    agent: QueueAgent,
+    active: Boolean,
+    hasNew: Boolean,
+    onClick: () -> Unit,
+) {
+    val colors = ChuColors.current
+    val type = ChuTypography.current
+    val kColor = AgentKind.of(agent.agent).sessionColor(agent.name)
+    Row(
+        modifier = Modifier
+            .noRippleClickable(onClick = onClick)
+            .background(if (active) colors.surfaceVariant else colors.background)
+            // Gạch chân màu session cho tab đang mở — tab kia trong suốt giữ chỗ.
+            .drawBehind {
+                if (active) {
+                    val stroke = 2.dp.toPx()
+                    drawLine(kColor, Offset(0f, size.height - stroke / 2), Offset(size.width, size.height - stroke / 2), stroke)
+                }
+            }
+            .padding(horizontal = 10.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        ChuText(
+            runtimeDot(agent),
+            style = type.labelSmall,
+            color = sessionStatusColor(agent),
+        )
+        Spacer(Modifier.width(6.dp))
+        ChuText(
+            agent.name,
+            style = type.label,
+            color = if (active) kColor else colors.textMuted,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (hasNew) {
+            Spacer(Modifier.width(5.dp))
+            ChuText("●", style = type.labelSmall.copy(fontSize = 7.5.sp), color = colors.accent)
+        }
+    }
+}
+
+/** Một hàng dọc trái: chấm + tên (cắt …) + chấm tin mới; active vạch trái. */
+@Composable
+private fun AgentRailSideItem(
+    agent: QueueAgent,
+    active: Boolean,
+    hasNew: Boolean,
+    onClick: () -> Unit,
+) {
+    val colors = ChuColors.current
+    val type = ChuTypography.current
+    val kColor = AgentKind.of(agent.agent).sessionColor(agent.name)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .noRippleClickable(onClick = onClick)
+            .background(if (active) colors.surfaceVariant else colors.background)
+            .drawBehind {
+                if (active) {
+                    val stroke = 2.dp.toPx()
+                    drawLine(kColor, Offset(stroke / 2, 0f), Offset(stroke / 2, size.height), stroke)
+                }
+            }
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        ChuText(
+            runtimeDot(agent),
+            style = type.labelSmall,
+            color = sessionStatusColor(agent),
+        )
+        Spacer(Modifier.width(7.dp))
+        ChuText(
+            agent.name,
+            style = type.label,
+            color = if (active) kColor else colors.textMuted,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        if (hasNew) {
+            ChuText("●", style = type.labelSmall.copy(fontSize = 7.5.sp), color = colors.accent)
+        }
+    }
+}

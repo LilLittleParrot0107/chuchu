@@ -80,7 +80,7 @@ internal fun stripPreviewMarkdown(text: String): String =
  * glyph server ('●' cho working, '·' cho idle) lam agent dang chay nhin giong
  * dang duoc chon.
  */
-private fun runtimeDot(agent: QueueAgent): String = when (agent.state) {
+internal fun runtimeDot(agent: QueueAgent): String = when (agent.state) {
     // Kẹt/chờ duyệt = chấm ĐỎ như sidebar herdr (user chốt 21/9), không còn tam giác vàng.
     AgentState.Working, AgentState.Blocked -> "●"
     AgentState.Idle, AgentState.Done -> "○"
@@ -176,7 +176,7 @@ private fun QueueModeTab(
  * các tag chữ "new"/"N waiting" rẻ tiền.
  */
 @Composable
-private fun sessionStatusColor(agent: QueueAgent): Color {
+internal fun sessionStatusColor(agent: QueueAgent): Color {
     val colors = ChuColors.current
     return when (agent.state) {
         AgentState.Blocked -> colors.error      // đỏ, khớp herdr

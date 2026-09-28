@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
@@ -56,8 +57,10 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.SoftwareKeyboardController
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.foundation.layout.width
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.offset
@@ -278,6 +281,10 @@ fun QueueScreen(
             .background(colors.background)
             .imePadding(),
     ) {
+        // Màn rộng (máy gập mở, ≥ 600dp — cùng ngưỡng KohiNavShell/Dbtop/composer):
+        // dải agent trong chat xoay dọc trái. Chốt ở tầng BoxWithConstraints vì sâu
+        // trong Column là ColumnScope che mất maxWidth.
+        val wide = maxWidth >= 600.dp
         // Roster cu (cao toi 35% man) da thay bang dai chip luon cao 36dp, khong
         // con tranh cho voi ban phim — hang so dpmax cu bo theo.
         // Scrim status bar = surface: khop voi command band ngay duoi, het
@@ -368,42 +375,59 @@ fun QueueScreen(
 
             if (chatOpen) {
                 // ── MÀN CHAT: roster + việc + dải máy nhường chỗ, chat ăn hết (user chốt 16/9 "mở hoàn toàn") ──
-                val dotColor = chatAgent?.tone?.color() ?: colors.textMuted
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    ChuText("● ", style = ChuTypography.current.labelSmall, color = dotColor)
-                    ChuText(
-                        buildString {
-                            append(chatAgent?.label?.lowercase() ?: "…")
-                            append(" · ${chatMessages.size} tin")
-                            chatAge(chat.updatedAt).takeIf { it.isNotEmpty() }?.let { append(" · $it") }
-                            if (chat.cwd.isNotBlank()) append(" · cwd ${chat.cwd.replace("/home/a", "~")}")
-                        },
-                        style = ChuTypography.current.labelSmall,
-                        color = colors.textMuted,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                // Dải chuyển agent NGAY TRONG CHAT (28/9): đang đọc một phiên vẫn nhảy sang
+                // phiên khác không cần back. Cùng đường với chạm hàng HỘI THOẠI: nhớ pane làm
+                // đích khi back ra + mở chat mới (ViewModel reset + poll lại).
+                val onSwitchAgent: (String) -> Unit = { p -> selectedPane = p; onOpenChat(p) }
+                if (wide) {
+                    // Rộng: dải dọc TRÁI full-height, nội dung chat sang phải.
+                    Row(Modifier.fillMaxWidth().weight(1f)) {
+                        QueueAgentRail(
+                            agents = agents,
+                            currentPane = chat.pane,
+                            chatSeen = chatSeen,
+                            onSwitch = onSwitchAgent,
+                            orientation = AgentRailOrientation.Vertical,
+                            modifier = Modifier.width(172.dp).fillMaxHeight(),
+                        )
+                        ChatThreadView(
+                            chat = chat,
+                            chatAgent = chatAgent,
+                            chatMessages = chatMessages,
+                            chatFontSizeSp = chatFontSizeSp,
+                            chatListState = chatListState,
+                            onLoadOlder = onLoadOlderChat,
+                            onAnswerBlocked = onAnswerBlocked,
+                            onSubmitBlocked = onSubmitBlocked,
+                            composerFocus = composerFocus,
+                            keyboard = keyboard,
+                            modifier = Modifier.weight(1f).fillMaxHeight(),
+                        )
+                    }
+                } else {
+                    // Hẹp: chat ăn hết như cũ + dải tab ngang NGAY TRÊN dải machine.
+                    ChatThreadView(
+                        chat = chat,
+                        chatAgent = chatAgent,
+                        chatMessages = chatMessages,
+                        chatFontSizeSp = chatFontSizeSp,
+                        chatListState = chatListState,
+                        onLoadOlder = onLoadOlderChat,
+                        onAnswerBlocked = onAnswerBlocked,
+                        onSubmitBlocked = onSubmitBlocked,
+                        composerFocus = composerFocus,
+                        keyboard = keyboard,
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                    )
+                    QueueAgentRail(
+                        agents = agents,
+                        currentPane = chat.pane,
+                        chatSeen = chatSeen,
+                        onSwitch = onSwitchAgent,
+                        orientation = AgentRailOrientation.Horizontal,
+                        modifier = Modifier.fillMaxWidth(),
                     )
                 }
-                QueueChatView(
-                    chat = chat,
-                    onLoadOlder = onLoadOlderChat,
-                    messages = chatMessages,
-                    fontSizeSp = chatFontSizeSp,
-                    kind = AgentKind.of(chatAgent?.agent),
-                    listState = chatListState,
-                    onAnswerBlocked = { opt ->
-                        onAnswerBlocked(opt.n)
-                        if (opt.opensComposer) {
-                            composerFocus.requestFocus()
-                            keyboard?.show()
-                        }
-                    },
-                    onSubmitBlocked = onSubmitBlocked,
-                    modifier = Modifier.fillMaxWidth().weight(1f),
-                )
             } else {
             // Paused da hien trong status cua command band -> khong lap lai
             // bang mot notice band 28dp nua.
@@ -693,9 +717,67 @@ private fun queueStatusText(ui: QueueUiState): String {
 
 private const val FEEDBACK_TTL_MS = 3_200L
 
+/**
+ * Thân thread chat (hàng meta + danh sách tin): tách riêng để nhánh chatOpen rẽ
+ * hẹp/rộng (28/9) mà không chép hai bản — meta và QueueChatView chỉ định nghĩa một lần.
+ */
+@Composable
+private fun ChatThreadView(
+    chat: ChatUiState,
+    chatAgent: QueueAgent?,
+    chatMessages: List<ChatMessage>,
+    chatFontSizeSp: Float,
+    chatListState: LazyListState,
+    onLoadOlder: () -> Unit,
+    onAnswerBlocked: (Int) -> Unit,
+    onSubmitBlocked: (List<Int>) -> Unit,
+    composerFocus: FocusRequester,
+    keyboard: SoftwareKeyboardController?,
+    modifier: Modifier = Modifier,
+) {
+    val colors = ChuColors.current
+    Column(modifier = modifier) {
+        val dotColor = chatAgent?.tone?.color() ?: colors.textMuted
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            ChuText("● ", style = ChuTypography.current.labelSmall, color = dotColor)
+            ChuText(
+                buildString {
+                    append(chatAgent?.label?.lowercase() ?: "…")
+                    append(" · ${chatMessages.size} tin")
+                    chatAge(chat.updatedAt).takeIf { it.isNotEmpty() }?.let { append(" · $it") }
+                    if (chat.cwd.isNotBlank()) append(" · cwd ${chat.cwd.replace("/home/a", "~")}")
+                },
+                style = ChuTypography.current.labelSmall,
+                color = colors.textMuted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        QueueChatView(
+            chat = chat,
+            onLoadOlder = onLoadOlder,
+            messages = chatMessages,
+            fontSizeSp = chatFontSizeSp,
+            kind = AgentKind.of(chatAgent?.agent),
+            listState = chatListState,
+            onAnswerBlocked = { opt ->
+                onAnswerBlocked(opt.n)
+                if (opt.opensComposer) {
+                    composerFocus.requestFocus()
+                    keyboard?.show()
+                }
+            },
+            onSubmitBlocked = onSubmitBlocked,
+            modifier = Modifier.fillMaxWidth().weight(1f),
+        )
+    }
+}
+
 /** Việc cần làm với một cú back khi đang ở màn Queue. */
 internal enum class QueueBackAction { CloseChat, CloseTasks, GoToThreads, Leave }
-
 /**
  * Luật back của màn Queue, tách khỏi Compose để test được. Bóc lớp từ trên xuống:
  * chat toàn màn → bảng VIỆC → trang FILES/MACHINE lùi về HỘI THOẠI → ở gốc mới
