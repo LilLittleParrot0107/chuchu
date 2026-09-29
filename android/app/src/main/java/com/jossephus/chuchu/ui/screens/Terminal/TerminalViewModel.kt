@@ -80,6 +80,7 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
         noClientMessage = "No qsrv address yet — set it in Settings, same as the Queue tab",
     )
     val machineState: StateFlow<MachineUiState> get() = machinePoller.state
+    val stripCells: StateFlow<List<String>> get() = settingsRepository.stripCells
 
     fun selectFilesSegment(segment: FilesSegment) {
         if (_filesSegment.value == segment) return

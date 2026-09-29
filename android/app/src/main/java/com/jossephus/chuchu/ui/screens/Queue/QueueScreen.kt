@@ -93,9 +93,11 @@ fun QueueScreen(
     currentUrl: String,
     currentToken: String,
     onSaveConfig: (String, String) -> Unit,
-    onFetchResponse: (suspend (Int) -> String?)? = null,
     onBack: () -> Unit = {},
     machine: MachineUiState = MachineUiState(),
+    /** Ô trên dải machine (28/9): user chọn trong QUEUE SETTINGS. */
+    stripCells: List<String> = StripCells.DEFAULT,
+    onToggleStripCell: (String) -> Unit = {},
     onMachineVisible: (Boolean) -> Unit = {},
     onUsageVisible: (Boolean) -> Unit = {},
     onRefreshUsage: () -> Unit = {},
@@ -565,6 +567,7 @@ fun QueueScreen(
                         // MACHINE (25/9): bảng usage/machine — tab xem, không ô gõ.
                         QueueMode.Machine -> MachineStrip(
                             machine,
+                            cells = stripCells,
                             onUsageVisible = onUsageVisible,
                             onRefreshUsage = onRefreshUsage,
                             onSwitchAgyAccount = onSwitchAgyAccount,
@@ -588,7 +591,7 @@ fun QueueScreen(
                 // dưới thanh snippet lúc t chat rồi?"): bản 25/9 gỡ cả dải khi dời bảng
                 // usage/machine sang tab MACHINE. Chỉ trả HÀNG LIẾC read-only — bảng to
                 // vẫn ở tab MACHINE; gõ việc mới là lúc cần biết máy còn tải nổi không.
-                MachineStrip(machine, preview = true)
+                MachineStrip(machine, preview = true, cells = stripCells)
                 QueueComposer(
                     modifier = Modifier.onSizeChanged { composerHeightPx = it.height },
                     value = prompt,
@@ -648,7 +651,6 @@ fun QueueScreen(
                     onAction(action, task.id)
                     inspectedTaskId = null
                 },
-                onFetchResponse = onFetchResponse,
             )
         }
 
@@ -656,6 +658,8 @@ fun QueueScreen(
             QueueConfigDialog(
                 currentUrl = currentUrl,
                 currentToken = currentToken,
+                stripCells = stripCells,
+                onToggleStripCell = onToggleStripCell,
                 onSave = { url, token ->
                     onSaveConfig(url, token)
                     configOpen = false

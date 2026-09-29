@@ -264,6 +264,12 @@ fun KohiNavShell(
     queueBadge: Int?,
     onSelect: (KohiTab) -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * Ẩn rail trái trên màn rộng (28/9, user: vào thread chat trên máy gập thì
+     * chat tràn màn, back ra là rail về). Chỉ màn rộng có rail nên màn hẹp
+     * không bị ảnh hưởng.
+     */
+    hideRail: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     // Terminal va queue-mo-tu-terminal deu la fullscreen modal: an toan bo
@@ -276,7 +282,7 @@ fun KohiNavShell(
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         val wide = maxWidth >= 600.dp
         if (wide) {
-            if (isFullscreenTerminal) {
+            if (isFullscreenTerminal || hideRail) {
                 // Fullscreen cho Terminal trên màn hình rộng / máy gập mở: Terminal chiếm 100% diện tích
                 Box(modifier = Modifier.fillMaxSize()) { content() }
             } else {

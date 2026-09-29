@@ -514,7 +514,7 @@ private fun TimeStamp(ts: String, color: androidx.compose.ui.graphics.Color? = n
     }
 }
 
-private const val CHAT_OLDER_LABEL = "50"
+private const val CHAT_OLDER_LABEL = "15"
 
 /** "2026-09-16T05:04:31.123Z" → "12:04" theo giờ máy; chuỗi lạ thì rỗng. */
 internal fun chatClock(ts: String): String {

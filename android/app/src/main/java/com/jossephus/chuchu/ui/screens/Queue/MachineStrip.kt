@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -50,8 +51,9 @@ import java.util.Locale
 private const val STALE_AFTER_S = 15L
 
 /**
- * Số liếc của dải máy: bốn con + tuổi + vạch màu trái. Tách riêng vì hai nơi
- * dùng: dải preview trên compose box terminal và đầu trang MACHINE (25/9).
+ * Số liếc của dải máy: vạch màu + tuổi + danh sách ô. Ô nào vẽ do user chọn
+ * (28/9, StripCells) — mặc định đúng 4 ô cũ RAM·CPU·CL5H·CLWK. Tách riêng vì hai
+ * nơi dùng: dải preview trên compose box terminal và đầu trang MACHINE (25/9).
  */
 private data class Glance(
     val ram: Double,
@@ -63,6 +65,48 @@ private data class Glance(
     val alpha: Float,
     val edge: Color,
 )
+
+/** Một ô trên dải: nhãn + giá trị + màu (luật màu từng nguồn giữ nguyên). */
+private data class StripCell(val label: String, val value: String, val color: Color)
+
+/**
+ * Dựng ô theo danh sách user chọn. Nguồn thiếu số (quota chưa về, CPU nhịp đầu)
+ * thì ô đó RỚT — dải không vẽ "—" giữ chỗ (khác placeholder lúc chưa có readout).
+ */
+@Composable
+private fun stripCellsOf(readout: MachineReadout, ids: List<String>): List<StripCell> {
+    val colors = ChuColors.current
+    val s = readout.snapshot
+    val agyCur = s.agy?.accounts?.firstOrNull { it.id == s.agy?.current }
+    return ids.mapNotNull { id ->
+        when (id) {
+            StripCells.RAM -> StripCell("RAM", pct(s.memPct), tone(s.memPct, 70.0, 85.0, colors))
+            StripCells.CPU -> readout.cpuPct?.let { StripCell("CPU", pct(it), tone(it, 70.0, 85.0, colors)) }
+            StripCells.CL5H -> s.claude?.session?.usedPct?.let {
+                StripCell("CL·5H", "${100 - it}%", leftTone((100 - it).toDouble(), colors))
+            }
+            StripCells.CLWK -> s.claude?.week?.usedPct?.let {
+                StripCell("CL·WK", "${100 - it}%", leftTone((100 - it).toDouble(), colors))
+            }
+            StripCells.AGY5H -> agyCur?.pct5h?.let {
+                StripCell("AGY·5H", "${it.toInt()}%", leftTone(it, colors))
+            }
+            StripCells.AGYWK -> agyCur?.pctWeek?.let {
+                StripCell("AGY·WK", "${it.toInt()}%", leftTone(it, colors))
+            }
+            StripCells.BAI -> s.bai?.takeIf { it.ok }?.let {
+                StripCell("BAI", "${credits(it.balance)}cr", colors.textPrimary)
+            }
+            StripCells.OC5H -> s.opencode?.takeIf { it.ok }?.rolling?.let {
+                StripCell("OC·5H", "${(100 - it.usedPct).toInt()}%", leftTone(100 - it.usedPct, colors))
+            }
+            StripCells.OCWK -> s.opencode?.takeIf { it.ok }?.weekly?.let {
+                StripCell("OC·WK", "${(100 - it.usedPct).toInt()}%", leftTone(100 - it.usedPct, colors))
+            }
+            else -> null
+        }
+    }
+}
 
 @Composable
 private fun glanceOf(readout: MachineReadout): Glance {
@@ -116,6 +160,11 @@ internal fun MachineStrip(
      * cuộn được — không còn đóng/mở theo bàn phím, tab là bề mặt XEM.
      */
     asPage: Boolean = false,
+    /**
+     * Ô vẽ trên dải (28/9, user tự chọn trong QUEUE SETTINGS). null = mặc định
+     * RAM·CPU·CL5H·CLWK — chỗ gọi chưa luồn setting thì giữ nguyên như cũ.
+     */
+    cells: List<String>? = null,
 ) {
     val readout = state.readout
     if (readout == null) {
@@ -126,10 +175,12 @@ internal fun MachineStrip(
         return
     }
     val glance = glanceOf(readout)
+    val strip = stripCellsOf(readout, cells ?: StripCells.DEFAULT)
     if (asPage) {
         MachineTabPage(
             readout = readout,
             glance = glance,
+            cells = strip,
             onUsageVisible = onUsageVisible,
             onRefreshUsage = onRefreshUsage,
             onSwitchAgyAccount = onSwitchAgyAccount,
@@ -137,16 +188,18 @@ internal fun MachineStrip(
         )
         return
     }
-    GlanceRow(glance = glance, expandable = false, open = false, onToggle = {}, modifier = modifier)
+    GlanceRow(glance = glance, cells = strip, expandable = false, open = false, onToggle = {}, modifier = modifier)
 }
 
 /**
- * Bốn số liếc + tuổi số + vạch màu trái. [expandable] = false thì bỏ caret ▾/▴
- * và không bắt chạm (dải preview terminal, đầu trang MACHINE).
+ * Dải liếc + tuổi số + vạch màu trái. Ô nào vẽ do [cells] (user chọn, 28/9) —
+ * nhiều ô thì phần ô cuộn ngang, tuổi số và caret đứng yên bên phải. [expandable]
+ * = false thì bỏ caret ▾/▴ và không bắt chạm (dải preview terminal, đầu trang MACHINE).
  */
 @Composable
 private fun GlanceRow(
     glance: Glance,
+    cells: List<StripCell>,
     expandable: Boolean,
     open: Boolean,
     onToggle: () -> Unit,
@@ -184,11 +237,12 @@ private fun GlanceRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.width(2.dp).height(30.dp).background(glance.edge))
-        Cell("RAM", pct(glance.ram), tone(glance.ram, 70.0, 85.0, colors), glance.alpha)
-        Cell("CPU", glance.cpu?.let { pct(it) } ?: "—", tone(glance.cpu ?: 0.0, 70.0, 85.0, colors), glance.alpha)
-        Cell("5H", glance.h5?.let { "$it%" } ?: "—", leftTone((glance.h5 ?: 100).toDouble(), colors), glance.alpha)
-        Cell("WEEK", glance.wk?.let { "$it%" } ?: "—", leftTone((glance.wk ?: 100).toDouble(), colors), glance.alpha)
-        Box(Modifier.weight(1f))
+        Row(
+            modifier = Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            cells.forEach { c -> Cell(c.label, c.value, c.color, glance.alpha) }
+        }
         ChuText(
             if (glance.stale) age(glance.ageS) else "${glance.ageS}s",
             style = type.labelSmall,
@@ -215,6 +269,7 @@ private fun GlanceRow(
 private fun MachineTabPage(
     readout: MachineReadout,
     glance: Glance,
+    cells: List<StripCell>,
     onUsageVisible: (Boolean) -> Unit,
     onRefreshUsage: () -> Unit,
     onSwitchAgyAccount: (String) -> Unit,
@@ -229,7 +284,7 @@ private fun MachineTabPage(
         onDispose { onUsageVisible(false) }
     }
     Column(modifier.fillMaxSize().background(colors.background)) {
-        GlanceRow(glance = glance, expandable = false, open = false, onToggle = {}, topHairline = false)
+        GlanceRow(glance = glance, cells = cells, expandable = false, open = false, onToggle = {}, topHairline = false)
         Column(
             Modifier
                 .weight(1f)
@@ -461,7 +516,7 @@ private fun UsagePage(readout: MachineReadout, alpha: Float) {
     val colors = ChuColors.current
     val type = ChuTypography.current
     val s = readout.snapshot
-    if (s.claude == null && s.agy == null && s.bai == null) {
+    if (s.claude == null && s.agy == null && s.bai == null && s.opencode == null) {
         ChuText("Loading quota…", style = rowStyle(), color = colors.textMuted)
         return
     }
@@ -518,6 +573,20 @@ private fun UsagePage(readout: MachineReadout, alpha: Float) {
                 color = (if (b.ok) colors.textPrimary else colors.textMuted).copy(alpha = alpha),
                 maxLines = 1, modifier = Modifier.width(PANEL_RIGHT_W.dp),
             )
+        }
+    }
+    // opencode-go (28/9): subscription như Claude — percent ĐÃ DÙNG nên đổi ra CÒN
+    // LẠI trước khi vẽ (đúng luật thanh bình xăng). Nhãn accentSecondary = màu họ
+    // OPENCODE trong roster (AgentKind.OPENCODE), cùng cách đặt tên cl·/agy·/bai·.
+    s.opencode?.takeIf { it.ok }?.let { oc ->
+        listOf("oc·5h" to oc.rolling, "oc·week" to oc.weekly).forEach { (name, w) ->
+            w?.let {
+                val left = (100 - it.usedPct).toInt()
+                BlockBar(name, left / 100.0, "$left%", leftColor(left, colors),
+                    tail = resetIn(it.resetsEpoch, it.resetsAt ?: ""),
+                    alpha = alpha, labelColor = colors.accentSecondary, labelWidth = PANEL_LABEL_W, reserveTail = true, modifier = rowMod(),
+                    fontSize = PANEL_BAR_SP, textSize = PANEL_TEXT_SP)
+            }
         }
     }
 }

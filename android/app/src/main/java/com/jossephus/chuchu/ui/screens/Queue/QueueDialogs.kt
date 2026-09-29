@@ -1,9 +1,6 @@
 package com.jossephus.chuchu.ui.screens.Queue
 
 import com.jossephus.chuchu.ui.components.LinkifiedText
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -12,8 +9,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -28,63 +27,52 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.jossephus.chuchu.ui.components.ChuDialog
 import com.jossephus.chuchu.ui.components.ChuText
 import com.jossephus.chuchu.ui.components.ChuTextField
+import com.jossephus.chuchu.ui.components.noRippleClickable
 import com.jossephus.chuchu.ui.components.KohiCompactAction
-import com.jossephus.chuchu.ui.components.MiniMarkdownText
 import com.jossephus.chuchu.ui.components.TuiBadge
 import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTypography
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
+/**
+ * Chi tiết MỘT task (28/9 làm gọn: user chỉ cần biết task ĐÃ GỬI chưa) — xem câu
+ * trả lời của agent đã gỡ hẳn (model hasResp, cache response, fetch, panel cuộn
+ * response đều xoá, không để code chết). Còn lại: trạng thái gửi + prompt + actions.
+ */
 internal fun TaskDetailDialog(
     task: QueueTask,
     onDismiss: () -> Unit,
     onCopy: () -> Unit,
     onAction: (QueueAction) -> Unit,
-    onFetchResponse: (suspend (Int) -> String?)? = null,
 ) {
     val colors = ChuColors.current
     val type = ChuTypography.current
-    val context = LocalContext.current
-    var responseText by remember { mutableStateOf<String?>(null) }
-    var loadingResponse by remember { mutableStateOf(false) }
-
-    // retry đếm thêm lần bấm ↻ — trước đây fetch hỏng thì dialog chết luôn
-    // không có đường thử lại.
-    var retry by remember { mutableStateOf(0) }
     var copiedPrompt by remember { mutableStateOf(false) }
-    var copiedResponse by remember { mutableStateOf(false) }
     LaunchedEffect(copiedPrompt) {
         if (copiedPrompt) {
             delay(1500)
             copiedPrompt = false
         }
     }
-    LaunchedEffect(copiedResponse) {
-        if (copiedResponse) {
-            delay(1500)
-            copiedResponse = false
-        }
-    }
-    LaunchedEffect(task.id, task.hasResp, retry) {
-        if (task.hasResp || task.isCompleted) {
-            loadingResponse = true
-            responseText = onFetchResponse?.invoke(task.id)
-            loadingResponse = false
-        }
+    // Dòng gửi: trạng thái + giờ gửi + lý do (nếu có). Ví dụ "unknown · gửi 03:09 ·
+    // mồ côi sau khi qd khởi động lại" — đủ biết có tới agent chưa mà không cần đoán.
+    val delivery = buildString {
+        append(task.stateLabel.ifBlank { task.state })
+        if (task.sentTs != null) append(" · gửi ${epochClock(task.sentTs)}") else append(" · chưa gửi")
+        if (task.reason.isNotBlank()) append(" · ${task.reason}")
     }
     // Gioi han dialog theo chieu cao man hinh: header + nut hanh dong LUON thay,
-    // phan giua (prompt + response) tu cuon khi dai — truoc day Column de tran
-    // khoi man hinh, response chi duoc 240dp nen doc rat ngop.
+    // prompt dai thi tu cuon — truoc day Column de tran khoi man hinh.
     val maxDialogH = (LocalConfiguration.current.screenHeightDp * 0.86f).dp
 
     // Bottom sheet chung (scrim + truot + inset): xem KohiBottomSheet.
@@ -111,6 +99,14 @@ internal fun TaskDetailDialog(
                 KohiCompactAction(label = "✕", onClick = onDismiss)
             }
 
+            ChuText(
+                delivery,
+                style = type.labelSmall,
+                color = colors.textMuted,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+            )
+
             Column(
                 modifier = Modifier
                     .weight(1f, fill = false)
@@ -121,7 +117,7 @@ internal fun TaskDetailDialog(
                 // Prompt thường ngắn — bỏ panel cuộn riêng, outer scroll gánh:
                 // còn 1 mức nested scroll thay vì 2.
                 // Prompt cua user -10% (27/8: giam 20% xong user keu nho qua,
-                // nang lai 10) — response agent giu nguyen. Scale ca lineHeight,
+                // nang lai 10). Scale ca lineHeight,
                 // khong lap lai bug chu de nhau ben dashboard.
                 // Link trong prompt cũng bấm được (16/9, user: "link bên Queue phải bấm vào được").
                 LinkifiedText(
@@ -132,20 +128,6 @@ internal fun TaskDetailDialog(
                     ),
                     color = colors.textPrimary,
                 )
-
-                when {
-                    loadingResponse -> ChuText("LOADING AGENT RESPONSE…", style = type.labelSmall, color = colors.accent)
-                    task.isCompleted && responseText.isNullOrBlank() && !loadingResponse ->
-                        KohiCompactAction(label = "↻ RETRY", onClick = { retry++ })
-                    !responseText.isNullOrBlank() -> {
-                        ChuText("AGENT RESPONSE", style = type.labelSmall, color = colors.accent)
-                        ScrollableTextPanel(
-                            text = responseText.orEmpty(),
-                            maxHeight = 380,
-                            markdown = true,
-                        )
-                    }
-                }
             }
 
             FlowRow(
@@ -160,16 +142,6 @@ internal fun TaskDetailDialog(
                         copiedPrompt = true
                     },
                 )
-                if (!responseText.isNullOrBlank()) {
-                    KohiCompactAction(
-                        label = if (copiedResponse) "COPIED ✓" else "COPY RESPONSE",
-                        onClick = {
-                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            clipboard.setPrimaryClip(ClipData.newPlainText("Agent response", responseText))
-                            copiedResponse = true
-                        },
-                    )
-                }
                 // DELETE một phát ăn ngay từng là cơn ác mộng — lần đầu chỉ
                 // khoá súng ("CONFIRM?"), lần hai mới xoá thật.
                 var armedDelete by remember(task.id) { mutableStateOf(false) }
@@ -189,31 +161,14 @@ internal fun TaskDetailDialog(
 }
 
 @Composable
-private fun ScrollableTextPanel(text: String, maxHeight: Int, markdown: Boolean = false) {
-    val colors = ChuColors.current
-    val type = ChuTypography.current
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(max = maxHeight.dp)
-            .background(colors.surfaceVariant)
-            .padding(8.dp)
-            .verticalScroll(rememberScrollState()),
-    ) {
-        if (markdown) {
-            MiniMarkdownText(text)
-        } else {
-            ChuText(text, style = type.body, color = colors.textPrimary)
-        }
-    }
-}
-
-@Composable
 internal fun QueueConfigDialog(
     currentUrl: String,
     currentToken: String,
     onSave: (String, String) -> Unit,
     onDismiss: () -> Unit,
+    /** Ô trên dải machine (28/9): toggle áp dụng NGAY, không chờ SAVE (như mọi toggle setting). */
+    stripCells: List<String> = StripCells.DEFAULT,
+    onToggleStripCell: (String) -> Unit = {},
 ) {
     val colors = ChuColors.current
     val type = ChuTypography.current
@@ -269,6 +224,35 @@ internal fun QueueConfigDialog(
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { onSave(url.trim(), token.trim()) }),
             )
+            ChuText(
+                "STRIP — CELLS ON THE MACHINE STRIP",
+                style = type.labelSmall.copy(fontWeight = FontWeight.Bold),
+                color = colors.accent,
+            )
+            StripCells.ALL.forEach { id ->
+                val on = id in stripCells
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .noRippleClickable { onToggleStripCell(id) }
+                        .padding(vertical = 3.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    ChuText(
+                        if (on) "[✔]" else "[ ]",
+                        style = type.label.copy(fontWeight = FontWeight.Bold),
+                        color = if (on) colors.success else colors.textMuted,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    ChuText(
+                        StripCells.label(id),
+                        style = type.label,
+                        color = if (on) colors.textPrimary else colors.textMuted,
+                        modifier = Modifier.weight(1f),
+                    )
+                    ChuText(StripCells.hint(id), style = type.labelSmall, color = colors.textMuted)
+                }
+            }
         }
     }
 }

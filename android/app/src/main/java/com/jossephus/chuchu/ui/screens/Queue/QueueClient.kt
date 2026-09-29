@@ -59,11 +59,6 @@ class QueueClient(
         data class Failed(val message: String, val needsAuth: Boolean = false) : MachineFetch
     }
 
-    sealed interface FetchResponse {
-        data class Success(val markdown: String) : FetchResponse
-        data class Failed(val message: String) : FetchResponse
-    }
-
     sealed interface ChatFetch {
         data class Fresh(val page: ChatPage) : ChatFetch
         /** since == rev trên server (304) — giữ trang đang xem. */
@@ -287,6 +282,18 @@ class QueueClient(
      * Trang thai may. Cung duong, cung auth voi hang doi — tab Queue chay duoc
      * thi tab nay cung chay duoc.
      */
+    /** Đồng bộ blocklist FOLLOW lên server (29/9): gửi FULL-SET để 2 bên tự khớp
+     *  (replace) — lần sau online là lành dù lần trước rớt mạng. Trả true nếu nhận. */
+    fun followHideSync(handles: Set<String>): Boolean = try {
+        val arr = org.json.JSONArray()
+        handles.forEach { arr.put(it) }
+        val (code, _) = request("/follow/hide",
+            JSONObject().put("handles", arr).toString().toByteArray(Charsets.UTF_8))
+        code == HttpURLConnection.HTTP_OK
+    } catch (e: Exception) {
+        false
+    }
+
     fun machine(quota: String? = null): MachineFetch = try {
         // quota=1 chi gui khi nguoi dung dang XEM trang USAGE: server se lam moi
         // cache quota (ton mot tien trinh claude ~5s/380MB), con binh thuong thi
@@ -362,27 +369,6 @@ class QueueClient(
             if (!mode.isNullOrEmpty()) put("mode", mode)
         }
         return send("/add", payload)
-    }
-
-    fun fetchResponse(id: Int): FetchResponse {
-        return try {
-            val (code, body) = request("/response?id=$id", null)
-            when (code) {
-                HttpURLConnection.HTTP_OK -> {
-                    val o = JSONObject(body)
-                    val md = o.optString("markdown", "")
-                    FetchResponse.Success(md)
-                }
-                HttpURLConnection.HTTP_NOT_FOUND -> {
-                    FetchResponse.Failed("This task does not have a response yet")
-                }
-                else -> FetchResponse.Failed("Could not load the response ($code)")
-            }
-        } catch (e: IOException) {
-            FetchResponse.Failed(offlineMessage(e))
-        } catch (e: Exception) {
-            FetchResponse.Failed("Could not read the response")
-        }
     }
 
     /**

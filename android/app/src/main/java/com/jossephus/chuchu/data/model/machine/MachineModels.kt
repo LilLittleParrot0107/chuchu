@@ -34,6 +34,7 @@ data class MachineSnapshot(
     val agy: AgyQuota?,
     val claude: ClaudeQuota?,
     val bai: BaiQuota?,
+    val opencode: OpencodeQuota?,
 ) {
     val memUsedKb: Long get() = (memTotalKb - memAvailKb).coerceAtLeast(0)
     val memPct: Double get() = if (memTotalKb > 0) 100.0 * memUsedKb / memTotalKb else 0.0
@@ -71,6 +72,18 @@ data class AgyAccount(
 data class AgyQuota(val current: String, val accounts: List<AgyAccount>, val cacheTs: Long)
 
 data class ClaudeWindow(val usedPct: Int, val resetsAt: String?, val resetsEpoch: Long?)
+
+/** Quota gói OpenCode Go (28/9): rolling 5h / weekly / monthly qua zen/go/v1/usage.
+ *  [usedPct] là phần trăm ĐÃ DÙNG (giống Claude, ngược agy) — UI đổi ra CÒN LẠI khi vẽ. */
+data class OpencodeWindow(val usedPct: Double, val resetsAt: String?, val resetsEpoch: Long?)
+data class OpencodeQuota(
+    val ok: Boolean,
+    val rolling: OpencodeWindow?,
+    val weekly: OpencodeWindow?,
+    val monthly: OpencodeWindow?,
+    val dataTs: Long,
+    val error: String?,
+)
 
 /** Quota Claude — [sessionPct]/[weekPct] la phan tram DA DUNG (nguoc voi agy). */
 data class ClaudeQuota(
@@ -212,6 +225,7 @@ fun parseMachineSnapshot(json: String): MachineSnapshot {
         agy = quota?.optJSONObject("agy")?.let { parseAgy(it) },
         claude = quota?.optJSONObject("claude")?.let { parseClaude(it) },
         bai = quota?.optJSONObject("bai")?.let { parseBai(it) },
+        opencode = quota?.optJSONObject("opencode")?.let { parseOpencode(it) },
     )
 }
 
@@ -277,3 +291,28 @@ private fun parseBai(o: JSONObject): BaiQuota = BaiQuota(
     dataTs = o.optLong("ts", 0L),
     error = o.optString("error").takeIf { it.isNotBlank() && it != "null" },
 )
+
+/** resetsAt của zen API có mili giây ("...32.920Z") — isoEpoch chuẩn (tới giây) không ăn. */
+private fun isoEpochLenient(s: String?): Long? {
+    if (s.isNullOrBlank() || s == "null") return null
+    val t = if (s.length > 20 && s[19] == '.') s.substring(0, 19) + "Z" else s
+    return isoEpoch(t)
+}
+
+private fun parseOpencode(o: JSONObject): OpencodeQuota {
+    fun window(key: String): OpencodeWindow? = o.optJSONObject(key)?.let {
+        OpencodeWindow(
+            usedPct = it.optDouble("pct", Double.NaN).takeIf { v -> !v.isNaN() } ?: return@let null,
+            resetsAt = it.optString("reset").takeIf { s -> s.isNotBlank() && s != "null" },
+            resetsEpoch = isoEpochLenient(it.optString("reset")),
+        )
+    }
+    return OpencodeQuota(
+        ok = o.optBoolean("ok", false),
+        rolling = window("rolling"),
+        weekly = window("weekly"),
+        monthly = window("monthly"),
+        dataTs = o.optLong("ts", 0L),
+        error = o.optString("error").takeIf { it.isNotBlank() && it != "null" },
+    )
+}

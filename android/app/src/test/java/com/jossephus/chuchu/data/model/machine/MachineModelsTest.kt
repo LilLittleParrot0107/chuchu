@@ -33,7 +33,11 @@ class MachineModelsTest {
                   "session": {"used_pct": 4, "resets_at": "Sep 3, 4:20am", "resets_epoch": 1788384000},
                   "week": {"used_pct": 20, "resets_at": "Sep 6, 4pm", "resets_epoch": 1788685200}},
        "bai": {"ok": true, "ts": 1788371900, "balance": 14275165, "kind": "personal",
-               "user": "user_PetRVOXfiJbc", "active": "active", "error": null}}}
+               "user": "user_PetRVOXfiJbc", "active": "active", "error": null},
+       "opencode": {"ok": true, "ts": 1790616463,
+                    "rolling": {"pct": 1.0, "reset": "2026-09-28T17:49:32.920Z"},
+                    "weekly": {"pct": 0.0, "reset": "2026-10-05T00:00:00.000Z"},
+                    "monthly": null, "error": null}}}
     """.trimIndent()
 
     @Test
@@ -66,6 +70,14 @@ class MachineModelsTest {
         assertEquals(14275165L, s.bai!!.balance)
         assertEquals(1788371900L, s.bai!!.dataTs)
         assertNull(s.bai!!.error)
+
+        // opencode-go (28/9): percent DA DUNG; reset ISO co mili giay van parse.
+        assertTrue(s.opencode!!.ok)
+        assertEquals(1.0, s.opencode!!.rolling!!.usedPct, 0.001)
+        assertEquals(0.0, s.opencode!!.weekly!!.usedPct, 0.001)
+        assertNull(s.opencode!!.monthly)
+        assertEquals(1790616463L, s.opencode!!.dataTs)
+        assertEquals(1790617772L, s.opencode!!.rolling!!.resetsEpoch)   // mili giay bi cat, khong nem
     }
 
     @Test

@@ -25,6 +25,23 @@ data class ExplorerState(
     val projects: List<ExplorerProject> = emptyList(),
     val yields: List<ExplorerYield> = emptyList(),
     val x: List<ExplorerBuzz> = emptyList(),
+    /** Subtab FOLLOW (29/9): account mới trên For You + chưa follow + ≥2 endorsers. */
+    val follow: List<ExplorerFollow> = emptyList(),
+)
+
+/**
+ * Một dòng FOLLOW: account dự án mới toanh, user chưa follow, được các account
+ * user follow nhắc/repost lại (endorsers). Chạm = mở bài gốc trên X để follow.
+ */
+@Serializable
+data class ExplorerFollow(
+    val handle: String = "",
+    val name: String = "",
+    val img: String? = null,
+    val endorsers: List<String> = emptyList(),
+    @SerialName("n_posts") val nPosts: Int = 0,
+    val url: String? = null,
+    val head: String = "",
 )
 
 /** Một dòng TRENDING: thứ tự = hạng trending CoinGecko, mc_rank = hạng vốn hoá. */
@@ -52,6 +69,8 @@ data class ExplorerGain(
     /** vol 24h / vol trung bình 30 ngày. */
     val volx: Double? = null,
     val chg24: Double? = null,
+    /** Giá USD hiện tại (28/9, user: gainer show cả giá) — pipeline lấy từ CoinGecko. */
+    val px: Double? = null,
     val chg7d: Double? = null,
     val chg30d: Double? = null,
     val img: String? = null,

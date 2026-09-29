@@ -29,27 +29,30 @@ import kotlinx.coroutines.withContext
 
 // `tab` = nhãn ngắn trên dải chuyển màn. 26/9: CHART gộp vào SPEND, BUZZ gộp vào PROJ.
 // 27/9 (user chốt qua mock proto-subtab-swipe.html): dải còn 4 nhóm theo thứ tự
-// POS · SPEND · WATCH · PROJ, và toàn bộ nội dung là MỘT pager phẳng 8 trang —
-// sub-tab (TOKENS/TRENDING/GAINERS, PROJECTS/YIELD/BUZZ) cũng là trang thật nên
-// vuốt ngang đi lần lượt qua sub-tab, không còn cảnh sub-tab đứng im.
+// POS · SPEND · WATCH · PROJ, và toàn bộ nội dung là MỘT pager phẳng — sub-tab cũng
+// là trang thật nên vuốt ngang đi lần lượt qua sub-tab (TOKENS/GAINERS, BUZZ/PROJECTS/YIELD).
+// 28/9 (user): bỏ TRENDING khỏi WATCH, BUZZ lên đầu PROJ — pager còn 7 trang.
 // `pages` = khoảng trang của nhóm trong pager; sub-tab i = firstPage + i.
 enum class DbtopGroup(val tab: String, val pages: IntRange) {
     POS("POS", 0..0),
     SPEND("SPEND", 1..1),
-    WATCH("WATCH", 2..4),
-    PROJ("PROJ", 5..7);
+    WATCH("WATCH", 2..3),
+    PROJ("PROJ", 4..6);
 
     val firstPage: Int get() = pages.first
 
     companion object {
-        const val PAGE_COUNT = 8
+        const val PAGE_COUNT = 7
 
         val SUB_TABS: Map<DbtopGroup, List<String>> = mapOf(
-            WATCH to listOf("TOKENS", "TRENDING", "GAINERS"),
-            PROJ to listOf("PROJECTS", "YIELD", "BUZZ"),
+            WATCH to listOf("TOKENS", "GAINERS"),
+            PROJ to listOf("BUZZ", "FOLLOW", "PROJECTS"),
         )
 
-        fun groupOf(page: Int): DbtopGroup = entries.first { page in it.pages }
+        // Total (29/9 review): page lạ (vd state cũ sau khi đổi số trang) không được
+        // ném — âm về POS, vượt về PROJ (cuối).
+        fun groupOf(page: Int): DbtopGroup =
+            entries.firstOrNull { page in it.pages } ?: if (page < 0) POS else PROJ
     }
 }
 
@@ -243,6 +246,28 @@ class DbtopViewModel(
 
     /** Khoá Gemini cho nút DỊCH của buzz — Settings đổi là màn dashboard nhận ngay. */
     val geminiApiKey: StateFlow<String> = settings.geminiApiKey
+    val hiddenFollows: StateFlow<Set<String>> = settings.hiddenFollows
+    /** Ẩn: local tức thì + đẩy full-set lên server (pipeline khỏi đề xuất lại).
+     *  Rớt mạng thì im lặng — lần đổi sau online là khớp (server replace theo set). */
+    fun hideFollow(handle: String) {
+        settings.hideFollow(handle)
+        pushFollowHides()
+    }
+    fun unhideAllFollows() {
+        settings.unhideAllFollows()
+        pushFollowHides()
+    }
+    private fun pushFollowHides() {
+        val url = settings.queueUrl.value
+        if (url.isBlank()) return
+        val snapshot = settings.hiddenFollows.value
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                com.jossephus.chuchu.ui.screens.Queue.QueueClient(url, settings.queueToken.value)
+                    .followHideSync(snapshot)
+            }
+        }
+    }
 
     private var pollJob: Job? = null
     private var client: DbtopClient? = null

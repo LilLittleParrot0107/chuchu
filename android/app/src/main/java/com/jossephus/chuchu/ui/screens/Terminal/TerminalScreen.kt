@@ -345,6 +345,7 @@ fun TerminalScreen(
     val fileBrowserState by vm.fileBrowserState.collectAsStateWithLifecycle()
     val filesSegment by vm.filesSegment.collectAsStateWithLifecycle()
     val machineState by vm.machineState.collectAsStateWithLifecycle()
+    val stripCells by vm.stripCells.collectAsStateWithLifecycle()
 
     // Chi poll khi dang mo nua MACHINE; roi khoi man hinh la huy hertz luon.
     DisposableEffect(selectedTab, filesSegment) {
@@ -1973,7 +1974,7 @@ fun TerminalScreen(
                                     // Xem nhanh máy ngay trên chỗ gõ, như bên
                                     // Queue nhưng KHÔNG bung được (user chốt 4/9):
                                     // terminal không có chỗ cho panel 8 dòng.
-                                    MachineStrip(machineState, preview = true)
+                                    MachineStrip(machineState, preview = true, cells = stripCells)
                                     Column(
                                         modifier =
                                             Modifier

@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -69,20 +68,32 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * PROJ (27/9, mock chốt proto-subtab-swipe.html): 3 sub-tab PROJECTS · YIELD ·
- * BUZZ giờ là 3 TRANG của pager phẳng — dải sub-tab do DbtopScreen vẽ, ở đây chỉ
- * còn nội dung theo `sub`. Dữ liệu từ out/explorer.json (mkt/explorer.py).
+ * PROJ: 3 sub-tab BUZZ · PROJECTS · YIELD là 3 TRANG của pager phẳng (28/9 BUZZ lên
+ * đầu) — dải sub-tab do DbtopScreen vẽ, ở đây chỉ còn nội dung theo `sub`.
+ * Dữ liệu từ out/explorer.json (mkt/explorer.py).
  */
 @Composable
-internal fun ProjectsSubPane(sub: Int, explorer: ExplorerState?, geminiKey: String) {
+internal fun ProjectsSubPane(
+    sub: Int,
+    explorer: ExplorerState?,
+    geminiKey: String,
+    hiddenFollows: Set<String> = emptySet(),
+    onHideFollow: (String) -> Unit = {},
+    onUnhideAllFollows: () -> Unit = {},
+) {
     if (explorer == null) {
         DashboardEmpty("NO EXPLORER DATA (SCAN PENDING)")
         return
     }
     when (sub.coerceIn(0, 2)) {
-        0 -> ProjectsPane(explorer)
-        1 -> YieldsPane(explorer)
-        else -> BuzzPane(explorer, geminiKey)
+        0 -> BuzzPane(explorer, geminiKey)
+        1 -> FollowPane(
+            explorer = explorer,
+            hidden = hiddenFollows,
+            onHide = onHideFollow,
+            onUnhideAll = onUnhideAllFollows,
+        )
+        else -> ProjectsPane(explorer)
     }
 }
 
@@ -101,24 +112,6 @@ private fun ProjectsPane(explorer: ExplorerState) {
 
     projectSheet?.let { p ->
         ProjectSheet(project = p, onDismiss = { projectSheet = null })
-    }
-}
-
-@Composable
-private fun YieldsPane(explorer: ExplorerState) {
-    var yieldSheet by remember { mutableStateOf<ExplorerYield?>(null) }
-
-    LazyColumn(modifier = Modifier.fillMaxSize()) {
-        items(explorer.yields, key = { "${it.chain}|${it.project}|${it.name}" }) { y ->
-            YieldRow(yield = y, onClick = { yieldSheet = y })
-        }
-        if (explorer.yields.isEmpty()) {
-            item(key = "empty") { EmptyPane("NO YIELD DATA · CHECK PIPELINE") }
-        }
-    }
-
-    yieldSheet?.let { y ->
-        YieldSheet(yield = y, onDismiss = { yieldSheet = null })
     }
 }
 
@@ -152,17 +145,85 @@ private fun BuzzPane(explorer: ExplorerState, geminiKey: String) {
 }
 
 /**
- * Pane TRENDING của WATCH (mock 27/9): thứ tự dòng = hạng trending CoinGecko.
- * 27/9 (user): bỏ vạch tiêu đề ngay dưới sub-tab — cả 6 pane WATCH/PROJ vào thẳng danh sách.
+ * FOLLOW (29/9, user): account MỚI toanh trên For You + user chưa follow + được ≥2
+ * account user follow repost/nhắc (pipeline explorer.py `_follow`). Chạm hàng = mở
+ * bài gốc trên X để xem rồi follow tay — app không tự follow (chỉ đọc).
  */
 @Composable
-internal fun TrendingPane(explorer: ExplorerState) {
+internal fun FollowPane(
+    explorer: ExplorerState,
+    hidden: Set<String> = emptySet(),
+    onHide: (String) -> Unit = {},
+    onUnhideAll: () -> Unit = {},
+) {
+    val colors = ChuColors.current
+    val type = ChuTypography.current
+    val context = LocalContext.current
+    // Ẩn theo handle thường (29/9 user: acc to không muốn follow) — pref local, khớp
+    // cả @Handle lẫn handle.
+    val norm = { h: String -> h.trim().lowercase().removePrefix("@") }
+    val visible = remember(explorer.follow, hidden) {
+        explorer.follow.filter { norm(it.handle) !in hidden }
+    }
     LazyColumn(modifier = Modifier.fillMaxSize()) {
-        itemsIndexed(explorer.trend, key = { i, t -> "$i|${t.sym}" }) { _, t ->
-            TrendRow(trend = t)
+        if (hidden.isNotEmpty()) {
+            item(key = "unhide") {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onUnhideAll)
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    ChuText(
+                        "đang ẩn ${hidden.size} · BỎ ẨN",
+                        style = type.labelSmall,
+                        color = colors.textMuted,
+                    )
+                }
+            }
         }
-        if (explorer.trend.isEmpty()) {
-            item(key = "empty") { EmptyPane("NO TRENDING DATA · CHECK PIPELINE") }
+        items(visible, key = { it.handle }) { f ->
+            val endorsers = f.endorsers.take(3).joinToString(" · ")
+            KohiSelectableRow(
+                selected = false,
+                tone = colors.accent,
+                onClick = { openUrl(context, f.url?.takeIf { it.isNotBlank() } ?: xUrl(f.handle)) },
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+            ) {
+                RemoteLogo(url = f.img, fallback = "@", tint = colors.accent)
+                Spacer(Modifier.width(6.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    ChuText(
+                        "@${f.handle}",
+                        style = type.label.copy(fontWeight = FontWeight.Bold),
+                        color = colors.textPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    ChuText(
+                        if (endorsers.isNotBlank()) "via $endorsers" else "${f.nPosts} posts",
+                        style = type.labelSmall.copy(
+                            fontFamily = FontFamily.Monospace,
+                            fontFeatureSettings = "tnum",
+                        ),
+                        color = colors.textMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                ChuText(
+                    "✕",
+                    style = type.label.copy(fontWeight = FontWeight.Bold),
+                    color = colors.textMuted,
+                    modifier = Modifier
+                        .padding(start = 6.dp)
+                        .clickable { onHide(f.handle) },
+                )
+            }
+        }
+        if (visible.isEmpty()) {
+            item(key = "empty") { EmptyPane(if (explorer.follow.isEmpty()) "NO NEW ACCOUNTS · CHECK PIPELINE" else "ĐÃ ẨN HẾT · BỎ ẨN Ở TRÊN") }
         }
     }
 }
@@ -289,152 +350,6 @@ private fun ProjectRow(
         }
     }
 }
-
-@Composable
-private fun YieldRow(
-    yield: ExplorerYield,
-    onClick: () -> Unit,
-) {
-    val colors = ChuColors.current
-    val type = ChuTypography.current
-    KohiSelectableRow(
-        selected = false,
-        tone = colors.accentSecondary,
-        onClick = onClick,
-        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-    ) {
-        RemoteLogo(url = yield.img, fallback = "⟡", tint = colors.accentSecondary)
-        Spacer(Modifier.width(6.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                ChuText(
-                    yield.name,
-                    style = type.label.copy(fontWeight = FontWeight.Bold),
-                    color = colors.textPrimary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
-                Spacer(Modifier.width(6.dp))
-                ChuText(
-                    yield.net?.let { "${String.format(Locale.US, "%.1f", it)}%" } ?: "—",
-                    style = type.label.copy(
-                        fontFamily = FontFamily.Monospace,
-                        fontFeatureSettings = "tnum",
-                        fontWeight = FontWeight.Bold,
-                    ),
-                    color = colors.success,
-                    maxLines = 1,
-                )
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                ChuText(
-                    listOfNotNull(yield.chain, yield.project).joinToString(" · "),
-                    style = type.labelSmall,
-                    color = colors.textMuted,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
-                Spacer(Modifier.width(6.dp))
-                ChuText(
-                    yield.risk?.let { String.format(Locale.US, "safety %.2f", it) } ?: "",
-                    style = type.labelSmall.copy(
-                        fontFamily = FontFamily.Monospace,
-                        fontFeatureSettings = "tnum",
-                    ),
-                    color = colors.textSecondary,
-                    maxLines = 1,
-                )
-            }
-        }
-    }
-}
-
-/**
- * Dòng TRENDING (mock chốt 27/9): thứ tự = hạng trending, KHÔNG gắn #1/#2;
- * dòng 2 "#hạng vốn hoá · vol" — hạng là hạng vốn hoá CoinGecko, không phải vị trí dòng.
- */
-@Composable
-private fun TrendRow(trend: ExplorerTrend) {
-    val colors = ChuColors.current
-    val type = ChuTypography.current
-    KohiSelectableRow(
-        selected = false,
-        tone = colors.accent,
-        onClick = null,
-        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-    ) {
-        RemoteLogo(url = trend.img, fallback = "◆", tint = colors.accent)
-        Spacer(Modifier.width(6.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                ChuText(
-                    trend.sym,
-                    style = type.label.copy(fontWeight = FontWeight.Bold),
-                    color = colors.textPrimary,
-                    maxLines = 1,
-                )
-                if (trend.name.isNotBlank()) {
-                    Spacer(Modifier.width(4.dp))
-                    ChuText(
-                        trend.name,
-                        style = type.labelSmall,
-                        color = colors.textMuted,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-            }
-            ChuText(
-                "#${trend.mcRank ?: "—"} · vol ${
-                    trend.vol?.let { DeFiFormatter.formatUsdCompact(it) } ?: "—"
-                }",
-                style = type.labelSmall.copy(
-                    fontFamily = FontFamily.Monospace,
-                    fontFeatureSettings = "tnum",
-                ),
-                color = colors.textMuted,
-                maxLines = 1,
-            )
-        }
-        Spacer(Modifier.width(6.dp))
-        Column(horizontalAlignment = Alignment.End) {
-            ChuText(
-                DeFiFormatter.formatTokenPrice(trend.px),
-                style = type.label.copy(
-                    fontFamily = FontFamily.Monospace,
-                    fontFeatureSettings = "tnum",
-                    fontWeight = FontWeight.Bold,
-                ),
-                color = colors.textPrimary,
-                maxLines = 1,
-            )
-            ChuText(
-                trend.chg?.let { DeFiFormatter.formatPercent(it, decimals = 1) } ?: "—",
-                style = type.labelSmall.copy(
-                    fontFamily = FontFamily.Monospace,
-                    fontFeatureSettings = "tnum",
-                    fontWeight = FontWeight.Bold,
-                ),
-                color = pctColor(trend.chg, colors),
-                maxLines = 1,
-            )
-        }
-    }
-}
-
-/** Dòng GAINERS — cùng khuôn TRENDING (mock chốt: uniform, vol24 luôn ở dòng 2). */
 @Composable
 private fun GainRow(
     gain: ExplorerGain,
@@ -490,23 +405,25 @@ private fun GainRow(
         }
         Spacer(Modifier.width(6.dp))
         Column(horizontalAlignment = Alignment.End) {
+            // 28/9 (user: gainer show cả giá, không chỉ %): giá lên đầu như TRENDING.
             ChuText(
-                gain.chg24?.let { DeFiFormatter.formatPercent(it, decimals = 1) } ?: "—",
+                gain.px?.let { DeFiFormatter.formatTokenPrice(it) } ?: "—",
                 style = type.label.copy(
                     fontFamily = FontFamily.Monospace,
                     fontFeatureSettings = "tnum",
                     fontWeight = FontWeight.Bold,
                 ),
-                color = pctColor(gain.chg24, colors),
+                color = colors.textPrimary,
                 maxLines = 1,
             )
             ChuText(
-                gain.mcap?.let { DeFiFormatter.formatUsdCompact(it) } ?: "—",
+                gain.chg24?.let { DeFiFormatter.formatPercent(it, decimals = 1) } ?: "—",
                 style = type.labelSmall.copy(
                     fontFamily = FontFamily.Monospace,
                     fontFeatureSettings = "tnum",
+                    fontWeight = FontWeight.Bold,
                 ),
-                color = colors.textSecondary,
+                color = pctColor(gain.chg24, colors),
                 maxLines = 1,
             )
         }
@@ -565,9 +482,10 @@ private fun BuzzCard(
                 }
             }
             if (body.isNotBlank()) {
+                // 28/9 (user: content buzz to lên xíu) bodySmall 12 -> body 14.
                 ChuText(
                     body,
-                    style = type.bodySmall,
+                    style = type.body,
                     color = if (vi != null) colors.success else colors.textSecondary,
                     maxLines = 4,
                     overflow = TextOverflow.Ellipsis,
@@ -648,41 +566,6 @@ private fun ProjectSheet(
             SheetSection("LINKS")
             tw?.let { LinkLine("x.com/$it", xUrl(it)) }
             url?.let { LinkLine(it, httpUrl(it)) }
-        }
-    }
-}
-
-@Composable
-private fun YieldSheet(
-    yield: ExplorerYield,
-    onDismiss: () -> Unit,
-) {
-    val colors = ChuColors.current
-    val type = ChuTypography.current
-    SheetFrame(
-        title = yield.name,
-        subtitle = listOfNotNull(yield.chain, yield.project).joinToString(" · "),
-        onDismiss = onDismiss,
-    ) {
-        SheetGrid(
-            listOfNotNull(
-                "NET/YR" to (yield.net?.let { String.format(Locale.US, "%.1f%%", it) } ?: "—"),
-                "SAFETY" to (yield.risk?.let { String.format(Locale.US, "%.2f", it) } ?: "—"),
-                "TVL" to DeFiFormatter.formatUsdCompact(yield.tvl),
-                yield.lltv?.let { "LLTV" to "${kotlin.math.round(it * 100).toInt()}%" },
-                yield.lev?.let { "LEVERAGE" to "${String.format(Locale.US, "%.1f", it)}×" },
-                yield.bnet?.let { "BORROW NET" to "${String.format(Locale.US, "%.1f", it)}%" },
-                yield.cy?.let { "COLL YIELD" to "${String.format(Locale.US, "%.1f", it)}%" },
-            ),
-        )
-        if (yield.why.isNotBlank()) {
-            SheetSection("DETAILS")
-            ChuText(yield.why, style = type.bodySmall, color = colors.textSecondary)
-        }
-        val link = yield.url?.takeIf { it.isNotBlank() }
-        if (link != null) {
-            SheetSection("LINKS")
-            LinkLine(link, httpUrl(link))
         }
     }
 }

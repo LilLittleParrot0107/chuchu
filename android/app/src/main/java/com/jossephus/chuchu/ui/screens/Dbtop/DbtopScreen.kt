@@ -181,11 +181,12 @@ fun DbtopScreen(
                 selected = currentGroup,
                 onSelect = { nextGroup ->
                     haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    // Coerce đề phòng số trang đã lưu từ bản cũ (29/9 review: pager 8→7).
                     val target = when (nextGroup) {
                         DbtopGroup.POS -> 0
                         DbtopGroup.SPEND -> 1
-                        DbtopGroup.WATCH -> watchPage
-                        DbtopGroup.PROJ -> projPage
+                        DbtopGroup.WATCH -> watchPage.coerceIn(DbtopGroup.WATCH.pages)
+                        DbtopGroup.PROJ -> projPage.coerceIn(DbtopGroup.PROJ.pages)
                     }
                     // Bấm tab = tới thẳng trang, KHÔNG lướt (user 27/9); vuốt tay vẫn
                     // đi lần lượt như cũ.
@@ -200,13 +201,12 @@ fun DbtopScreen(
             val subTabs = when (currentGroup) {
                 DbtopGroup.WATCH -> listOf(
                     "TOKENS" to watchlistItems.size,
-                    "TRENDING" to (ui.explorer?.trend?.size ?: 0),
                     "GAINERS" to (ui.explorer?.gain?.size ?: 0),
                 )
                 DbtopGroup.PROJ -> listOf(
-                    "PROJECTS" to (ui.explorer?.projects?.size ?: 0),
-                    "YIELD" to (ui.explorer?.yields?.size ?: 0),
                     "BUZZ" to (ui.explorer?.x?.size ?: 0),
+                    "FOLLOW" to (ui.explorer?.follow?.size ?: 0),
+                    "PROJECTS" to (ui.explorer?.projects?.size ?: 0),
                 )
                 else -> null
             }
@@ -223,8 +223,9 @@ fun DbtopScreen(
                 )
             }
 
-            // HorizontalPager: vuốt trái/phải đi lần lượt 8 trang — POS · SPEND ·
-            // TOKENS · TRENDING · GAINERS · PROJECTS · YIELD · BUZZ.
+            // HorizontalPager: vuốt trái/phải đi lần lượt 7 trang — POS · SPEND ·
+            // TOKENS · GAINERS · BUZZ · PROJECTS · YIELD (28/9: bỏ TRENDING,
+            // BUZZ lên đầu PROJ).
             HorizontalPager(
                 state = pagerState,
                 key = { it },
@@ -301,7 +302,7 @@ fun DbtopScreen(
                         cap = capForKpi,
                         kpis = kpiSummary,
                     )
-                    in 2..4 -> WatchlistSubPane(
+                    in 2..3 -> WatchlistSubPane(
                         sub = page - DbtopGroup.WATCH.firstPage,
                         items = watchlistItems,
                         explorer = ui.explorer,
@@ -312,6 +313,9 @@ fun DbtopScreen(
                         sub = page - DbtopGroup.PROJ.firstPage,
                         explorer = ui.explorer,
                         geminiKey = geminiKey,
+                        hiddenFollows = viewModel.hiddenFollows.collectAsStateWithLifecycle().value,
+                        onHideFollow = viewModel::hideFollow,
+                        onUnhideAllFollows = viewModel::unhideAllFollows,
                     )
                 }
             }

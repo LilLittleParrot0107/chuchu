@@ -60,13 +60,10 @@ internal fun PositionsView(
         DashboardEmpty("NO POSITIONS")
         return
     }
+    // Lớn trước nhỏ sau (29/9 user): vị thế xếp theo vốn giảm dần, ví nằm CUỐI.
+    val ordered = remember(rows) { rows.sortedByDescending { it.cap } }
     LazyColumn(modifier = Modifier.fillMaxSize()) {
-        // WALLET · IDLE len dau danh sach vi tri (user chot 26/9): tien chua
-        // trien khai la mot "vi tri" that, nhung khong chon/xem detail duoc.
-        item(key = "wallet") {
-            WalletIdleRow(wallet = wallet)
-        }
-        items(rows, key = DappRow::positionKey) { row ->
+        items(ordered, key = DappRow::positionKey) { row ->
             DappPositionRow(
                 row = row,
                 selected = selectedKey == row.positionKey(),
@@ -74,6 +71,11 @@ internal fun PositionsView(
                 nowSec = nowSec,
                 onClick = { onSelect(row) },
             )
+        }
+        // WALLET · IDLE nằm cuối danh sách vị trí (user chốt 30/9): tiền chưa
+        // triển khai là một "vị trí" thật, nhưng không chọn/xem detail được.
+        item(key = "wallet") {
+            WalletIdleRow(wallet = wallet)
         }
     }
 }

@@ -81,7 +81,11 @@ fun FileBrowserScreen(
     val filteredEntries =
         remember(state.entries, searchQuery) {
             if (searchQuery.isBlank()) state.entries
+            // Lúc search thì xếp theo ngày đổi mới nhất trước (user chốt 30/9) — bất kể
+            // sort đang chọn là gì. modifiedAtText dạng yyyy-MM-dd HH:mm nên sort chuỗi
+            // là đúng thứ tự thời gian; thiếu ngày thì chìm xuống cuối.
             else state.entries.filter { it.name.contains(searchQuery, ignoreCase = true) }
+                .sortedByDescending { it.modifiedAtText ?: "" }
         }
 
     Column(modifier = modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 8.dp)) {

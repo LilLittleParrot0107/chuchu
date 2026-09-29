@@ -222,6 +222,10 @@ fun ApplicationNavController() {
     KohiNavShell(
         selectedRoute = currentRoute,
         queueBadge = queueAmbientSummary.takeIf { it.totalActive > 0 }?.totalActive,
+        // Vào thread chat trên máy gập (28/9): ẩn rail trái cho chat tràn màn.
+        // Đọc thẳng state chat của Queue — back đóng chat là cờ tắt, rail về.
+        hideRail = currentRoute == "queue" &&
+            sharedQueueVm.chat.collectAsStateWithLifecycle().value.pane != null,
         onSelect = { tab ->
             // Tab luon la root doc lap (Material bottom-nav contract): khong bao
             // gio hijack ve terminal. Vao lai phien dang chay bang cach bam
@@ -544,8 +548,9 @@ private fun QueueDestination(
         currentUrl = qUrl,
         currentToken = qToken,
         onSaveConfig = sharedQueueVm::saveConfig,
-        onFetchResponse = sharedQueueVm::loadTaskResponse,
         machine = sharedQueueVm.machine.collectAsStateWithLifecycle().value,
+        stripCells = sharedQueueVm.stripCells.collectAsStateWithLifecycle().value,
+        onToggleStripCell = sharedQueueVm::toggleStripCell,
         onMachineVisible = sharedQueueVm::setMachinePolling,
         onUsageVisible = sharedQueueVm::setQuotaWanted,
         onRefreshUsage = sharedQueueVm::requestQuotaRefresh,

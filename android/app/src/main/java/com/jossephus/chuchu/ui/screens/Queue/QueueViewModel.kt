@@ -272,6 +272,14 @@ class QueueViewModel(
 
     fun chatSeenRev(pane: String): String? = _chatSeen.value[pane] ?: settings.chatSeenRev(pane)
 
+    /** Ô trên dải machine (28/9): user chọn trong QUEUE SETTINGS, áp dụng ngay. */
+    val stripCells: StateFlow<List<String>> get() = settings.stripCells
+    fun saveStripCells(ids: List<String>) = settings.setStripCells(ids)
+    /** Bật/tắt một ô, giữ nguyên thứ tự còn lại (bật lại thì về cuối). */
+    fun toggleStripCell(id: String) {
+        val cur = settings.stripCells.value
+        saveStripCells(if (id in cur) cur - id else cur + id)
+    }
     private fun markChatSeen(pane: String, rev: String) {
         if (rev.isBlank()) return
         settings.setChatSeenRev(pane, rev)
@@ -280,6 +288,14 @@ class QueueViewModel(
 
     /** Mở màn chat của [pane]: tải 50 tin cuối rồi long-poll chừng nào màn còn mở. */
     fun openChat(pane: String) {
+        if (_chat.value.pane != pane) {
+            // Đổi phiên ngay trong chat (dải agent 28/9): job poll cũ còn sống sẽ chặn
+            // job mới ở guard isActive trong sync*Polling, còn chính nó thì tự thoát vì
+            // pane đã đổi — kết quả là màn mới kẹt LOADING mãi. Huỷ TRƯỚC khi reset state
+            // (kết quả bay về trễ đã có guard pane trong chatRefreshOnce nên không corrupt).
+            chatJob?.cancel(); chatJob = null
+            blockedJob?.cancel(); blockedJob = null
+        }
         val name = _ui.value.state.agents.firstOrNull { it.pane == pane }?.name ?: pane
         _chat.value = ChatUiState(pane = pane, name = name, loading = true)
         syncChatPolling()
@@ -679,11 +695,6 @@ class QueueViewModel(
                 persistAuthRecovery(c)
                 when (val r = result) {
                     is QueueClient.Act.Ok -> {
-                        // Server xoá responses/<id>.md khi retry; giữ cache là dialog hiện
-                        // câu trả lời CŨ sau khi task chạy lại xong (audit 4/9 #12).
-                        if (taskId != null && action.op.lowercase() in setOf("retry", "del", "delete", "rm")) {
-                            responseCache.remove(taskId)
-                        }
                         _ui.update { it.copy(error = null) }
                         postFeedback("", "Queue updated", QueueFeedbackTone.Success)
                         refreshOnce()
@@ -787,7 +798,6 @@ class QueueViewModel(
                         // nằm trong cửa sổ so sánh rev — chờ nhịp poll sau thì hàng đã
                         // xoá còn hiện thêm một nhịp nữa.
                         is QueueClient.Act.Ok -> {
-                            responseCache.remove(task.id)
                             refreshOnce()
                         }
                         // Xoá hỏng (mất mạng, 409...) thì trả id về để nhịp poll sau
@@ -809,8 +819,6 @@ class QueueViewModel(
     fun saveConfig(url: String, token: String) {
         settings.setQueueUrl(url)
         settings.setQueueToken(token)
-        // Task ids are only unique within one qsrv instance.
-        responseCache.evictAll()
         autoCleared.clear()
         // Summary ambient phải reset cùng state: nếu không, pill/FAB vẫn hiển thị
         // số liệu của qsrv CŨ trong khoảng thời gian trước khi refreshNow() kịp về.
@@ -824,24 +832,6 @@ class QueueViewModel(
             )
         }
         refreshNow()
-    }
-
-    private val responseCache = android.util.LruCache<Int, String>(50)
-
-    suspend fun loadTaskResponse(taskId: Int): String? {
-        responseCache.get(taskId)?.let { return it }
-        val c = client() ?: return null
-        val response = withContext(Dispatchers.IO) {
-            when (val r = c.fetchResponse(taskId)) {
-                is QueueClient.FetchResponse.Success -> {
-                    responseCache.put(taskId, r.markdown)
-                    r.markdown
-                }
-                is QueueClient.FetchResponse.Failed -> null
-            }
-        }
-        persistAuthRecovery(c)
-        return response
     }
 
     fun showFeedback(text: String, tone: QueueFeedbackTone = QueueFeedbackTone.Info) {
@@ -867,7 +857,7 @@ class QueueViewModel(
         private const val QUOTA_AUTO_REFRESH_MS = 10 * 60_000L
         private const val LONGPOLL_S = 25
         /** Số tin mỗi trang màn CHAT. */
-        private const val CHAT_PAGE = 50
+        private const val CHAT_PAGE = 15   // 28/9 user: mở chat chỉ cần 15 tin, còn lại tải thêm
         /** Thẻ NEEDS YOU: đọc lại màn hình pane mỗi 3 s khi agent kẹt; khoá thẻ 3 s sau khi trả lời. */
         private const val BLOCKED_POLL_MS = 3_000L
         private const val BLOCKED_LOCK_MS = 3_000L

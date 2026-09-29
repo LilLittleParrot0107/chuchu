@@ -7,6 +7,7 @@ import com.jossephus.chuchu.data.network.normalizeQueueBaseUrl
 import com.jossephus.chuchu.ui.screens.Terminal.TerminalTabMode
 import com.jossephus.chuchu.ui.terminal.BuiltinShortcutStore
 import com.jossephus.chuchu.ui.terminal.TerminalAccessoryLayoutStore
+import com.jossephus.chuchu.ui.screens.Queue.StripCells
 import com.jossephus.chuchu.ui.theme.ChuFontOption
 import com.jossephus.chuchu.ui.theme.ThemeMode
 import com.jossephus.chuchu.ui.terminal.TerminalCustomActionStore
@@ -44,6 +45,12 @@ class SettingsRepository(context: Context) {
     )
     val fontName: StateFlow<String> = _fontName.asStateFlow()
 
+    private val _hiddenFollows: MutableStateFlow<Set<String>> =
+        MutableStateFlow(loadHiddenFollows())
+    val hiddenFollows: StateFlow<Set<String>> = _hiddenFollows.asStateFlow()
+
+    private val _stripCells = MutableStateFlow(loadStripCells())
+    val stripCells: StateFlow<List<String>> = _stripCells.asStateFlow()
     private val _accessoryLayoutIds = MutableStateFlow(loadAccessoryLayoutIds())
     val accessoryLayoutIds: StateFlow<List<String>> = _accessoryLayoutIds.asStateFlow()
 
@@ -183,6 +190,23 @@ class SettingsRepository(context: Context) {
         _fontName.value = normalized
     }
 
+    /** Ô trên dải machine (28/9): toggle trong QUEUE SETTINGS, áp dụng ngay. */
+    /** Ẩn gợi ý FOLLOW (29/9): pref local theo handle thường, áp dụng ngay. */
+    fun hideFollow(handle: String) {
+        val h = handle.trim().lowercase().removePrefix("@")
+        if (h.isBlank()) return
+        _hiddenFollows.value = _hiddenFollows.value + h
+        prefs.edit().putStringSet(KEY_HIDDEN_FOLLOWS, _hiddenFollows.value).apply()
+    }
+    fun unhideAllFollows() {
+        _hiddenFollows.value = emptySet()
+        prefs.edit().remove(KEY_HIDDEN_FOLLOWS).apply()
+    }
+    fun setStripCells(ids: List<String>) {
+        val normalized = StripCells.normalize(ids)
+        _stripCells.value = normalized
+        prefs.edit().putString(KEY_STRIP_CELLS, normalized.joinToString(separator = ",")).apply()
+    }
     fun setAccessoryLayoutIds(ids: List<String>) {
         val normalized = TerminalAccessoryLayoutStore.normalizeIds(ids)
         prefs.edit().putString(KEY_ACCESSORY_LAYOUT, normalized.joinToString(separator = ",")).apply()
@@ -327,6 +351,17 @@ class SettingsRepository(context: Context) {
         return stored.coerceIn(MIN_TERMINAL_FONT_SIZE, MAX_TERMINAL_FONT_SIZE)
     }
 
+    private fun loadHiddenFollows(): Set<String> =
+        (prefs.getStringSet(KEY_HIDDEN_FOLLOWS, null) ?: emptySet())
+            .map { it.trim().lowercase().removePrefix("@") }
+            .filter { it.isNotBlank() }
+            .toSet()
+
+    private fun loadStripCells(): List<String> {
+        val stored = prefs.getString(KEY_STRIP_CELLS, null) ?: return StripCells.DEFAULT
+        if (stored.isBlank()) return emptyList()
+        return StripCells.normalize(stored.split(',').map(String::trim).filter(String::isNotEmpty))
+    }
     private fun loadAccessoryLayoutIds(): List<String> {
         val stored = prefs.getString(KEY_ACCESSORY_LAYOUT, null)
             ?: return TerminalAccessoryLayoutStore.defaultLayoutIds()
@@ -352,6 +387,8 @@ class SettingsRepository(context: Context) {
         private const val KEY_THEME = "theme_name"
         private const val KEY_FONT = "font_name"
         private const val KEY_ACCESSORY_LAYOUT = "terminal_accessory_layout"
+        private const val KEY_STRIP_CELLS = "queue_strip_cells"
+        private const val KEY_HIDDEN_FOLLOWS = "dbtop_hidden_follows"
         private const val KEY_TERMINAL_CUSTOM_ACTIONS = "terminal_custom_actions"
         private const val KEY_SHOW_CUSTOM_ACTIONS_FAB = "show_custom_actions_fab"
         private const val KEY_BUILTIN_SHORTCUTS = "builtin_shortcuts"

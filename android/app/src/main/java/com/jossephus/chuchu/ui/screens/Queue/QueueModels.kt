@@ -47,7 +47,12 @@ data class QueueTask(
     val stateLabel: String,
     val sub: String,
     val actions: List<QueueAction>,
-    val hasResp: Boolean = false,
+    /** Lý do trạng thái đặc biệt (qsrv `reason`: mồ côi, pane đổi chủ…) — user 28/9:
+     *  chỉ cần biết task đã gửi chưa, không xem câu trả lời nữa. */
+    val reason: String = "",
+    /** Epoch giây lúc gửi/xong (qsrv `sent_ts`/`done_ts`) — dialog hiện "đã gửi lúc". */
+    val sentTs: Long? = null,
+    val doneTs: Long? = null,
 )
 
 internal val QueueTask.isCompleted: Boolean
@@ -177,6 +182,10 @@ private val queueFeedbackWhitespace = Regex("\\s+")
 private fun JSONObject.optStringOrNull(key: String): String? =
     optString(key).takeIf { it.isNotBlank() && it != "null" }
 
+/** optLong trả 0 khi thiếu — epoch 0 không bao giờ là giờ thật, quy về null. */
+private fun JSONObject.optLongOrNull(key: String): Long? =
+    if (isNull(key)) null else optLong(key).takeIf { it > 0 }
+
 /** Keep transient feedback compact; full details remain in logs/responses. */
 internal fun normalizeQueueFeedbackText(raw: String, fallback: String): String {
     val compact = raw.trim().replace(queueFeedbackWhitespace, " ").ifBlank { fallback.trim() }
@@ -263,7 +272,9 @@ data class QueueState(
             stateLabel = o.optString("state_label").ifEmpty { o.optString("state") },
             sub = o.optString("sub"),
             actions = o.optJSONArray("actions").mapObjects(::parseAction),
-            hasResp = o.optBoolean("has_resp", false),
+            reason = o.optString("reason"),
+            sentTs = o.optLongOrNull("sent_ts"),
+            doneTs = o.optLongOrNull("done_ts"),
         )
 
         /** A malformed row must not hide the rest of a valid queue. */

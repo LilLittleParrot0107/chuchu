@@ -61,10 +61,9 @@ import java.util.Locale
 import kotlin.math.abs
 
 /**
- * WATCH (27/9, mock chốt proto-subtab-swipe.html): 3 sub-tab TOKENS · TRENDING ·
- * GAINERS giờ là 3 TRANG của pager phẳng — dải sub-tab do DbtopScreen vẽ, ở đây
- * chỉ còn nội dung theo `sub`. Explorer chưa về thì trang TRENDING/GAINERS báo
- * chờ scan thay vì rỗng.
+ * WATCH: 2 sub-tab TOKENS · GAINERS là 2 TRANG của pager phẳng (28/9 bỏ TRENDING) —
+ * dải sub-tab do DbtopScreen vẽ, ở đây chỉ còn nội dung theo `sub`. Explorer chưa
+ * về thì trang GAINERS báo chờ scan thay vì rỗng.
  */
 @Composable
 internal fun WatchlistSubPane(
@@ -78,14 +77,13 @@ internal fun WatchlistSubPane(
         DashboardEmpty("NO TOKENS IN WATCHLIST")
         return
     }
-    when (sub.coerceIn(0, 2)) {
+    when (sub.coerceIn(0, 1)) {
         0 -> TokensPane(
             items = items,
             imgs = explorer?.imgs ?: emptyMap(),
             moneyDisplay = moneyDisplay,
             vndRate = vndRate,
         )
-        1 -> if (explorer != null) TrendingPane(explorer = explorer) else DashboardEmpty("NO EXPLORER DATA (SCAN PENDING)")
         else -> if (explorer != null) GainersPane(explorer = explorer) else DashboardEmpty("NO EXPLORER DATA (SCAN PENDING)")
     }
 }
@@ -119,7 +117,7 @@ private fun TokensPane(
 }
 
 /**
- * Hàng TOKENS theo đúng khuôn 2 dòng của [TrendRow]/GainRow (user chốt proto 27/9 —
+ * Hàng TOKENS theo đúng khuôn 2 dòng của GainRow (user chốt proto 27/9 —
  * "đổi TOKENS theo TRENDING/GAINERS"): logo · SYM, dòng 2 = giá trị đang giữ
  * (`hold $…` từ totalUsd, theo chế độ tiền đang chọn), cột phải là vùng liếc số
  * (giá · %24h). Bỏ hairline + cỡ chữ body của bản 1 dòng cũ để ba sub-tab cùng nhịp.
