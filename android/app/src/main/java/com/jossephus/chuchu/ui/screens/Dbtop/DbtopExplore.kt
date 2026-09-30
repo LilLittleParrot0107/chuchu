@@ -123,7 +123,9 @@ private fun BuzzPane(explorer: ExplorerState, geminiKey: String) {
     var buzzSheet by remember { mutableStateOf<ExplorerBuzz?>(null) }
 
     LazyColumn(modifier = Modifier.fillMaxSize()) {
-        items(explorer.x, key = { it.name }) { b ->
+        // 30/9 review: key theo name crash "Key was already used" khi 2 buzz cùng
+        // account — key theo translationKey (url, fallback name|ts).
+        items(explorer.x, key = { it.translationKey() }) { b ->
             val vi = remember(b.translationKey(), viTick) {
                 BuzzTranslationStore.get(context, b.translationKey())
             }
@@ -146,8 +148,9 @@ private fun BuzzPane(explorer: ExplorerState, geminiKey: String) {
 
 /**
  * FOLLOW (29/9, user): account MỚI toanh trên For You + user chưa follow + được ≥2
- * account user follow repost/nhắc (pipeline explorer.py `_follow`). Chạm hàng = mở
- * bài gốc trên X để xem rồi follow tay — app không tự follow (chỉ đọc).
+ * account user follow repost/nhắc (pipeline explorer.py `_follow`).
+ * 30/9 (user chốt B): thẻ hiện bio luôn (pipeline scrape profile) — ấn AVATAR → X
+ * để follow tay, thân thẻ không bấm (app không tự follow, chỉ đọc).
  */
 @Composable
 internal fun FollowPane(
@@ -162,8 +165,12 @@ internal fun FollowPane(
     // Ẩn theo handle thường (29/9 user: acc to không muốn follow) — pref local, khớp
     // cả @Handle lẫn handle.
     val norm = { h: String -> h.trim().lowercase().removePrefix("@") }
-    val visible = remember(explorer.follow, hidden) {
-        explorer.follow.filter { norm(it.handle) !in hidden }
+    // 30/9 review: normalize CẢ set ẩn (handle lưu thô @Foo/hoa là ẩn không dính) +
+    // distinctBy chống pipeline trả trùng handle văng app.
+    val hiddenNorm = remember(hidden) { hidden.map(norm).toSet() }
+    val visible = remember(explorer.follow, hiddenNorm) {
+        explorer.follow.filter { norm(it.handle) !in hiddenNorm }
+            .distinctBy { norm(it.handle) }
     }
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         if (hidden.isNotEmpty()) {
@@ -185,41 +192,82 @@ internal fun FollowPane(
         }
         items(visible, key = { it.handle }) { f ->
             val endorsers = f.endorsers.take(3).joinToString(" · ")
+            // 30/9 review: handle rỗng thì avatar không bấm (trước rơi về x.com/).
+            val goX = { openUrl(context, f.url?.takeIf { it.isNotBlank() } ?: xUrl(f.handle)) }
+            val canX = f.handle.isNotBlank()
+            // Tên hiển thị = display name pipeline scrape (rỗng trên data cũ → handle).
+            val showName = f.name.takeIf { it.isNotBlank() && !it.equals(f.handle, ignoreCase = true) }
             KohiSelectableRow(
                 selected = false,
                 tone = colors.accent,
-                onClick = { openUrl(context, f.url?.takeIf { it.isNotBlank() } ?: xUrl(f.handle)) },
+                onClick = null,
                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
             ) {
-                RemoteLogo(url = f.img, fallback = "@", tint = colors.accent)
-                Spacer(Modifier.width(6.dp))
                 Column(modifier = Modifier.weight(1f)) {
-                    ChuText(
-                        "@${f.handle}",
-                        style = type.label.copy(fontWeight = FontWeight.Bold),
-                        color = colors.textPrimary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    ChuText(
-                        if (endorsers.isNotBlank()) "via $endorsers" else "${f.nPosts} posts",
-                        style = type.labelSmall.copy(
-                            fontFamily = FontFamily.Monospace,
-                            fontFeatureSettings = "tnum",
-                        ),
-                        color = colors.textMuted,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = if (canX) Modifier.clickable(onClick = goX) else Modifier,
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            RemoteLogo(url = f.img, fallback = "@", tint = colors.accent, size = 30.dp)
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            if (showName != null) {
+                                ChuText(
+                                    showName,
+                                    style = type.label.copy(fontWeight = FontWeight.Bold),
+                                    color = colors.textPrimary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                            ChuText(
+                                "@${f.handle}",
+                                style = if (showName != null) type.labelSmall else type.label.copy(fontWeight = FontWeight.Bold),
+                                color = if (showName != null) colors.textMuted else colors.textPrimary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        ChuText(
+                            "✕",
+                            style = type.label.copy(fontWeight = FontWeight.Bold),
+                            color = colors.textMuted,
+                            modifier = Modifier
+                                .padding(start = 6.dp)
+                                .clickable { onHide(f.handle) },
+                        )
+                    }
+                    if (f.bio.isNotBlank()) {
+                        Spacer(Modifier.height(4.dp))
+                        ChuText(
+                            f.bio,
+                            style = type.bodySmall,
+                            color = colors.textSecondary,
+                            maxLines = 4,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    val stats = buildList {
+                        if (f.followers.isNotBlank()) add("${f.followers} followers")
+                        if (endorsers.isNotBlank()) add("via $endorsers")
+                        if (f.nPosts > 0) add("${f.nPosts} posts")
+                    }.joinToString(" · ")
+                    if (stats.isNotBlank()) {
+                        Spacer(Modifier.height(2.dp))
+                        ChuText(
+                            stats,
+                            style = type.labelSmall.copy(
+                                fontFamily = FontFamily.Monospace,
+                                fontFeatureSettings = "tnum",
+                            ),
+                            color = colors.textMuted,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
-                ChuText(
-                    "✕",
-                    style = type.label.copy(fontWeight = FontWeight.Bold),
-                    color = colors.textMuted,
-                    modifier = Modifier
-                        .padding(start = 6.dp)
-                        .clickable { onHide(f.handle) },
-                )
             }
         }
         if (visible.isEmpty()) {

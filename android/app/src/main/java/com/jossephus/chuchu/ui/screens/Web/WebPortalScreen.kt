@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -50,7 +49,6 @@ import com.jossephus.chuchu.ui.components.ChuTextField
 import com.jossephus.chuchu.ui.screens.Files.formatFileSize
 import com.jossephus.chuchu.ui.screens.Queue.FileHit
 import com.jossephus.chuchu.ui.screens.Queue.FileSearchResult
-import com.jossephus.chuchu.ui.theme.CHU_HAIRLINE_ALPHA
 import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTypography
 import kotlinx.coroutines.Dispatchers
@@ -67,6 +65,7 @@ private data class PortalEntry(
     val name: String,
     val isDir: Boolean,
     val size: Long,
+    // dufs ?json trả mtime MILI giây (khác qsrv trả giây rồi app ×1000 ở FileHit).
     val mtimeMs: Long,
 )
 
@@ -137,16 +136,20 @@ fun WebPortalScreen(
         val r = fn(q)
         if (query.trim() != q) return@LaunchedEffect // người dùng đã gõ tiếp — vứt kết quả cũ
         searchError = r.error
-        searchHits = r.hits
+        // 30/9 (user chốt B): kết quả search xếp mới đổi nhất trước (mtimeMs có sẵn).
+        searchHits = r.hits?.sortedByDescending { it.mtimeMs }
         searchStat = if (r.error != null) "" else "${r.total} kết quả · ${"%.0f".format(Locale.US, r.tookMs)}ms"
     }
 
     fun encodedPath(p: String): String =
         p.split('/').filter { it.isNotEmpty() }.joinToString("/") { Uri.encode(it) }
 
-    LaunchedEffect(path, reloadTick) {
+    // 30/9 review: effect key thiếu baseUrl — đổi URL portal không fetch lại.
+    LaunchedEffect(baseUrl, path, reloadTick) {
         val cached = WebPortalCache.get(baseUrl, path)
-        if (cached != null && cached.isNotEmpty()) {
+        // 30/9 review: thư mục rỗng đã cache cũng dùng (bản cũ isNotEmpty nên vào
+        // lại dir rỗng là fetch thừa + chớp loading).
+        if (cached != null) {
             entries = cached
             loading = false
         } else {
@@ -256,37 +259,13 @@ fun WebPortalScreen(
             .background(colors.background)
             .then(if (embedded) Modifier else Modifier.statusBarsPadding().navigationBarsPadding()),
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 10.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            // Nút ← đã bỏ (user chốt 16/9): back hệ thống lên thư mục cha rồi đóng (BackHandler ở trên).
-            ChuText(
-                "/" + path,
-                style = typography.label,
-                color = colors.textSecondary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-            ChuButton(
-                onClick = { reloadTick += 1 },
-                variant = ChuButtonVariant.Outlined,
-                bracketed = true,
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-            ) {
-                ChuText("↻", style = typography.label)
-            }
-        }
-
         // Ô search (25/9, prototype v2 duyệt): field cùng loại với ô filter của
         // FileBrowserScreen. Gõ → qsrv /files/search, thân màn thay bằng kết quả.
+        // 30/9 (user chốt B): search lên CÙNG HÀNG refresh, path gọn thành dòng nhỏ.
+        // Không search (WebPortal dùng ngoài Queue) thì giữ hàng path + refresh cũ.
         if (onSearch != null) {
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -310,6 +289,34 @@ fun WebPortalScreen(
                         modifier = Modifier.noRippleClickable { query = "" },
                     )
                 }
+                ReloadButton(onReload = { reloadTick += 1 })
+            }
+            ChuText(
+                if (path.isEmpty()) "/" else "/$path",
+                style = typography.labelSmall,
+                color = colors.textMuted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 2.dp),
+            )
+        } else {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                // Nút ← đã bỏ (user chốt 16/9): back hệ thống lên thư mục cha rồi đóng (BackHandler ở trên).
+                ChuText(
+                    "/" + path,
+                    style = typography.label,
+                    color = colors.textSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                ReloadButton(onReload = { reloadTick += 1 })
             }
         }
 
@@ -335,26 +342,24 @@ fun WebPortalScreen(
                 }
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
                     items(hits, key = { it.path }) { hit ->
-                        // 27/9 (user: "phần file cx phân vạch mỏng như bên watch"): hàng file
-                        // cũng chỉ 1 vạch mỏng dưới, đồng bộ với hàng dashboard.
-                        Column(modifier = Modifier.fillMaxWidth()) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        // 27/9 (user: "bấm vào file đó thì t ko bấm được, chỉ được
-                                        // đưa đến folder chứa nó"): file = MỞ THẲNG file như listing
-                                        // (apk tải, media mở app xem, còn lại ACTION_VIEW); thư mục
-                                        // = vào chính nó. Bỏ hành vi cũ "nhảy vào thư mục chứa".
-                                        if (hit.isDir) {
-                                            path = hit.path
-                                            searchHits = null
-                                            searchStat = ""
-                                        } else {
-                                            openFileAt(hit.path, hit.name)
-                                        }
+                        // 30/9 (user chốt B): hàng phẳng, BỎ vạch hairline (27/9 đã thêm).
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    // 27/9 (user: "bấm vào file đó thì t ko bấm được, chỉ được
+                                    // đưa đến folder chứa nó"): file = MỞ THẲNG file như listing
+                                    // (apk tải, media mở app xem, còn lại ACTION_VIEW); thư mục
+                                    // = vào chính nó. Bỏ hành vi cũ "nhảy vào thư mục chứa".
+                                    if (hit.isDir) {
+                                        path = hit.path
+                                        searchHits = null
+                                        searchStat = ""
+                                    } else {
+                                        openFileAt(hit.path, hit.name)
                                     }
-                                    .padding(horizontal = 14.dp, vertical = 11.dp),
+                                }
+                                .padding(horizontal = 14.dp, vertical = 11.dp),
                                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
@@ -391,16 +396,9 @@ fun WebPortalScreen(
                                     color = colors.textMuted,
                                 )
                             }
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(1.dp)
-                                    .background(colors.border.copy(alpha = CHU_HAIRLINE_ALPHA)),
-                            )
                         }
                     }
                 }
-            }
             loading && entries.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 ChuText("loading…", style = typography.label, color = colors.textMuted)
             }
@@ -410,13 +408,12 @@ fun WebPortalScreen(
             else -> LazyColumn(modifier = Modifier.fillMaxSize()) {
                 items(entries, key = { it.name }) { entry ->
                     val glyph = glyphOf(entry.name, entry.isDir)
-                    // 27/9: vạch mỏng phân cách hàng file, đồng bộ hàng dashboard (như trên).
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { openEntry(entry) }
-                                .padding(horizontal = 14.dp, vertical = 11.dp),
+                    // 30/9 (user chốt B): hàng phẳng, BỎ vạch hairline.
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { openEntry(entry) }
+                            .padding(horizontal = 14.dp, vertical = 11.dp),
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
@@ -446,16 +443,22 @@ fun WebPortalScreen(
                                 color = colors.textMuted,
                             )
                         }
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(1.dp)
-                                .background(colors.border.copy(alpha = CHU_HAIRLINE_ALPHA)),
-                        )
-                    }
                 }
             }
         }
+    }
+}
+
+/** Nút tải lại listing — dùng chung hàng search và hàng path. */
+@Composable
+private fun ReloadButton(onReload: () -> Unit) {
+    ChuButton(
+        onClick = onReload,
+        variant = ChuButtonVariant.Outlined,
+        bracketed = true,
+        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+    ) {
+        ChuText("↻", style = ChuTypography.current.label)
     }
 }
 

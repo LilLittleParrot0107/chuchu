@@ -3,10 +3,14 @@ package com.jossephus.chuchu.ui.components
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.view.ViewCompat
@@ -38,4 +42,28 @@ private fun Context.findActivity(): Activity? {
         c = c.baseContext
     }
     return null
+}
+
+/**
+ * Đệm "dọc đủ, ngang thoáng" (30/9, fix dải trống rìa camera foldable KHÔNG tái
+ * gây chèn noti như bản 44):
+ * - trên/dưới = full safeDrawing (kể cả cutout dọc) → portrait y hệt cũ, không
+ *   bao giờ chèn thanh noti;
+ * - trái/phải = systemBars thuần (vẫn né nút điều hướng nếu có) → landscape hết
+ *   dải trống né camera; nội dung tràn qua lỗ (1 chấm tròn) như app edge-to-edge
+ *   chuẩn, hàng cuộn qua vô hại.
+ */
+@Composable
+fun rememberTallSafeInsets(): WindowInsets {
+    val density = LocalDensity.current
+    val layoutDirection = LocalLayoutDirection.current
+    val safe = WindowInsets.safeDrawing
+    val sys = WindowInsets.systemBars
+    val left = sys.getLeft(density, layoutDirection)
+    val top = safe.getTop(density)
+    val right = sys.getRight(density, layoutDirection)
+    val bottom = safe.getBottom(density)
+    return remember(left, top, right, bottom) {
+        WindowInsets(left = left, top = top, right = right, bottom = bottom)
+    }
 }

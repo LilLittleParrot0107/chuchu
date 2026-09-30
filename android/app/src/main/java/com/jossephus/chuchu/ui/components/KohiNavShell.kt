@@ -237,7 +237,8 @@ private fun KohiSideRail(
             .statusBarsPadding()
             .navigationBarsPadding(),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        // 30/9 (user chốt B): giữ cụm trên nhưng thưa ra (8→28dp), không dàn full.
+        verticalArrangement = Arrangement.spacedBy(28.dp),
     ) {
         Spacer(Modifier.height(10.dp))
         KohiTab.entries.forEach { tab ->

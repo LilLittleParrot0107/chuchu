@@ -43,6 +43,7 @@ import com.jossephus.chuchu.ui.components.ChuText
 import com.jossephus.chuchu.ui.components.chart.CashflowEngine
 import com.jossephus.chuchu.ui.components.KohiNoticeBand
 import com.jossephus.chuchu.ui.components.KohiSubTabs
+import com.jossephus.chuchu.ui.components.rememberTallSafeInsets
 import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTypography
 import java.util.Locale
@@ -131,11 +132,13 @@ fun DbtopScreen(
             .background(colors.background),
     ) {
         val wide = maxWidth >= 600.dp
+        // 30/9: dọc đủ + ngang thoáng (fix dải trống camera không chèn noti).
+        val tallInsets = rememberTallSafeInsets()
 
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .windowInsetsPadding(WindowInsets.safeDrawing),
+                .windowInsetsPadding(tallInsets),
         ) {
             DbtopTopBar(
                 freshness = ui.state.freshness(nowSec),

@@ -31,7 +31,8 @@ data class ExplorerState(
 
 /**
  * Một dòng FOLLOW: account dự án mới toanh, user chưa follow, được các account
- * user follow nhắc/repost lại (endorsers). Chạm = mở bài gốc trên X để follow.
+ * user follow nhắc/repost lại (endorsers). 30/9: thẻ hiện bio luôn (pipeline scrape
+ * profile, cache 7 ngày) — ấn avatar → X, thân thẻ không bấm.
  */
 @Serializable
 data class ExplorerFollow(
@@ -42,6 +43,8 @@ data class ExplorerFollow(
     @SerialName("n_posts") val nPosts: Int = 0,
     val url: String? = null,
     val head: String = "",
+    val bio: String = "",
+    val followers: String = "",
 )
 
 /** Một dòng TRENDING: thứ tự = hạng trending CoinGecko, mc_rank = hạng vốn hoá. */

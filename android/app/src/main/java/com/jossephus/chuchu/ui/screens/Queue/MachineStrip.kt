@@ -4,17 +4,19 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
@@ -167,6 +169,15 @@ internal fun MachineStrip(
     cells: List<String>? = null,
 ) {
     val readout = state.readout
+    // 30/9 review: báo "đang xem" TRƯỚC nhánh null — bản cũ return sớm khi chưa có số
+    // nên không bao giờ xin quota, kẹt ở LOADING. Preview (terminal) không đi đường
+    // này nên không kéo poll nền (giữ luật 3/9).
+    if (asPage) {
+        DisposableEffect(Unit) {
+            onUsageVisible(true)
+            onDispose { onUsageVisible(false) }
+        }
+    }
     if (readout == null) {
         when {
             asPage -> MachinePagePlaceholder(modifier)
@@ -277,26 +288,53 @@ private fun MachineTabPage(
 ) {
     val colors = ChuColors.current
     // Số quota chỉ làm mới khi CÓ AI NHÌN: tốn 5s + 380MB cho một tiến trình
-    // claude. Tab mở là USAGE hiện nguyên — muốn số; rời tab thì thôi (user chốt
-    // 3/9 cho trang USAGE, giữ nguyên ý đó khi dải lên tab).
-    DisposableEffect(Unit) {
-        onUsageVisible(true)
-        onDispose { onUsageVisible(false) }
-    }
-    Column(modifier.fillMaxSize().background(colors.background)) {
-        GlanceRow(glance = glance, cells = cells, expandable = false, open = false, onToggle = {}, topHairline = false)
-        Column(
-            Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 10.dp, vertical = PAGE_PAD_DP.dp),
-        ) {
-            SectionLabel("USAGE")
-            UsagePage(readout, glance.alpha)
-            Spacer(Modifier.height(8.dp))
-            SectionLabel("MACHINE")
-            MachinePage(readout, glance.alpha)
+    // claude (user chốt 3/9). Tín hiệu nằm ở MachineStrip (kể cả lúc chưa có số).
+    BoxWithConstraints(modifier.fillMaxSize().background(colors.background)) {
+        val wide = maxWidth >= 600.dp
+        Column(Modifier.fillMaxSize()) {
+            GlanceRow(glance = glance, cells = cells, expandable = false, open = false, onToggle = {}, topHairline = false)
+            if (wide) {
+                Row(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp, vertical = PAGE_PAD_DP.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Column(
+                        Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .verticalScroll(rememberScrollState()),
+                    ) {
+                        SectionLabel("USAGE")
+                        UsagePage(readout, glance.alpha)
+                    }
+                    Column(
+                        Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .verticalScroll(rememberScrollState()),
+                    ) {
+                        SectionLabel("MACHINE")
+                        MachinePage(readout, glance.alpha)
+                    }
+                }
+            } else {
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 10.dp, vertical = PAGE_PAD_DP.dp),
+                ) {
+                    SectionLabel("USAGE")
+                    UsagePage(readout, glance.alpha)
+                    Spacer(Modifier.height(8.dp))
+                    SectionLabel("MACHINE")
+                    MachinePage(readout, glance.alpha)
+                }
+            }
         }
         // Làm mới / chuyển acc như chân trang panel cũ, ép sát mép phải.
         Box(Modifier.fillMaxWidth().height(FOOTER_HEIGHT_DP.dp)) {

@@ -399,7 +399,7 @@ internal fun SpendingView(
                 ) {
                     rowDays.forEach { (day, usd) ->
                         SpendCell(
-                            label = day.substring(8) + "/" + day.substring(5, 7),
+                            label = day.shortDay(),
                             value = neg + money(usd, compact = true),
                             highlight = false,
                             modifier = Modifier.weight(1f),
@@ -556,7 +556,7 @@ private fun FlowDayTable(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 ChuText(
-                    day.substring(8) + "/" + day.substring(5, 7),
+                    day.shortDay(),
                     style = type.labelSmall,
                     color = colors.textMuted,
                     maxLines = 1,
@@ -611,7 +611,7 @@ private fun FlowDaySheet(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     ChuText(
-                        day.substring(8) + "/" + day.substring(5, 7),
+                        day.shortDay(),
                         style = type.title.copy(fontWeight = FontWeight.Bold),
                         color = colors.accent,
                         maxLines = 1,
@@ -721,3 +721,7 @@ internal fun DashboardHint(text: String) {
             .padding(horizontal = 11.dp, vertical = 5.dp),
     )
 }
+
+/** Ngày "YYYY-MM-DD" gọn "DD/MM" — key lạ ngắn hơn thì giữ nguyên, không crash (30/9 review). */
+private fun String.shortDay(): String =
+    if (length >= 10) substring(8) + "/" + substring(5, 7) else this

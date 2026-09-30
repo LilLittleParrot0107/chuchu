@@ -44,11 +44,6 @@ enum class DbtopGroup(val tab: String, val pages: IntRange) {
     companion object {
         const val PAGE_COUNT = 7
 
-        val SUB_TABS: Map<DbtopGroup, List<String>> = mapOf(
-            WATCH to listOf("TOKENS", "GAINERS"),
-            PROJ to listOf("BUZZ", "FOLLOW", "PROJECTS"),
-        )
-
         // Total (29/9 review): page lạ (vd state cũ sau khi đổi số trang) không được
         // ném — âm về POS, vượt về PROJ (cuối).
         fun groupOf(page: Int): DbtopGroup =
@@ -179,10 +174,10 @@ internal const val DBTOP_HIGH_RISK_HEALTH_FACTOR = 1.25
 
 /** Names are not unique across protocols, so selection needs a composite key. */
 internal fun DappRow.positionKey(): String =
-    // Them hash gia tri de hai vi the GIONG HET nhau (cung proto/name/src —
-    // deban tra ve the) khong sinh key trung trong LazyColumn: truoc day
-    // crash "Key was already used".
-    "$proto\u0000$name\u0000$src\u0000${cap.hashCode() * 31 + perday.hashCode()}"
+    // 30/9 review: key ỔN ĐỊNH theo danh tính (proto/name/src) — bản cũ trộn hash
+    // cap/perday nên mỗi scan số nhích là mất selection/scroll. Cặp sinh đôi giống
+    // hệt nhau (debank trả về thế) thì PositionsView đánh số thứ tự vào key list.
+    "$proto\u0000$name\u0000$src"
 
 /**
  * Trạng thái UI toàn diện của Dashboard dbtop.

@@ -62,8 +62,20 @@ internal fun PositionsView(
     }
     // Lớn trước nhỏ sau (29/9 user): vị thế xếp theo vốn giảm dần, ví nằm CUỐI.
     val ordered = remember(rows) { rows.sortedByDescending { it.cap } }
+    // 30/9 review: cặp sinh đôi giống hệt (cùng positionKey) đánh số thứ tự để key
+    // list duy nhất mà selection theo positionKey vẫn dính cả cặp như cũ.
+    val itemKeys = remember(ordered) {
+        val seen = mutableMapOf<String, Int>()
+        ordered.map { r ->
+            val k = r.positionKey()
+            val n = seen.getOrDefault(k, 0)
+            seen[k] = n + 1
+            if (n == 0) k else "$k#$n"
+        }
+    }
     LazyColumn(modifier = Modifier.fillMaxSize()) {
-        items(ordered, key = DappRow::positionKey) { row ->
+        items(ordered.size, key = { itemKeys[it] }) { index ->
+            val row = ordered[index]
             DappPositionRow(
                 row = row,
                 selected = selectedKey == row.positionKey(),

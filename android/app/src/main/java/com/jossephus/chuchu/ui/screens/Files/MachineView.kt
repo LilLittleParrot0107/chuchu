@@ -213,34 +213,6 @@ private fun cardModifier(): Modifier =
 private fun monoStyle(type: com.jossephus.chuchu.ui.theme.ChuTypeScale) =
     type.body.copy(fontFamily = FontFamily.Monospace, fontFeatureSettings = "tnum")
 
-/** Thanh do. [pct] null = chua co hai mau de tinh -> hien "—", khong ve 0%. */
-@Composable
-private fun Gauge(label: String, pct: Double?, color: Color, tail: String = "", dim: Boolean = false) {
-    val colors = ChuColors.current
-    val type = ChuTypography.current
-    val alpha = if (dim) 0.45f else 1f
-    Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
-        ChuText(label, style = monoStyle(type), color = colors.textSecondary.copy(alpha = alpha),
-            modifier = Modifier.width(30.dp))
-        Box(
-            Modifier.weight(1f).height(9.dp)
-                .background(colors.border.copy(alpha = 0.35f * alpha)),
-        ) {
-            val f = ((pct ?: 0.0) / 100.0).coerceIn(0.0, 1.0).toFloat()
-            if (f > 0f) {
-                Box(Modifier.fillMaxWidth(f).height(9.dp).background(color.copy(alpha = alpha)))
-            }
-        }
-        ChuText(
-            pct?.let { String.format(Locale.US, "%3.0f%%", it) } ?: "  —",
-            style = monoStyle(type),
-            color = (if (pct == null) colors.textMuted else colors.textPrimary).copy(alpha = alpha),
-            modifier = Modifier.padding(start = 8.dp).width(46.dp),
-        )
-        ChuText(tail, style = monoStyle(type), color = colors.textMuted.copy(alpha = alpha), maxLines = 1)
-    }
-}
-
 @Composable
 private fun QuotaCell(
     label: String,
