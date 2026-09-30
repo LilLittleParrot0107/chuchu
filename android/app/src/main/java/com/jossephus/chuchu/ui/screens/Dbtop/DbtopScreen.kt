@@ -11,8 +11,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.displayCutout
-import androidx.compose.foundation.layout.exclude
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -137,10 +135,7 @@ fun DbtopScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                // Trừ displayCutout (bug 30/9: landscape foldable rìa camera thành dải
-                // trống full-height) — status/nav bar vẫn đệm đủ, chỉ bỏ phần né lỗ.
-                // Lỗ chỉ che ~1 chấm tròn góc trên; hàng list cuộn tràn qua vô hại.
-                .windowInsetsPadding(WindowInsets.safeDrawing.exclude(WindowInsets.displayCutout)),
+                .windowInsetsPadding(WindowInsets.safeDrawing),
         ) {
             DbtopTopBar(
                 freshness = ui.state.freshness(nowSec),
