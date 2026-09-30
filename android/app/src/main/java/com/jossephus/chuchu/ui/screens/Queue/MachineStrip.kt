@@ -310,6 +310,13 @@ private fun MachineTabPage(
                         SectionLabel("USAGE")
                         UsagePage(readout, glance.alpha)
                     }
+                    // 30/9 (user): vạch mỏng ngăn USAGE | MACHINE.
+                    Box(
+                        Modifier
+                            .fillMaxHeight()
+                            .width(1.dp)
+                            .background(colors.border.copy(alpha = CHU_HAIRLINE_ALPHA)),
+                    )
                     Column(
                         Modifier
                             .weight(1f)
@@ -336,8 +343,9 @@ private fun MachineTabPage(
                 }
             }
         }
-        // Làm mới / chuyển acc như chân trang panel cũ, ép sát mép phải.
-        Box(Modifier.fillMaxWidth().height(FOOTER_HEIGHT_DP.dp)) {
+        // Chân trang: minHeight thay vì height cứng (30/9 user: Box 20dp cứng mà nội
+        // dung cao hơn là tràn lên đè thời gian đếm ngược).
+        Box(Modifier.fillMaxWidth().defaultMinSize(minHeight = FOOTER_HEIGHT_DP.dp)) {
             UsageFooterActions(
                 readout = readout,
                 onRefreshUsage = onRefreshUsage,

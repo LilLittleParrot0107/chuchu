@@ -47,6 +47,9 @@ internal enum class AgentRailOrientation { Horizontal, Vertical }
  *  cho thấy thêm tên. */
 private val RAIL_TAB_WIDTH = 140.dp
 
+/** Alpha tên phiên chưa mở — vẫn nhận ra màu session nhưng biết không phải tab hiện tại. */
+private const val RAIL_IDLE_ALPHA = 0.45f
+
 @Composable
 internal fun QueueAgentRail(
     agents: List<QueueAgent>,
@@ -162,7 +165,9 @@ private fun AgentRailTab(
         ChuText(
             agent.name,
             style = type.label,
-            color = if (active) kColor else colors.textMuted,
+            // 30/9 (user): tên phiên luôn mang màu session — chưa mở thì nhạt
+            // (alpha), đang mở mới đúng màu.
+            color = if (active) kColor else kColor.copy(alpha = RAIL_IDLE_ALPHA),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -207,7 +212,8 @@ private fun AgentRailSideItem(
         ChuText(
             agent.name,
             style = type.label,
-            color = if (active) kColor else colors.textMuted,
+            // 30/9 (user): như tab ngang — nhạt khi chưa mở, đúng màu khi mở.
+            color = if (active) kColor else kColor.copy(alpha = RAIL_IDLE_ALPHA),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
