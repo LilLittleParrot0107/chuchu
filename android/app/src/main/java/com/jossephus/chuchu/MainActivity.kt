@@ -124,6 +124,11 @@ class MainActivity : FragmentActivity() {
             statusBarStyle = SystemBarStyle.dark(0x00000000),
             navigationBarStyle = SystemBarStyle.dark(0x00000000),
         )
+        // Foldable landscape: camera đục lỗ nằm cạnh dài — mặc định hệ thống cấm cửa
+        // sổ vẽ vào vùng cutout ở cạnh này nên rìa phải thành dải trống (bug 30/9).
+        // SHORT_EDGES cho vẽ tràn, từng màn tự trừ inset displayCutout chỗ cần.
+        window.attributes.layoutInDisplayCutoutMode =
+            WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
         setContent {
             AppRoot()
         }
