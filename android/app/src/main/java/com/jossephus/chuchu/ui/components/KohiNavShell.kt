@@ -54,7 +54,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.jossephus.chuchu.ui.theme.ChuColors
-import com.jossephus.chuchu.ui.theme.CHU_HAIRLINE_ALPHA
 import com.jossephus.chuchu.ui.theme.ChuTypography
 
 /**
@@ -230,48 +229,30 @@ private fun KohiSideRail(
     onSelect: (KohiTab) -> Unit,
 ) {
     val colors = ChuColors.current
-    val density = LocalDensity.current
-    // Đệm trên của vạch ngăn = đúng chiều cao status bar (dưới noti, không đè).
-    val statusTop = with(density) { WindowInsets.statusBars.getTop(density).toDp() }
-    Box(
+    Column(
         modifier = Modifier
             .width(64.dp)
             .fillMaxHeight()
             // Nền rail giữ nguyên CÙNG MÀU theme (background) khi mở rộng màn hình
-            .background(colors.background),
+            .background(colors.background)
+            .statusBarsPadding()
+            .navigationBarsPadding(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        // 30/9 (user chốt B): giữ cụm trên nhưng thưa ra (8→28dp), không dàn full.
+        verticalArrangement = Arrangement.spacedBy(28.dp),
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .statusBarsPadding()
-                .navigationBarsPadding(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            // 30/9 (user chốt B): giữ cụm trên nhưng thưa ra (8→28dp), không dàn full.
-            verticalArrangement = Arrangement.spacedBy(28.dp),
-        ) {
-            Spacer(Modifier.height(10.dp))
-            KohiTab.entries.forEach { tab ->
-                KohiNavItem(
-                    tab = tab,
-                    selected = selectedRoute == tab.route,
-                    badge = if (tab == KohiTab.QUEUE) queueBadge else null,
-                    onClick = { onSelect(tab) },
-                    pillColor = colors.surface,
-                    modifier = Modifier.size(width = 64.dp, height = 44.dp),
-                )
-            }
-            Spacer(Modifier.weight(1f))
+        Spacer(Modifier.height(10.dp))
+        KohiTab.entries.forEach { tab ->
+            KohiNavItem(
+                tab = tab,
+                selected = selectedRoute == tab.route,
+                badge = if (tab == KohiTab.QUEUE) queueBadge else null,
+                onClick = { onSelect(tab) },
+                pillColor = colors.surface,
+                modifier = Modifier.size(width = 64.dp, height = 44.dp),
+            )
         }
-        // 30/9 (user): vạch mỏng ngăn rail | content — bắt đầu DƯỚI thanh noti
-        // (không đè), kéo tới đáy.
-        Box(
-            modifier = Modifier
-                .align(Alignment.CenterEnd)
-                .fillMaxHeight()
-                .padding(top = statusTop)
-                .width(1.dp)
-                .background(colors.border.copy(alpha = CHU_HAIRLINE_ALPHA)),
-        )
+        Spacer(Modifier.weight(1f))
     }
 }
 

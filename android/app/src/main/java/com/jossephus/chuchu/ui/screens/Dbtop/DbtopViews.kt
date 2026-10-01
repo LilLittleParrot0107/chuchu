@@ -44,6 +44,8 @@ import com.jossephus.chuchu.data.model.dbtop.SpendingState
 import com.jossephus.chuchu.data.model.explorer.ExplorerState
 import com.jossephus.chuchu.ui.components.KohiBottomSheet
 import com.jossephus.chuchu.ui.components.ChuCard
+import com.jossephus.chuchu.ui.components.ChuButton
+import com.jossephus.chuchu.ui.components.ChuButtonVariant
 import com.jossephus.chuchu.ui.components.ChuText
 import com.jossephus.chuchu.ui.components.KohiSectionBand
 import com.jossephus.chuchu.ui.components.KohiSelectableRow
@@ -222,6 +224,12 @@ internal fun NetRateSection(
     }
     // %APR ung voi moi 1 USD/ngay — chinh he so bien truc USD thanh truc APR.
     val aprFactor = remember(cap) { if (cap > 0.0) 365.0 / cap * 100.0 else null }
+    // 30/9 (user): nút đổi giữa 30 ngày gần nhất và toàn bộ (như hiện tại). Cắt SAU
+    // khi tính trailing để đường trượt vẫn có đủ history — chỉ thu hẹp khung nhìn.
+    var last30 by rememberSaveable { mutableStateOf(false) }
+    val shownPoints = remember(ratePoints, last30) {
+        if (last30) ratePoints.takeLast(30) else ratePoints
+    }
 
     val netAprVal = kpis.netRunRateApr
     val perDay = kpis.netRunRatePerDay
@@ -236,17 +244,41 @@ internal fun NetRateSection(
         containerColor = colors.background,
         accent = if (perDay >= 0) colors.success else colors.error,
     )
+    // Nút khung nhìn 30D/ALL — cùng hàng, ép phải, cùng ngữ pháp sub-tab.
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 10.dp),
+        horizontalArrangement = Arrangement.End,
+    ) {
+        listOf(false to "ALL", true to "30D").forEach { (v, label) ->
+            val on = last30 == v
+            ChuButton(
+                onClick = { last30 = v },
+                variant = ChuButtonVariant.Ghost,
+                bracketed = on,
+                borderColor = colors.accent,
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+            ) {
+                ChuText(
+                    label,
+                    style = type.labelSmall,
+                    color = if (on) colors.accent else colors.textMuted,
+                )
+            }
+        }
+    }
     ChuCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 10.dp, vertical = 4.dp),
     ) {
         Column(modifier = Modifier.fillMaxWidth().padding(10.dp)) {
-            if (ratePoints.isEmpty()) {
+            if (shownPoints.isEmpty()) {
                 ChuText("NO DAILY YIELD DATA", style = type.bodySmall, color = colors.textMuted)
             } else {
                 NetRateChart(
-                    points = ratePoints,
+                    points = shownPoints,
                     grossColor = colors.accent,
                     netColor = if (perDay >= 0) colors.success else colors.error,
                     // KHÔNG dùng warning: cam cạnh vàng (yield) nhìn lẫn (user 5/9).
