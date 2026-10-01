@@ -35,9 +35,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import com.jossephus.chuchu.data.model.dbtop.DeFiFormatter
 import com.jossephus.chuchu.data.model.explorer.ExplorerBuzz
@@ -531,10 +536,10 @@ private fun BuzzCard(
             }
             if (body.isNotBlank()) {
                 // 28/9 (user: content buzz to lên xíu) bodySmall 12 -> body 14.
-                ChuText(
-                    body,
-                    style = type.body,
-                    color = if (vi != null) colors.success else colors.textSecondary,
+                // 1/10 (user: buzz detail dễ đọc hơn): $ticker xanh lá, @mention xanh dương.
+                BasicText(
+                    text = highlightBuzz(body, colors.success, colors.accentSecondary),
+                    style = type.body.copy(color = if (vi != null) colors.success else colors.textSecondary),
                     maxLines = 4,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -702,15 +707,24 @@ private fun BuzzSheet(
         val viet = if (showVi) vi else null
         if (viet != null) {
             SheetSection("POST · TIẾNG VIỆT")
-            ChuText(viet, style = type.body, color = colors.success)
+            BasicText(
+                text = highlightBuzz(viet, colors.success, colors.accentSecondary),
+                style = type.body.copy(color = colors.success),
+            )
             ChuText(buzz.head, style = type.labelSmall, color = colors.textMuted)
         } else {
             SheetSection("POST")
-            ChuText(buzz.head, style = type.body, color = colors.textSecondary)
+            BasicText(
+                text = highlightBuzz(buzz.head, colors.success, colors.accentSecondary),
+                style = type.body.copy(color = colors.textSecondary),
+            )
         }
         if (buzz.by.isNotEmpty()) {
             SheetSection("MENTIONED BY (${buzz.by.size})")
-            ChuText(buzz.by.joinToString("  "), style = type.bodySmall, color = colors.textSecondary)
+            BasicText(
+                text = highlightBuzz(buzz.by.joinToString("  "), colors.success, colors.accentSecondary),
+                style = type.bodySmall.copy(color = colors.textSecondary),
+            )
         }
         if (buzz.yields.isNotEmpty()) {
             SheetSection("YIELDS")
@@ -944,6 +958,34 @@ private fun pctColor(value: Double?, colors: ChuColorPalette): Color = when {
 /** Khoá cache bản dịch — url bài là định danh bền nhất. */
 private fun ExplorerBuzz.translationKey(): String =
     url ?: "$name|${postTs ?: 0L}"
+
+/**
+ * Tô màu thực thể trong text buzz (1/10 user: dễ đọc hơn): $ticker xanh lá,
+ * @mention xanh dương, còn lại giữ màu style gọi. Cùng họ với highlightName của portal.
+ */
+internal fun highlightBuzz(text: String, ticker: Color, mention: Color): AnnotatedString {
+    if (text.isEmpty()) return AnnotatedString("")
+    val marks = arrayOfNulls<Color>(text.length)
+    val tickRe = Regex("\\\$[A-Za-z][A-Za-z0-9]{1,14}")
+    val menRe = Regex("@[A-Za-z0-9_]{3,15}")
+    for (m in tickRe.findAll(text)) {
+        for (j in m.range) marks[j] = ticker
+    }
+    for (m in menRe.findAll(text)) {
+        for (j in m.range) if (marks[j] == null) marks[j] = mention
+    }
+    return buildAnnotatedString {
+        var start = 0
+        while (start < text.length) {
+            val c = marks[start]
+            var end = start
+            while (end < text.length && marks[end] == c) end++
+            val seg = text.substring(start, end)
+            if (c != null) withStyle(SpanStyle(color = c)) { append(seg) } else append(seg)
+            start = end
+        }
+    }
+}
 
 private fun openUrl(context: Context, url: String?) {
     if (url.isNullOrBlank()) return
