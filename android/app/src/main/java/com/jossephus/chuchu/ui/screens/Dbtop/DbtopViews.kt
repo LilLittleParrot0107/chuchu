@@ -334,6 +334,16 @@ internal fun SpendingView(
             .chunked(4)
     }
     val yearTotal = remember(monthRows) { monthRows.sumOf { row -> row.sumOf { it.value } } }
+    // 2/10 (user): ô tháng nào cũng có dòng flow ròng — gộp từ transfers (days) theo
+    // tiền tố tháng, không cần pipeline. Tháng không flow thì không hiện dòng.
+    val flowByMonth = remember(flow) {
+        val acc = mutableMapOf<String, Double>()
+        for ((day, txs) in flow?.days ?: emptyMap()) {
+            if (day.length < 7) continue
+            acc[day.substring(0, 7)] = (acc[day.substring(0, 7)] ?: 0.0) + txs.sumOf { it.amount }
+        }
+        acc
+    }
     val dayRows = remember(spending) {
         spending.byDay.entries
             .filter { it.key.startsWith(spending.month) }
@@ -455,11 +465,15 @@ internal fun SpendingView(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     rowMonths.forEach { (month, usd) ->
+                        val fnet = flowByMonth[month]
                         SpendCell(
                             label = monthAbbr(month),
                             value = neg + money(usd, compact = true),
                             highlight = month == spending.month,
                             modifier = Modifier.weight(1f),
+                            flow = fnet?.let { (if (it >= 0 && !hidden) "+" else "") + money(it, compact = true) },
+                            flowHighlight = month == spending.month,
+                            flowPositive = (fnet ?: 0.0) >= 0,
                         )
                     }
                     repeat(4 - rowMonths.size) { Spacer(Modifier.weight(1f)) }
@@ -704,6 +718,10 @@ private fun SpendCell(
     value: String,
     highlight: Boolean,
     modifier: Modifier = Modifier,
+    // 2/10 (user): dòng flow ròng tháng — null thì ô gọn như cũ.
+    flow: String? = null,
+    flowHighlight: Boolean = false,
+    flowPositive: Boolean = true,
 ) {
     val colors = ChuColors.current
     val type = ChuTypography.current
@@ -729,6 +747,19 @@ private fun SpendCell(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
+        if (flow != null) {
+            ChuText(
+                flow,
+                style = type.labelSmall,
+                color = when {
+                    flowHighlight -> colors.warning
+                    flowPositive -> colors.success
+                    else -> colors.warning
+                },
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
