@@ -262,7 +262,7 @@ object CashflowEngine {
     }
 
     /** Duoi nguong nay coi nhu khong do duoc gi — chia cho no chi ra so rac. */
-    private const val MIN_COVERAGE = 0.05
+    const val MIN_COVERAGE = 0.05
 }
 
 /**
@@ -498,7 +498,7 @@ fun NetRateChart(
 
                 if (p.gross > 0.0) {
                     val top = yOf(p.gross * anim)
-                    val partial = p.coverage in 0.05..0.95
+                    val partial = p.coverage in CashflowEngine.MIN_COVERAGE..0.95
                     drawRoundRect(
                         brush = barBrush.brush!!,
                         topLeft = Offset(left, top),

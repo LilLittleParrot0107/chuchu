@@ -41,6 +41,7 @@ import com.jossephus.chuchu.ui.components.BlockBarLine
 import com.jossephus.chuchu.ui.components.BlockSegmentBar
 import kotlin.math.roundToInt
 import com.jossephus.chuchu.ui.components.ChuText
+import com.jossephus.chuchu.ui.components.DAYS_PER_MONTH
 import com.jossephus.chuchu.ui.components.KohiCompactAction
 import com.jossephus.chuchu.ui.components.KohiSelectableRow
 import com.jossephus.chuchu.ui.theme.ChuColors
@@ -754,7 +755,7 @@ internal fun YieldInsightPane(
     val typography = ChuTypography.current
 
     val perday = currentPerDay ?: state.perday
-    val monthlyProjectedRaw = state.mtd?.proj ?: (perday * 30.416)
+    val monthlyProjectedRaw = state.mtd?.proj ?: (perday * DAYS_PER_MONTH)
     val monthlyProjected = if (monthlyProjectedRaw.isFinite() && !monthlyProjectedRaw.isNaN()) monthlyProjectedRaw else 0.0
     val mtdUsd = state.mtd?.usd
     val mtdDays = state.mtd?.days

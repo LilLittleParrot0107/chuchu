@@ -49,8 +49,6 @@ import com.jossephus.chuchu.data.model.explorer.ExplorerBuzz
 import com.jossephus.chuchu.data.model.explorer.ExplorerGain
 import com.jossephus.chuchu.data.model.explorer.ExplorerProject
 import com.jossephus.chuchu.data.model.explorer.ExplorerState
-import com.jossephus.chuchu.data.model.explorer.ExplorerTrend
-import com.jossephus.chuchu.data.model.explorer.ExplorerYield
 import com.jossephus.chuchu.data.network.GeminiTranslator
 import com.jossephus.chuchu.data.repository.BuzzTranslationStore
 import com.jossephus.chuchu.ui.components.ChuButton
@@ -813,6 +811,7 @@ private fun SheetFrame(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                // 560.dp riêng từng sheet, đừng gộp const chung.
                 .heightIn(max = 560.dp)
                 .background(colors.surface)
                 .padding(horizontal = 10.dp, vertical = 6.dp)

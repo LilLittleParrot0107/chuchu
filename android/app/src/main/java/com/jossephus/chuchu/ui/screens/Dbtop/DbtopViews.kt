@@ -644,6 +644,7 @@ private fun FlowDaySheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                // 560.dp riêng từng sheet, đừng gộp const chung.
                 .heightIn(max = 560.dp)
                 .background(colors.surface)
                 .padding(horizontal = 10.dp, vertical = 6.dp)

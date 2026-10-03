@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,7 +19,6 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -40,6 +38,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.jossephus.chuchu.data.model.dbtop.DataFreshness
 import com.jossephus.chuchu.ui.components.ChuText
+import com.jossephus.chuchu.ui.components.DAYS_PER_MONTH
 import com.jossephus.chuchu.ui.components.chart.CashflowEngine
 import com.jossephus.chuchu.ui.components.KohiNoticeBand
 import com.jossephus.chuchu.ui.components.KohiSubTabs
@@ -76,7 +75,7 @@ fun DbtopScreen(
     val cashflowPoints = remember(ui.state.daily, spendByDay) {
         CashflowEngine.calculatePoints(ui.state.daily, spendByDay)
     }
-    val fallbackSpendPerDay = ui.spending?.monthUsd?.takeIf { it > 0.0 }?.div(30.416) ?: 0.0
+    val fallbackSpendPerDay = ui.spending?.monthUsd?.takeIf { it > 0.0 }?.div(DAYS_PER_MONTH) ?: 0.0
     val ratePoints = remember(cashflowPoints, fallbackSpendPerDay) {
         CashflowEngine.calculateRatePoints(cashflowPoints, fallbackSpendPerDay = fallbackSpendPerDay)
     }
@@ -332,6 +331,7 @@ fun DbtopScreen(
                             row = row,
                             showYield = currentPerDay != null && (row.expiry == null || row.expiry > nowSec),
                             onClose = dismiss,
+                            // 560.dp riêng từng sheet, đừng gộp const chung.
                             maxHeight = 560.dp,
                         )
                     }

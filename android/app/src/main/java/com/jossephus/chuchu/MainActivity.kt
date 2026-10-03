@@ -127,8 +127,11 @@ class MainActivity : FragmentActivity() {
         // Foldable landscape: camera đục lỗ nằm cạnh hông — cho cửa sổ vẽ tràn để
         // từng màn tự chia inset (rememberTallSafeInsets); revert 44 chỉ bỏ phần này
         // vì exclude cả cutout dọc gây chèn noti portrait.
-        window.attributes.layoutInDisplayCutoutMode =
-            WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+        // Guard API 28 (minSdk 24): field không tồn tại trên máy cũ.
+        if (android.os.Build.VERSION.SDK_INT >= 28) {
+            window.attributes.layoutInDisplayCutoutMode =
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+        }
         setContent {
             AppRoot()
         }
