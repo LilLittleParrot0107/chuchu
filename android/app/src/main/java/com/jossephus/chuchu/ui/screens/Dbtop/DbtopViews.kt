@@ -44,8 +44,6 @@ import com.jossephus.chuchu.data.model.dbtop.SpendingState
 import com.jossephus.chuchu.data.model.explorer.ExplorerState
 import com.jossephus.chuchu.ui.components.KohiBottomSheet
 import com.jossephus.chuchu.ui.components.ChuCard
-import com.jossephus.chuchu.ui.components.ChuButton
-import com.jossephus.chuchu.ui.components.ChuButtonVariant
 import com.jossephus.chuchu.ui.components.ChuText
 import com.jossephus.chuchu.ui.components.KohiSectionBand
 import com.jossephus.chuchu.ui.components.KohiSelectableRow
@@ -53,7 +51,9 @@ import com.jossephus.chuchu.ui.components.RemoteLogo
 import com.jossephus.chuchu.ui.components.noRippleClickable
 import com.jossephus.chuchu.ui.components.chart.CashflowEngine
 import com.jossephus.chuchu.ui.components.chart.CashflowKpiSummary
+import com.jossephus.chuchu.ui.components.chart.DailyCashflowPoint
 import com.jossephus.chuchu.ui.components.chart.NetRateChart
+import com.jossephus.chuchu.ui.components.chart.NetRatePoint
 import com.jossephus.chuchu.ui.theme.CHU_HAIRLINE_ALPHA
 import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTypography
@@ -206,79 +206,43 @@ private fun WatchlistTokenRow(
 internal fun NetRateSection(
     currentPerDay: Double?,
     daily: List<DailyYield>,
-    spending: SpendingState? = null,
-    spendByDay: Map<String, Double> = spending?.byDay ?: emptyMap(),
-    cap: Double = 0.0,
     kpis: CashflowKpiSummary,
+    windowedPoints: List<DailyCashflowPoint>,
+    ratePoints: List<NetRatePoint>,
+    aprFactor: Double? = null,
 ) {
     val colors = ChuColors.current
     val type = ChuTypography.current
 
-    val cashflowPoints = remember(daily, spendByDay) {
-        CashflowEngine.calculatePoints(daily, spendByDay)
-    }
-    // Chi dung tong thang lam chi tieu/ngay khi KHONG co du lieu theo ngay nao.
-    val fallbackSpendPerDay = spending?.monthUsd?.takeIf { it > 0.0 }?.div(30.416) ?: 0.0
-    val ratePoints = remember(cashflowPoints, fallbackSpendPerDay) {
-        CashflowEngine.calculateRatePoints(cashflowPoints, fallbackSpendPerDay = fallbackSpendPerDay)
-    }
-    // %APR ung voi moi 1 USD/ngay — chinh he so bien truc USD thanh truc APR.
-    val aprFactor = remember(cap) { if (cap > 0.0) 365.0 / cap * 100.0 else null }
-    // 30/9 (user): nút đổi giữa 30 ngày gần nhất và toàn bộ (như hiện tại). Cắt SAU
-    // khi tính trailing để đường trượt vẫn có đủ history — chỉ thu hẹp khung nhìn.
-    var last30 by rememberSaveable { mutableStateOf(false) }
-    val shownPoints = remember(ratePoints, last30) {
-        if (last30) ratePoints.takeLast(30) else ratePoints
-    }
-
+    // So lieu do DbtopScreen tinh mot lan roi truyen xuong (user chot 26/9):
+    // section chi ve, khong tu tinh lai de khoi lech voi bang summary.
     val netAprVal = kpis.netRunRateApr
     val perDay = kpis.netRunRatePerDay
-    val meta = when {
+    val baseMeta = when {
         currentPerDay == null && daily.isEmpty() -> "SCAN OFFLINE"
         netAprVal != null -> "${if (netAprVal >= 0) "+" else ""}${String.format(Locale.US, "%.1f%% NET APR", netAprVal)}"
         else -> "${if (perDay >= 0) "+" else "-"}${DeFiFormatter.formatUsd(abs(perDay))}/D NET"
     }
+    // 3/10 (user): history < 30 ngay thi ghi ro n= de biet so lieu non.
+    val meta = if (windowedPoints.size < CashflowEngine.SPEND_WINDOW_DAYS) "$baseMeta · n=${windowedPoints.size}" else baseMeta
     KohiSectionBand(
-        label = "NET RATE · TRAILING",
+        label = "NET RATE · TRAILING · 30D",
         meta = meta,
         containerColor = colors.background,
         accent = if (perDay >= 0) colors.success else colors.error,
     )
-    // Nút khung nhìn 30D/ALL — cùng hàng, ép phải, cùng ngữ pháp sub-tab.
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 10.dp),
-        horizontalArrangement = Arrangement.End,
-    ) {
-        listOf(false to "ALL", true to "30D").forEach { (v, label) ->
-            val on = last30 == v
-            ChuButton(
-                onClick = { last30 = v },
-                variant = ChuButtonVariant.Ghost,
-                bracketed = on,
-                borderColor = colors.accent,
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-            ) {
-                ChuText(
-                    label,
-                    style = type.labelSmall,
-                    color = if (on) colors.accent else colors.textMuted,
-                )
-            }
-        }
-    }
+    // 3/10: 30d-only, bỏ nút khung nhìn (user chốt) — chart luôn 30 ngày gần nhất.
     ChuCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 10.dp, vertical = 4.dp),
     ) {
         Column(modifier = Modifier.fillMaxWidth().padding(10.dp)) {
-            if (shownPoints.isEmpty()) {
+            if (ratePoints.isEmpty()) {
                 ChuText("NO DAILY YIELD DATA", style = type.bodySmall, color = colors.textMuted)
             } else {
                 NetRateChart(
-                    points = shownPoints,
+                    points = ratePoints,
                     grossColor = colors.accent,
                     netColor = if (perDay >= 0) colors.success else colors.error,
                     // KHÔNG dùng warning: cam cạnh vàng (yield) nhìn lẫn (user 5/9).
@@ -319,6 +283,9 @@ internal fun SpendingView(
     daily: List<DailyYield> = emptyList(),
     cap: Double = 0.0,
     kpis: CashflowKpiSummary,
+    windowedPoints: List<DailyCashflowPoint>,
+    ratePoints: List<NetRatePoint>,
+    aprFactor: Double? = null,
 ) {
     val colors = ChuColors.current
     val type = ChuTypography.current
@@ -367,7 +334,7 @@ internal fun SpendingView(
     val neg = if (hidden) "" else "-"
     val pos = if (hidden) "" else "+"
     fun money(v: Double, compact: Boolean = false, decimals: Int = 2) = formatMoney(v, moneyDisplay, rate, compact, decimals)
-    var openDay by remember { mutableStateOf<String?>(null) }
+    var openDay by rememberSaveable { mutableStateOf<String?>(null) }
     openDay?.let { day ->
         FlowDaySheet(
             day = day,
@@ -486,10 +453,10 @@ internal fun SpendingView(
             NetRateSection(
                 currentPerDay = currentPerDay,
                 daily = daily,
-                spending = spending,
-                spendByDay = spending.byDay,
-                cap = cap,
                 kpis = kpis,
+                windowedPoints = windowedPoints,
+                ratePoints = ratePoints,
+                aprFactor = aprFactor,
             )
         }
         if (flowMonth != null) {

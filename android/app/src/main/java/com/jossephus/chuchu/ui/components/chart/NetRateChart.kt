@@ -92,6 +92,9 @@ object CashflowEngine {
     /** Cua so trailing mac dinh — mot tuan, du de nuot mot lan chi to. */
     const val TRAIL_WINDOW = 7
 
+    /** SPEND chart + yield% chi tinh tren 30 ngay gan nhat (user chot 3/10). */
+    const val SPEND_WINDOW_DAYS = 30
+
     fun calculatePoints(
         dailyData: List<DailyYield>,
         spendByDay: Map<String, Double>,
