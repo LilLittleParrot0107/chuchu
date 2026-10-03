@@ -86,6 +86,9 @@ class QueueViewModel(
      * reconnect/openChat đã đá poll mới) thấy số khác là stale, tự bỏ. */
     private val chatRefreshSeq = AtomicLong(0)
 
+    /** Bấm tab QUEUE → xin về HỘI THOẠI (sự kiện một lần, xem [QueueHomeRequests]). */
+    val homeRequests = QueueHomeRequests()
+
     private val _ui = MutableStateFlow(QueueUiState())
     val ui: StateFlow<QueueUiState> = _ui.asStateFlow()
 

@@ -49,6 +49,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -118,10 +119,8 @@ fun QueueScreen(
     onSearchFiles: (suspend (String) -> com.jossephus.chuchu.ui.screens.Queue.FileSearchResult)? = null,
     /** Trang mở khi vào màn (deep link "file portal" từ terminal → Files); null = giữ trang đang có. */
     initialMode: QueueMode? = null,
-    /** Tick về HỘI THOẠI mỗi lần bấm tab QUEUE (3/10 user); 0 = không reset. */
-    homeTick: Int = 0,
-    /** Gọi sau khi đã xử lý tick — tick là event 1 lần, không consume là remount tự kích lại. */
-    onHomeConsumed: () -> Unit = {},
+    /** Kênh "về HỘI THOẠI" khi bấm tab QUEUE; session-queue truyền null (không collect). */
+    homeRequests: kotlinx.coroutines.flow.Flow<Unit>? = null,
     // NEW SESSION (23/9): tấm trượt đáy chọn agent · thư mục · lệnh → qsrv mở phiên.
     launchDirs: List<LaunchDir> = emptyList(),
     onLaunchOpen: () -> Unit = {},
@@ -160,15 +159,15 @@ fun QueueScreen(
     // Deep link "file portal" (terminal) → mở thẳng trang FILES.
     LaunchedEffect(initialMode) { if (initialMode != null) pagerState.scrollToPage(initialMode.ordinal) }
     // 3/10 (user): bấm tab QUEUE lúc nào cũng về HỘI THOẠI — đang đọc thread thì
-    // đóng về list, đang FILES/MACHINE thì scroll về trang 0. Key CHỈ theo tick:
-    // key thêm chat.pane là sai — tick=1 tồn tại vĩnh viễn nên mọi lần mở/đóng chat
-    // sau đó đều re-fire, tự đóng chat (review max8-old). Đọc chat.pane hiện tại
-    // trong body, không key theo nó.
-    LaunchedEffect(homeTick) {
-        if (homeTick > 0) {
-            if (chat.pane != null) onCloseChat()
+    // đóng về list, đang FILES/MACHINE thì scroll về trang 0. homeRequests là kênh
+    // sự-kiện-một-lần do VM giữ: remount/xoay màn không phát lại (bài học tick Int cũ).
+    // rememberUpdatedState: effect không restart theo recomposition nên phải đọc
+    // chat.pane hiện tại, không giữ closure cũ.
+    val chatNow by rememberUpdatedState(chat)
+    LaunchedEffect(homeRequests) {
+        homeRequests?.collect {
+            if (chatNow.pane != null) onCloseChat()
             pagerState.scrollToPage(QueueMode.Threads.ordinal)
-            onHomeConsumed()
         }
     }
     // Rung nhẹ khi sang trang; bỏ giá trị đầu để mở màn không rung.

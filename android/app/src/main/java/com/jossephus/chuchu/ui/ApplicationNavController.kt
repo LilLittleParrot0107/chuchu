@@ -13,12 +13,13 @@ import com.jossephus.chuchu.ui.components.KohiBackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.map
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.platform.LocalContext
@@ -90,9 +91,6 @@ private fun Context.findActivity(): Activity? {
 @Composable
 fun ApplicationNavController() {
     val navController = rememberNavController()
-    // 3/10 (user): bấm tab QUEUE lúc nào cũng về HỘI THOẠI — tick tăng mỗi lần bấm,
-    // QueueScreen nghe là scroll về Threads (pager NavHost giữ trang cũ).
-    var queueHomeTick by remember { mutableIntStateOf(0) }
     val context = LocalContext.current
     val application = context.applicationContext as Application
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -205,6 +203,11 @@ fun ApplicationNavController() {
 
     val sharedQueueVm: QueueViewModel = viewModel(factory = QueueViewModel.factory(application))
     val queueAmbientSummary by sharedQueueVm.ambientSummary.collectAsStateWithLifecycle()
+    // Chat đang mở — tách riêng Boolean + distinctUntilChanged để shell không recompose
+    // theo từng tin chat (trước đây đọc cả ChatUiState ở tham số hideRail).
+    val chatOpen by remember(sharedQueueVm) {
+        sharedQueueVm.chat.map { it.pane != null }.distinctUntilChanged()
+    }.collectAsStateWithLifecycle(initialValue = false)
 
     LifecycleResumeEffect(Unit) {
         sharedQueueVm.setAppActive(true)
@@ -235,9 +238,9 @@ fun ApplicationNavController() {
         selectedRoute = currentRoute,
         queueBadge = queueAmbientSummary.takeIf { it.totalActive > 0 }?.totalActive,
         // Vào thread chat trên máy gập (28/9): ẩn rail trái cho chat tràn màn.
-        // Đọc thẳng state chat của Queue — back đóng chat là cờ tắt, rail về.
-        hideRail = currentRoute == "queue" &&
-            sharedQueueVm.chat.collectAsStateWithLifecycle().value.pane != null,
+        // Chỉ nghe pane!=null + distinctUntilChanged (cand-2 pattern) — không đọc cả
+        // ChatUiState để app-shell khỏi recompose theo từng tin chat.
+        hideRail = currentRoute == "queue" && chatOpen,
         onSelect = { tab ->
             // Tab luon la root doc lap (Material bottom-nav contract): khong bao
             // gio hijack ve terminal. Vao lai phien dang chay bang cach bam
@@ -245,7 +248,7 @@ fun ApplicationNavController() {
             // bo 26/8 theo yeu cau user) — flag "activeTerminalRoute" da bo vi
             // chi con 3/5 duong exit clear no, phan con de lai bien no thanh
             // zombie dan vao terminal.
-            if (tab == KohiTab.QUEUE) queueHomeTick++
+            if (tab == KohiTab.QUEUE) sharedQueueVm.homeRequests.request()
             navController.navigate(tab.route) {
                 popUpTo("servers") { saveState = true }
                 launchSingleTop = true
@@ -371,11 +374,8 @@ fun ApplicationNavController() {
                 sharedQueueVm = sharedQueueVm,
                 initialPane = backStackEntry.arguments?.getString("pane"),
                 initialMode = if (backStackEntry.arguments?.getString("mode") == "files") QueueMode.Files else null,
-                homeTick = queueHomeTick,
-                // Tick là event 1 lần: QueueScreen nuốt sau khi xử lý, không thì mỗi lần
-                // remount (mở chat lật hideRail, xoay màn) effect chạy lại với tick cũ và
-                // tự đóng chat (bug 3/10: bấm chat chớp rồi ở nguyên conversation).
-                onHomeConsumed = { queueHomeTick = 0 },
+                // Sự kiện một lần, VM giữ — remount/xoay màn không phát lại (bài học tick 3/10).
+                homeRequests = sharedQueueVm.homeRequests.events,
                 onBack = onExitApp,
             )
         }
@@ -545,10 +545,8 @@ private fun QueueDestination(
     initialPane: String?,
     onBack: () -> Unit,
     initialMode: QueueMode? = null,
-    /** Tick về HỘI THOẠI mỗi lần bấm tab QUEUE (3/10 user) — session-queue không dùng. */
-    homeTick: Int = 0,
-    /** QueueScreen gọi sau khi đã về Threads để tick không kích lại sau remount. */
-    onHomeConsumed: () -> Unit = {},
+    /** Kênh "về HỘI THOẠI" khi bấm tab QUEUE (3/10 user) — session-queue truyền null. */
+    homeRequests: Flow<Unit>? = null,
 ) {
     val ui by sharedQueueVm.ui.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -633,9 +631,9 @@ private fun QueueDestination(
         // Ô search FILES (25/9): debounce ở UI, VM chỉ lo gọi qsrv + hồi phục auth.
         onSearchFiles = sharedQueueVm::searchFiles,
         initialMode = initialMode,
-        homeTick = homeTick,
-        onHomeConsumed = onHomeConsumed,
-        launchDirs = sharedQueueVm.launchDirs.collectAsStateWithLifecycle().value,        onLaunchOpen = sharedQueueVm::loadLaunchDirs,
+        homeRequests = homeRequests,
+        launchDirs = sharedQueueVm.launchDirs.collectAsStateWithLifecycle().value,
+        onLaunchOpen = sharedQueueVm::loadLaunchDirs,
         onLaunch = sharedQueueVm::launch,
         onUploadToInbox = sharedQueueVm::uploadToInbox,
         chatFontSizeSp = sharedQueueVm.terminalFontSize.collectAsStateWithLifecycle().value,

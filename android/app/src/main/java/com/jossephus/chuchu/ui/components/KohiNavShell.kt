@@ -37,7 +37,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -127,28 +126,6 @@ private fun VectorIcon(vec: ImageVector, tint: Color) {
         colorFilter = ColorFilter.tint(tint),
         modifier = Modifier.size(22.dp),
     )
-}
-
-/** Folder outline vẽ tay — material-icons-core khong co Folder. */
-@Composable
-private fun FolderIcon(tint: Color) {
-    Canvas(modifier = Modifier.size(22.dp)) {
-        val w = size.width
-        val h = size.height
-        val stroke = Stroke(width = 2.0.dp.toPx(), cap = StrokeCap.Round)
-        val p = Path().apply {
-            // tab thu muc
-            moveTo(0.10f * w, 0.30f * h)
-            lineTo(0.34f * w, 0.30f * h)
-            lineTo(0.42f * w, 0.40f * h)
-            // than muc
-            lineTo(0.90f * w, 0.40f * h)
-            lineTo(0.90f * w, 0.74f * h)
-            lineTo(0.10f * w, 0.74f * h)
-            close()
-        }
-        drawPath(p, color = tint, style = stroke)
-    }
 }
 
 @Composable
@@ -283,82 +260,78 @@ fun KohiNavShell(
 
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         val wide = maxWidth >= 600.dp
-        if (wide) {
-            if (isFullscreenTerminal || hideRail) {
-                // Fullscreen cho Terminal trên màn hình rộng / máy gập mở: Terminal chiếm 100% diện tích
-                Box(modifier = Modifier.fillMaxSize()) { content() }
-            } else {
-                Row(modifier = Modifier.fillMaxSize()) {
+        // Một cờ "fullscreen" duy nhất: terminal/session-queue toàn màn; riêng màn rộng,
+        // mở chat ẩn rail (hideRail 28/9). content() chỉ MỘT call-site bên dưới — lật cờ
+        // chỉ ẩn/hiện rail + bar, không đổi cấu trúc cây, nên NavHost KHÔNG remount
+        // (bài học 3/10: remount nuốt draft/selectedPane rồi tự đóng chat vừa mở).
+        val fullscreen = isFullscreenTerminal || (wide && hideRail)
+
+        val density = LocalDensity.current
+        val imeBottomPx = WindowInsets.ime.getBottom(density)
+        val navBarBottomPx = WindowInsets.navigationBars.getBottom(density)
+        val tabBarHeightPx = with(density) { 54.dp.roundToPx() }
+        val closedBottomInsetPx = tabBarHeightPx + navBarBottomPx
+        // Cơ chế Inset liên tục: bottom inset luôn là max(tabBar + navBar, imeBottom).
+        // Khi bàn phím trượt lên/xuống, chiều cao di chuyển mượt mà liên tục, không bị
+        // giật/khựng reflow layout do gắn/tháo view đột ngột. Fullscreen nhường toàn bộ
+        // đệm cho content; màn rộng không có bar nên cũng không đệm.
+        val effectiveBottomInsetPx = maxOf(closedBottomInsetPx, imeBottomPx)
+        val contentBottomDp = with(density) {
+            if (fullscreen || wide) 0.dp else effectiveBottomInsetPx.toDp()
+        }
+
+        val barAlpha by animateFloatAsState(
+            targetValue = if (imeBottomPx > closedBottomInsetPx) 0f else 1f,
+            animationSpec = tween(50, easing = LinearOutSlowInEasing),
+            label = "tabBarAlpha",
+        )
+
+        val stripColors = ChuColors.current
+
+        Box(modifier = Modifier.fillMaxSize()) {
+            Row(modifier = Modifier.fillMaxSize()) {
+                if (wide && !fullscreen) {
                     KohiSideRail(
                         selectedRoute = selectedRoute ?: "",
                         queueBadge = queueBadge,
                         onSelect = onSelect,
                     )
-                    Box(modifier = Modifier.weight(1f)) { content() }
                 }
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxSize()
+                        .padding(bottom = contentBottomDp)
+                        .consumeWindowInsets(PaddingValues(bottom = contentBottomDp)),
+                ) { content() }
             }
-        } else {
-            if (isFullscreenTerminal) {
-                // Fullscreen 100% cho Terminal trên màn hình điện thoại / compact:
-                // Ẩn hoàn toàn Bottom Tab Bar, loại bỏ đệm đáy để Terminal vẽ tràn viền
-                Box(modifier = Modifier.fillMaxSize()) { content() }
-            } else {
-                val density = LocalDensity.current
-                val imeBottomPx = WindowInsets.ime.getBottom(density)
-                val navBarBottomPx = WindowInsets.navigationBars.getBottom(density)
-                val tabBarHeightPx = with(density) { 54.dp.roundToPx() }
-                val closedBottomInsetPx = tabBarHeightPx + navBarBottomPx
-                // Cơ chế Inset liên tục: bottom inset luôn là max(tabBar + navBar, imeBottom).
-                // Khi bàn phím trượt lên/xuống, chiều cao di chuyển mượt mà liên tục, không bị
-                // giật/khựng reflow layout do gắn/tháo view đột ngột.
-                val effectiveBottomInsetPx = maxOf(closedBottomInsetPx, imeBottomPx)
-                val effectiveBottomInsetDp = with(density) { effectiveBottomInsetPx.toDp() }
 
-                val barAlpha by animateFloatAsState(
-                    targetValue = if (imeBottomPx > closedBottomInsetPx) 0f else 1f,
-                    animationSpec = tween(50, easing = LinearOutSlowInEasing),
-                    label = "tabBarAlpha",
-                )
-
-                val stripColors = ChuColors.current
-
-                Box(modifier = Modifier.fillMaxSize()) {
-                    // 1. Content chiếm toàn màn hình, được đẩy đáy theo effectiveBottomInsetDp
-                    Box(
+            // Thanh tab dưới (màn hẹp, không fullscreen): nền surface khớp accessory bar,
+            // fade mượt theo alpha khi bàn phím mở/đóng.
+            if (!wide && !fullscreen && barAlpha > 0f) {
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .alpha(barAlpha)
+                        .background(stripColors.surface)
+                        .navigationBarsPadding(),
+                ) {
+                    Row(
                         modifier = Modifier
-                            .fillMaxSize()
-                            .padding(bottom = effectiveBottomInsetDp)
-                            .consumeWindowInsets(PaddingValues(bottom = effectiveBottomInsetDp)),
-                    ) { content() }
-
-                    // 2. Thanh tab dưới đổi sang màu surface (khớp với accessory bar),
-                    // fade mượt mà theo alpha khi bàn phím mở/đóng.
-                    if (barAlpha > 0f) {
-                        Column(
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .fillMaxWidth()
-                                .alpha(barAlpha)
-                                .background(stripColors.surface)
-                                .navigationBarsPadding(),
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(54.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                KohiTab.entries.forEach { tab ->
-                                    KohiNavItem(
-                                        tab = tab,
-                                        selected = selectedRoute == tab.route,
-                                        badge = if (tab == KohiTab.QUEUE) queueBadge else null,
-                                        onClick = { onSelect(tab) },
-                                        pillColor = stripColors.surfaceVariant,
-                                        modifier = Modifier.weight(1f),
-                                    )
-                                }
-                            }
+                            .fillMaxWidth()
+                            .height(54.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        KohiTab.entries.forEach { tab ->
+                            KohiNavItem(
+                                tab = tab,
+                                selected = selectedRoute == tab.route,
+                                badge = if (tab == KohiTab.QUEUE) queueBadge else null,
+                                onClick = { onSelect(tab) },
+                                pillColor = stripColors.surfaceVariant,
+                                modifier = Modifier.weight(1f),
+                            )
                         }
                     }
                 }
