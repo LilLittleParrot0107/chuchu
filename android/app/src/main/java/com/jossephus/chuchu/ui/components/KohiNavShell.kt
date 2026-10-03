@@ -57,7 +57,7 @@ import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTypography
 
 /**
- * 4 tab gốc của app: HOSTS · FILES · DASHBOARD · QUEUE.
+ * 3 tab của app: HOSTS · DASHBOARD · QUEUE (FILES bỏ khỏi bar 23/9, nằm trong QUEUE › FILES).
  *
  * Ngữ pháp trung tính kiểu Google Photos/Drive — KHÔNG có màu accent trong
  * bar: không chọn = icon outlined + textSecondary; đang chọn = icon filled +

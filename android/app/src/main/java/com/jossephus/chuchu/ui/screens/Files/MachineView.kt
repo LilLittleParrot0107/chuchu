@@ -23,6 +23,7 @@ import com.jossephus.chuchu.data.model.machine.MachineReadout
 import com.jossephus.chuchu.ui.components.BlockBar
 import com.jossephus.chuchu.ui.components.ChuCard
 import com.jossephus.chuchu.ui.components.ChuText
+import com.jossephus.chuchu.ui.components.rememberTicking
 import com.jossephus.chuchu.ui.components.KohiSectionBand
 import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTypography
@@ -57,7 +58,7 @@ internal fun MachineView(state: MachineUiState, modifier: Modifier = Modifier) {
     }
 
     val s = readout.snapshot
-    val now by com.jossephus.chuchu.ui.screens.Queue.rememberTicking()
+    val now by rememberTicking()
     val ageS = (now / 1000 - s.ts).coerceAtLeast(0)
     val stale = ageS > STALE_AFTER_S
 

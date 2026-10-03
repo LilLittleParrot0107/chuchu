@@ -2,7 +2,6 @@ package com.jossephus.chuchu.ui.screens.Queue
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -23,6 +22,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import com.jossephus.chuchu.ui.components.BlockBar
+import com.jossephus.chuchu.ui.components.rememberTicking
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -199,21 +199,18 @@ internal fun MachineStrip(
         )
         return
     }
-    GlanceRow(glance = glance, cells = strip, expandable = false, open = false, onToggle = {}, modifier = modifier)
+    GlanceRow(glance = glance, cells = strip, modifier = modifier)
 }
 
 /**
  * Dải liếc + tuổi số + vạch màu trái. Ô nào vẽ do [cells] (user chọn, 28/9) —
- * nhiều ô thì phần ô cuộn ngang, tuổi số và caret đứng yên bên phải. [expandable]
- * = false thì bỏ caret ▾/▴ và không bắt chạm (dải preview terminal, đầu trang MACHINE).
+ * nhiều ô thì phần ô cuộn ngang, tuổi số đứng yên bên phải. Không caret, không
+ * bắt chạm (dải preview terminal + đầu trang MACHINE, user chốt 4/9).
  */
 @Composable
 private fun GlanceRow(
     glance: Glance,
     cells: List<StripCell>,
-    expandable: Boolean,
-    open: Boolean,
-    onToggle: () -> Unit,
     modifier: Modifier = Modifier,
     /** Đầu trang MACHINE: bỏ nét kẻ trên — user 25/9, "khe trắng" dưới hàng tab. */
     topHairline: Boolean = true,
@@ -242,7 +239,6 @@ private fun GlanceRow(
                     Modifier
                 },
             )
-            .then(if (expandable) Modifier.clickable(onClick = onToggle) else Modifier)
             .defaultMinSize(minHeight = 30.dp)
             .padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -259,14 +255,6 @@ private fun GlanceRow(
             style = type.labelSmall,
             color = (if (glance.stale) colors.warning else colors.textMuted).copy(alpha = glance.alpha),
         )
-        if (expandable) {
-            ChuText(
-                if (open) " ▴" else " ▾",
-                style = type.labelSmall,
-                color = colors.accent,
-                modifier = Modifier.padding(horizontal = 6.dp),
-            )
-        }
     }
 }
 
@@ -292,7 +280,7 @@ private fun MachineTabPage(
     BoxWithConstraints(modifier.fillMaxSize().background(colors.background)) {
         val wide = maxWidth >= 600.dp
         Column(Modifier.fillMaxSize()) {
-            GlanceRow(glance = glance, cells = cells, expandable = false, open = false, onToggle = {}, topHairline = false)
+            GlanceRow(glance = glance, cells = cells, topHairline = false)
             if (wide) {
                 Row(
                     Modifier
@@ -716,15 +704,3 @@ private fun g(kb: Long): String {
 }
 private fun age(s: Long): String = if (s < 3600) "${s / 60}m ago" else "${s / 3600}h ago"
 
-/** Mốc ms hiện tại, tự làm mới mỗi [periodMs] khi composable còn trên màn. */
-@Composable
-internal fun rememberTicking(periodMs: Long = 5_000L): State<Long> {
-    val now = remember { mutableLongStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(periodMs) {
-        while (true) {
-            kotlinx.coroutines.delay(periodMs)
-            now.longValue = System.currentTimeMillis()
-        }
-    }
-    return now
-}
