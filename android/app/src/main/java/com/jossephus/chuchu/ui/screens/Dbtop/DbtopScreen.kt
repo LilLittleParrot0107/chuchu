@@ -84,12 +84,10 @@ fun DbtopScreen(
     }
     // %APR ung voi moi 1 USD/ngay — chinh he so bien truc USD thanh truc APR.
     val aprFactor = remember(capForKpi) { if (capForKpi > 0.0) 365.0 / capForKpi * 100.0 else null }
-    // 3/10 (user): GROSS APR theo 30d — trung binh grossRate cac ngay do duoc trong
-    // cua so chia cho von; het von hoac khong do duoc ngay nao thi null de UI hien "--".
+    // 3/10 (user): GROSS APR theo 30d — chỉ ngày đo đủ (coverage >= MIN_COVERAGE,
+    // cùng ngưỡng với chart) mới vào trung bình; helper trong engine để test được.
     val gross30Apr = remember(ratePoints, capForKpi) {
-        val rates = ratePoints.filter { it.coverage > 0.0 }.map { it.grossRate }
-        if (rates.isEmpty() || capForKpi <= 0.0) null
-        else rates.average() * 365.0 / capForKpi * 100.0
+        CashflowEngine.grossApr30(ratePoints, capForKpi)
     }
     val kpiSummary = remember(capForKpi, currentPerDay, gross30Apr, ratePoints, windowedPoints) {
         CashflowEngine.computeKpis(capForKpi, currentPerDay, gross30Apr, ratePoints.lastOrNull()?.trailSpend, windowedPoints)
@@ -313,9 +311,7 @@ fun DbtopScreen(
                         moneyDisplay = ui.moneyDisplay,
                         currentPerDay = currentPerDay,
                         daily = ui.state.daily,
-                        cap = capForKpi,
                         kpis = kpiSummary,
-                        windowedPoints = windowedPoints,
                         ratePoints = ratePoints,
                         aprFactor = aprFactor,
                     )

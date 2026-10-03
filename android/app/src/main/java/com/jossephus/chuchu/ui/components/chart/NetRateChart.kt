@@ -266,6 +266,18 @@ object CashflowEngine {
 
     /** Duoi nguong nay coi nhu khong do duoc gi — chia cho no chi ra so rac. */
     const val MIN_COVERAGE = 0.05
+
+    /**
+     * GROSS APR trên cửa sổ 30d: trung bình grossRate các ngày đo ĐỦ
+     * (coverage >= [MIN_COVERAGE]) chia vốn. Ngày coverage tí xíu có grossRate là số
+     * thô (không quy về ngày đầy) nên không được lọt vào trung bình — bug im lặng 3/10.
+     * null khi chưa đo được ngày nào hoặc vốn <= 0.
+     */
+    fun grossApr30(points: List<NetRatePoint>, cap: Double): Double? {
+        val rates = points.filter { it.coverage >= MIN_COVERAGE }.map { it.grossRate }
+        if (rates.isEmpty() || cap <= 0.0) return null
+        return rates.average() * 365.0 / cap * 100.0
+    }
 }
 
 /**

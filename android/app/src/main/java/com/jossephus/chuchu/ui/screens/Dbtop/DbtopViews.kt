@@ -51,7 +51,6 @@ import com.jossephus.chuchu.ui.components.RemoteLogo
 import com.jossephus.chuchu.ui.components.noRippleClickable
 import com.jossephus.chuchu.ui.components.chart.CashflowEngine
 import com.jossephus.chuchu.ui.components.chart.CashflowKpiSummary
-import com.jossephus.chuchu.ui.components.chart.DailyCashflowPoint
 import com.jossephus.chuchu.ui.components.chart.NetRateChart
 import com.jossephus.chuchu.ui.components.chart.NetRatePoint
 import com.jossephus.chuchu.ui.theme.CHU_HAIRLINE_ALPHA
@@ -207,7 +206,6 @@ internal fun NetRateSection(
     currentPerDay: Double?,
     daily: List<DailyYield>,
     kpis: CashflowKpiSummary,
-    windowedPoints: List<DailyCashflowPoint>,
     ratePoints: List<NetRatePoint>,
     aprFactor: Double? = null,
 ) {
@@ -223,8 +221,9 @@ internal fun NetRateSection(
         netAprVal != null -> "${if (netAprVal >= 0) "+" else ""}${String.format(Locale.US, "%.1f%% NET APR", netAprVal)}"
         else -> "${if (perDay >= 0) "+" else "-"}${DeFiFormatter.formatUsd(abs(perDay))}/D NET"
     }
-    // 3/10 (user): history < 30 ngay thi ghi ro n= de biet so lieu non.
-    val meta = if (windowedPoints.size < CashflowEngine.SPEND_WINDOW_DAYS) "$baseMeta · n=${windowedPoints.size}" else baseMeta
+    // 3/10 (user): history < 30 ngay thi ghi ro n= de biet so lieu non. kpis.windowDays
+    // chinh la so ngay cua cua so 30d (computeKpis nhan dung list da cat o DbtopScreen).
+    val meta = if (kpis.windowDays < CashflowEngine.SPEND_WINDOW_DAYS) "$baseMeta · n=${kpis.windowDays}" else baseMeta
     KohiSectionBand(
         label = "NET RATE · TRAILING · 30D",
         meta = meta,
@@ -281,9 +280,7 @@ internal fun SpendingView(
     moneyDisplay: MoneyDisplay = MoneyDisplay.USD,
     currentPerDay: Double? = null,
     daily: List<DailyYield> = emptyList(),
-    cap: Double = 0.0,
     kpis: CashflowKpiSummary,
-    windowedPoints: List<DailyCashflowPoint>,
     ratePoints: List<NetRatePoint>,
     aprFactor: Double? = null,
 ) {
@@ -454,7 +451,6 @@ internal fun SpendingView(
                 currentPerDay = currentPerDay,
                 daily = daily,
                 kpis = kpis,
-                windowedPoints = windowedPoints,
                 ratePoints = ratePoints,
                 aprFactor = aprFactor,
             )
