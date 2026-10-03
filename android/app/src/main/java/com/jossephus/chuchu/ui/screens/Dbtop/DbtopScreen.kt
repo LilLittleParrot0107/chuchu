@@ -27,7 +27,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.launch
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
@@ -37,14 +36,12 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.jossephus.chuchu.data.model.dbtop.DataFreshness
-import com.jossephus.chuchu.ui.components.ChuText
 import com.jossephus.chuchu.ui.components.DAYS_PER_MONTH
 import com.jossephus.chuchu.ui.components.chart.CashflowEngine
 import com.jossephus.chuchu.ui.components.KohiNoticeBand
 import com.jossephus.chuchu.ui.components.KohiSubTabs
 import com.jossephus.chuchu.ui.components.rememberTallSafeInsets
 import com.jossephus.chuchu.ui.theme.ChuColors
-import com.jossephus.chuchu.ui.theme.ChuTypography
 import java.util.Locale
 
 /** dbtop's stacked mobile hierarchy with one selection rail and detail pane. */

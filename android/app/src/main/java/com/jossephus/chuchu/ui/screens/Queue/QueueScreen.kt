@@ -37,7 +37,6 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -162,11 +161,12 @@ fun QueueScreen(
     // đóng về list, đang FILES/MACHINE thì scroll về trang 0. homeRequests là kênh
     // sự-kiện-một-lần do VM giữ: remount/xoay màn không phát lại (bài học tick Int cũ).
     // rememberUpdatedState: effect không restart theo recomposition nên phải đọc
-    // chat.pane hiện tại, không giữ closure cũ.
+    // chat.pane + callback hiện tại, không giữ closure cũ.
     val chatNow by rememberUpdatedState(chat)
+    val onCloseNow by rememberUpdatedState(onCloseChat)
     LaunchedEffect(homeRequests) {
         homeRequests?.collect {
-            if (chatNow.pane != null) onCloseChat()
+            if (chatNow.pane != null) onCloseNow()
             pagerState.scrollToPage(QueueMode.Threads.ordinal)
         }
     }

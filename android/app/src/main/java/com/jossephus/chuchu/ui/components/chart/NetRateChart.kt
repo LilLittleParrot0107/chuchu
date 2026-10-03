@@ -39,7 +39,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jossephus.chuchu.data.model.dbtop.DailyYield
 import com.jossephus.chuchu.data.model.dbtop.DeFiFormatter
-import com.jossephus.chuchu.data.model.dbtop.SpendingState
 import com.jossephus.chuchu.ui.theme.ChuTypography
 import java.util.Locale
 import kotlin.math.abs
@@ -268,13 +267,13 @@ object CashflowEngine {
     const val MIN_COVERAGE = 0.05
 
     /**
-     * GROSS APR trên cửa sổ 30d: trung bình grossRate các ngày đo ĐỦ
-     * (coverage >= [MIN_COVERAGE]) chia vốn. Ngày coverage tí xíu có grossRate là số
+     * GROSS APR trên cửa sổ 30d: trung bình grossRate các ngày đo ĐỦ (coverage > [MIN_COVERAGE],
+     * CÙNG vị từ với chỗ chuẩn hoá grossRate) chia vốn. Ngày coverage tí xíu có grossRate là số
      * thô (không quy về ngày đầy) nên không được lọt vào trung bình — bug im lặng 3/10.
      * null khi chưa đo được ngày nào hoặc vốn <= 0.
      */
     fun grossApr30(points: List<NetRatePoint>, cap: Double): Double? {
-        val rates = points.filter { it.coverage >= MIN_COVERAGE }.map { it.grossRate }
+        val rates = points.filter { it.coverage > MIN_COVERAGE }.map { it.grossRate }
         if (rates.isEmpty() || cap <= 0.0) return null
         return rates.average() * 365.0 / cap * 100.0
     }

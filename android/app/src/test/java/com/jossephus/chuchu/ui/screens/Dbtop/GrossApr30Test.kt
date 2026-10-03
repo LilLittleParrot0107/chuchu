@@ -1,5 +1,6 @@
 package com.jossephus.chuchu.ui.screens.Dbtop
 
+import com.jossephus.chuchu.data.model.dbtop.DailyYield
 import com.jossephus.chuchu.ui.components.chart.CashflowEngine
 import com.jossephus.chuchu.ui.components.chart.NetRatePoint
 import org.junit.Assert.assertEquals
@@ -44,5 +45,22 @@ class GrossApr30Test {
     fun `cap khong duong thi null`() {
         val points = listOf(pt("2026-10-02", 6.0, 0.60, 10.0))
         assertNull(CashflowEngine.grossApr30(points, cap = 0.0))
+    }
+
+    @Test
+    fun `qua pipeline - coverage dung nguong bi loai, tren nguong duoc tinh`() {
+        // Dựng ĐI QUA calculatePoints/calculateRatePoints (không tay NetRatePoint) để khóa
+        // đúng vị từ chuẩn hoá grossRate: coverage == MIN_COVERAGE chưa được quy ngày.
+        fun pipeline(cov: Double) = CashflowEngine.calculateRatePoints(
+            CashflowEngine.calculatePoints(
+                listOf(DailyYield(date = "2026-10-02", yieldUsd = 10.0, coverageDays = cov)),
+                emptyMap(),
+            ),
+            fallbackSpendPerDay = 0.0,
+        )
+
+        assertNull(CashflowEngine.grossApr30(pipeline(0.05), cap = 3650.0))
+        // gross 10 USD đo 0.5 ngày → 20 USD/ngày → 20*365/3650*100 = 200%.
+        assertEquals(200.0, CashflowEngine.grossApr30(pipeline(0.50), cap = 3650.0)!!, 0.001)
     }
 }

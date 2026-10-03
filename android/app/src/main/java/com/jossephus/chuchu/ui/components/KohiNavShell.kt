@@ -25,7 +25,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -265,10 +264,13 @@ fun KohiNavShell(
         // chỉ ẩn/hiện rail + bar, không đổi cấu trúc cây, nên NavHost KHÔNG remount
         // (bài học 3/10: remount nuốt draft/selectedPane rồi tự đóng chat vừa mở).
         val fullscreen = isFullscreenTerminal || (wide && hideRail)
-
+        // Chỉ màn hẹp không-fullscreen mới có bar dưới — chỉ nhánh đó cần đọc insets.
+        // Đọc vô điều kiện sẽ khiến shell recompose theo từng frame bàn phím cả trên
+        // màn rộng/terminal (nhánh xưa không subscribe IME).
+        val needsBar = !wide && !fullscreen
         val density = LocalDensity.current
-        val imeBottomPx = WindowInsets.ime.getBottom(density)
-        val navBarBottomPx = WindowInsets.navigationBars.getBottom(density)
+        val imeBottomPx = if (needsBar) WindowInsets.ime.getBottom(density) else 0
+        val navBarBottomPx = if (needsBar) WindowInsets.navigationBars.getBottom(density) else 0
         val tabBarHeightPx = with(density) { 54.dp.roundToPx() }
         val closedBottomInsetPx = tabBarHeightPx + navBarBottomPx
         // Cơ chế Inset liên tục: bottom inset luôn là max(tabBar + navBar, imeBottom).
@@ -277,11 +279,11 @@ fun KohiNavShell(
         // đệm cho content; màn rộng không có bar nên cũng không đệm.
         val effectiveBottomInsetPx = maxOf(closedBottomInsetPx, imeBottomPx)
         val contentBottomDp = with(density) {
-            if (fullscreen || wide) 0.dp else effectiveBottomInsetPx.toDp()
+            if (needsBar) effectiveBottomInsetPx.toDp() else 0.dp
         }
 
         val barAlpha by animateFloatAsState(
-            targetValue = if (imeBottomPx > closedBottomInsetPx) 0f else 1f,
+            targetValue = if (needsBar && imeBottomPx > closedBottomInsetPx) 0f else 1f,
             animationSpec = tween(50, easing = LinearOutSlowInEasing),
             label = "tabBarAlpha",
         )
@@ -308,7 +310,7 @@ fun KohiNavShell(
 
             // Thanh tab dưới (màn hẹp, không fullscreen): nền surface khớp accessory bar,
             // fade mượt theo alpha khi bàn phím mở/đóng.
-            if (!wide && !fullscreen && barAlpha > 0f) {
+            if (needsBar && barAlpha > 0f) {
                 Column(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
