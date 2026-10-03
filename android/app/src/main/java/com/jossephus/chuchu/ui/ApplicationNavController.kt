@@ -10,7 +10,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.LaunchedEffect
 import kotlinx.coroutines.flow.firstOrNull
 import androidx.compose.runtime.setValue
@@ -31,6 +33,7 @@ import androidx.navigation.navArgument
 import com.jossephus.chuchu.data.repository.SettingsRepository
 import com.jossephus.chuchu.ui.screens.AddServer.AddServerScreen
 import com.jossephus.chuchu.ui.components.KohiNavShell
+import com.jossephus.chuchu.ui.components.KohiTab
 import com.jossephus.chuchu.ui.screens.AddServer.AddServerViewModel
 import com.jossephus.chuchu.ui.screens.Dbtop.DbtopScreen
 import com.jossephus.chuchu.ui.screens.Queue.QueueMode
@@ -81,6 +84,9 @@ private fun Context.findActivity(): Activity? {
 @Composable
 fun ApplicationNavController() {
     val navController = rememberNavController()
+    // 3/10 (user): bấm tab QUEUE lúc nào cũng về HỘI THOẠI — tick tăng mỗi lần bấm,
+    // QueueScreen nghe là scroll về Threads (pager NavHost giữ trang cũ).
+    var queueHomeTick by remember { mutableIntStateOf(0) }
     val context = LocalContext.current
     val application = context.applicationContext as Application
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -233,6 +239,7 @@ fun ApplicationNavController() {
             // bo 26/8 theo yeu cau user) — flag "activeTerminalRoute" da bo vi
             // chi con 3/5 duong exit clear no, phan con de lai bien no thanh
             // zombie dan vao terminal.
+            if (tab == KohiTab.QUEUE) queueHomeTick++
             navController.navigate(tab.route) {
                 popUpTo("servers") { saveState = true }
                 launchSingleTop = true
@@ -358,6 +365,7 @@ fun ApplicationNavController() {
                 sharedQueueVm = sharedQueueVm,
                 initialPane = backStackEntry.arguments?.getString("pane"),
                 initialMode = if (backStackEntry.arguments?.getString("mode") == "files") QueueMode.Files else null,
+                homeTick = queueHomeTick,
                 onBack = onExitApp,
             )
         }
@@ -527,6 +535,8 @@ private fun QueueDestination(
     initialPane: String?,
     onBack: () -> Unit,
     initialMode: QueueMode? = null,
+    /** Tick về HỘI THOẠI mỗi lần bấm tab QUEUE (3/10 user) — session-queue không dùng. */
+    homeTick: Int = 0,
 ) {
     val ui by sharedQueueVm.ui.collectAsStateWithLifecycle()
     // FILES trong Queue (23/9): file portal dufs, URL từ Settings như tab Files cũ.
@@ -568,8 +578,8 @@ private fun QueueDestination(
         // Ô search FILES (25/9): debounce ở UI, VM chỉ lo gọi qsrv + hồi phục auth.
         onSearchFiles = sharedQueueVm::searchFiles,
         initialMode = initialMode,
-        launchDirs = sharedQueueVm.launchDirs.collectAsStateWithLifecycle().value,
-        onLaunchOpen = sharedQueueVm::loadLaunchDirs,
+        homeTick = homeTick,
+        launchDirs = sharedQueueVm.launchDirs.collectAsStateWithLifecycle().value,        onLaunchOpen = sharedQueueVm::loadLaunchDirs,
         onLaunch = sharedQueueVm::launch,
         onUploadToInbox = sharedQueueVm::uploadToInbox,
         chatFontSizeSp = sharedQueueVm.terminalFontSize.collectAsStateWithLifecycle().value,
