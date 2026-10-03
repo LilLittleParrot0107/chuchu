@@ -20,5 +20,7 @@ class QueueHomeRequests {
         channel.trySend(Unit)
     }
 
-    val events: Flow<Unit> get() = channel.receiveAsFlow()
+    /** Flow cố định (không tạo mới mỗi lần đọc) — LaunchedEffect(homeRequests) không
+     *  bị restart vì key đổi danh tính sau mỗi recomposition. */
+    val events: Flow<Unit> = channel.receiveAsFlow()
 }
