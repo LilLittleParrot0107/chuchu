@@ -17,10 +17,12 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Trạng thái màn hình hàng đợi.
@@ -80,6 +82,9 @@ class QueueViewModel(
     /** Transcript đã xem theo pane: giữ NGUYÊN snapshot ChatUiState — mở lại
      * phát đúng khung đang xem ngay, mất mạng vẫn đọc được. */
     private val chatSnapshots = ChatSnapshotCache()
+    /** Số thứ tự lần refresh chat — trả lời về trễ (long-poll cũ treo trong lúc
+     * reconnect/openChat đã đá poll mới) thấy số khác là stale, tự bỏ. */
+    private val chatRefreshSeq = AtomicLong(0)
 
     private val _ui = MutableStateFlow(QueueUiState())
     val ui: StateFlow<QueueUiState> = _ui.asStateFlow()
@@ -335,6 +340,8 @@ class QueueViewModel(
             // (kết quả bay về trễ đã có guard pane trong chatRefreshOnce nên không corrupt).
             chatJob?.cancel(); chatJob = null
             blockedJob?.cancel(); blockedJob = null
+            // Vô hiệu trả lời đang bay của pane cũ (singleflight).
+            chatRefreshSeq.incrementAndGet()
             val cached = chatSnapshots.forPane(pane)
             val agent = _ui.value.state.agents.firstOrNull { it.pane == pane }
             val name = agent?.name?.takeIf { it.isNotBlank() }
@@ -356,6 +363,7 @@ class QueueViewModel(
         _chat.value.pane?.let { chatSnapshots.store(it, _chat.value) }
         chatJob?.cancel(); chatJob = null
         blockedJob?.cancel(); blockedJob = null
+        chatRefreshSeq.incrementAndGet()
         _chat.value = ChatUiState()
     }
 
@@ -371,7 +379,7 @@ class QueueViewModel(
                 // Mất mạng: KHÔNG gọi client.chat (kể cả long-poll cũng không),
                 // chỉ ngủ ngắn rồi nhìn lại — log khỏi loè, pin khỏi thức, backoff
                 // ĐÓNG BĂNG (không nhân, không reset) tới khi có mạng lại.
-                if (!shouldPollChat(_isOnline.value, false)) {
+                if (!shouldPollChat(_isOnline.value)) {
                     wasOffline = true
                     delay(FOREGROUND_POLL_MS)
                     continue
@@ -497,12 +505,26 @@ class QueueViewModel(
     private suspend fun chatRefreshOnce(pane: String, waitSec: Int): Boolean {
         val c = client() ?: run { _chat.update { it.copy(loading = false, error = "Queue is not configured yet") }; return true }
         val since = _chat.value.rev.takeIf { it.isNotBlank() }
+        val mySeq = chatRefreshSeq.incrementAndGet()
         val result = withContext(Dispatchers.IO) { c.chat(pane, limit = CHAT_PAGE, sinceRev = since, waitSec = waitSec) }
         persistAuthRecovery(c)
+        // Singleflight: trong lúc long-poll treo đã có lần refresh mới hơn
+        // (reconnect đá poll, đổi pane) — trả lời này stale, bỏ.
+        if (chatRefreshSeq.get() != mySeq) return false
+        // Job đã bị huỷ (đổi pane/đóng chat/saveConfig) — không đụng state nữa.
+        if (!currentCoroutineContext().isActive) return false
         if (_chat.value.pane != pane) return false
+        // Rev đã nhích trong lúc bay (lần refresh khác vào trước): trang này tính
+        // trên since cũ — chỉ ghép khi rev của nó vẫn mới hơn khung đang xem,
+        // nếu không là lùi lịch sử (mất tin).
+        val curRev = _chat.value.rev
         return when (val r = result) {
             is QueueClient.ChatFetch.Fresh -> {
                 val page = r.page
+                if (!isChatRevNewer(curRev, page.rev)) {
+                    _chat.update { it.copy(loading = false, error = null) }
+                    return false
+                }
                 _chat.update { cur -> cur.withFreshPage(page) }
                 // Trang mới về là cất snapshot ngay — lần mở sau hiện liền, rớt mạng vẫn còn.
                 // Nhánh Failed/Unchanged bên dưới cố tình KHÔNG đụng snapshot.
@@ -880,6 +902,15 @@ class QueueViewModel(
         settings.setQueueUrl(url)
         settings.setQueueToken(token)
         autoCleared.clear()
+        // Đổi server: transcript + rev đã xem của qsrv CŨ là rác — xoá hết để
+        // khỏi hiện tin server cũ, badge "MỚI" cũng tính lại từ đầu.
+        chatRefreshSeq.incrementAndGet()
+        chatJob?.cancel(); chatJob = null
+        blockedJob?.cancel(); blockedJob = null
+        chatSnapshots.clear()
+        _chat.value = ChatUiState()
+        _chatSeen.value = emptyMap()
+        settings.clearChatSeenRevs()
         // Summary ambient phải reset cùng state: nếu không, pill/FAB vẫn hiển thị
         // số liệu của qsrv CŨ trong khoảng thời gian trước khi refreshNow() kịp về.
         _ambientSummary.value = QueueAmbientSummary.Empty
@@ -926,8 +957,9 @@ class QueueViewModel(
         private const val BLOCKED_LOCK_MS = 3_000L
         private const val MIN_GAP_MS = 1_000L
         private const val AMBIENT_MIN_GAP_MS = 2_000L
-        private const val FOREGROUND_POLL_MS = 2_000L
-        private const val MAX_FOREGROUND_BACKOFF_MS = 30_000L
+        // Nhịp poll chat (base/backoff cap) — canonical cho QueueChatCache.nextChatBackoff.
+        const val FOREGROUND_POLL_MS = 2_000L
+        const val MAX_FOREGROUND_BACKOFF_MS = 30_000L
         private const val AMBIENT_IDLE_POLL_MS = 15_000L
 
         fun factory(application: Application): ViewModelProvider.Factory =

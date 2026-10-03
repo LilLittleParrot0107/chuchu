@@ -31,6 +31,11 @@ class SettingsRepository(context: Context) {
     fun allChatSeenRevs(): Map<String, String> =
         chatSeenPrefs.all.mapNotNull { (k, v) -> (v as? String)?.let { k to it } }.toMap()
 
+    /** Đổi server: rev đã xem của qsrv cũ là rác — xoá hết. */
+    fun clearChatSeenRevs() {
+        chatSeenPrefs.edit().clear().apply()
+    }
+
     private val legacyTerminalPrefs: SharedPreferences =
         context.getSharedPreferences(LEGACY_TERMINAL_PREFS, Context.MODE_PRIVATE)
 

@@ -15,45 +15,52 @@ package com.jossephus.chuchu.ui.screens.Queue
  * `client.chat`), có mạng lại thì reset backoff + đọc ngay.
  */
 
-/** Một tin rút gọn để gộp cache — key là `offset:sub` của [ChatMessage.key]. */
-data class ChatCacheMsg(val key: String, val text: String)
-
-/**
- * Gộp tin cached với trang mới về: khử trùng theo key, giữ thứ tự xuất hiện.
- * Tin fresh trùng key thì lấy bản mới (vị trí cũ giữ nguyên để list khỏi nhảy).
- */
-fun mergeChatCache(cached: List<ChatCacheMsg>, fresh: List<ChatCacheMsg>): List<ChatCacheMsg> {
-    if (cached.isEmpty()) return fresh.toList()
-    if (fresh.isEmpty()) return cached.toList()
-    val merged = LinkedHashMap<String, ChatCacheMsg>(cached.size + fresh.size)
-    for (m in cached) merged.putIfAbsent(m.key, m)
-    for (m in fresh) merged[m.key] = m
-    // LinkedHashMap giữ thứ tự chèn lần đầu — key trùng của fresh chỉ đổi text,
-    // không đẩy tin lên đầu/đuôi nên LazyColumn không nhảy.
-    return merged.values.toList()
-}
+/** Số snapshot pane giữ tối đa — quá thì rớt pane ít xem nhất (LRU). */
+const val MAX_CHAT_SNAPSHOTS = 20
 
 /**
  * Có nên poll chat không. Mất mạng là dừng hẳn để khỏi bắn request chết
  * (radio thức + log lỗi loè), có mạng lại vòng poll tự chạy tiếp.
  */
-fun shouldPollChat(isOnline: Boolean, failed: Boolean): Boolean = isOnline
-
-// Base/cap trùng hằng số vòng poll chat trong QueueViewModel (FOREGROUND_POLL_MS
-// = 2000, MAX_FOREGROUND_BACKOFF_MS = 30000) — giữ một nhịp 2s lúc thường, hỏng
-// thì giãn mũ tới 30s. Để literal ở đây vì helper là pure, không với tới private
-// const của ViewModel.
-private const val CHAT_BACKOFF_BASE_MS = 2000L
-private const val CHAT_BACKOFF_MAX_MS = 30000L
+fun shouldPollChat(isOnline: Boolean): Boolean = isOnline
 
 /**
  * Backoff vòng poll chat: reconnect về base để đọc ngay nhịp sau; lỗi server thì
  * nhân đôi có sàn base + trần max (tránh nhân từ 0 ra 0 rồi spam); còn lại giữ nguyên.
+ * Base/cap lấy từ QueueViewModel — một nguồn duy nhất, khỏi lệch nhịp 2s/30s.
  */
 fun nextChatBackoff(currentBackoffMs: Long, reconnected: Boolean, failed: Boolean): Long {
-    if (reconnected) return CHAT_BACKOFF_BASE_MS
-    if (failed) return minOf(maxOf(currentBackoffMs * 2, CHAT_BACKOFF_BASE_MS), CHAT_BACKOFF_MAX_MS)
+    if (reconnected) return QueueViewModel.FOREGROUND_POLL_MS
+    if (failed) return minOf(maxOf(currentBackoffMs * 2, QueueViewModel.FOREGROUND_POLL_MS), QueueViewModel.MAX_FOREGROUND_BACKOFF_MS)
     return currentBackoffMs
+}
+
+/**
+ * true nếu [freshRev] mới hơn [currentRev]. Rev của qsrv là `mtime_ns.size`
+ * (xem `chat_rev`) nên phải so SỐ từng phần — so chuỗi thì "90" > "100" là sai.
+ * Không parse được mà chuỗi khác nhau thì coi như mới (đỡ kẹt); rỗng/không đổi
+ * thì không mới hơn.
+ */
+fun isChatRevNewer(currentRev: String, freshRev: String): Boolean {
+    if (freshRev.isBlank()) return false
+    if (currentRev.isBlank()) return true
+    if (freshRev == currentRev) return false
+    val cur = currentRev.split('.')
+    val fresh = freshRev.split('.')
+    if (cur.size == 2 && fresh.size == 2) {
+        val curMtime = cur[0].toLongOrNull()
+        val freshMtime = fresh[0].toLongOrNull()
+        if (curMtime != null && freshMtime != null && curMtime != freshMtime) {
+            return freshMtime > curMtime
+        }
+        val curSize = cur[1].toLongOrNull()
+        val freshSize = fresh[1].toLongOrNull()
+        if (curSize != null && freshSize != null && curSize != freshSize) {
+            return freshSize > curSize
+        }
+        if (curMtime != null || curSize != null) return true
+    }
+    return true
 }
 
 /**
@@ -63,6 +70,9 @@ fun nextChatBackoff(currentBackoffMs: Long, reconnected: Boolean, failed: Boolea
  * (cursor là mốc "trang cũ hơn", trang fresh long-poll không mang mốc đó).
  */
 fun ChatUiState.withFreshPage(page: ChatPage): ChatUiState {
+    // Trả lời về trễ (long-poll cũ xả sau khi trang mới đã vào) mà đè rev cũ lên
+    // là mất tin — rev không mới hơn thì giữ nguyên khung đang xem.
+    if (!isChatRevNewer(rev, page.rev)) return copy(loading = false, error = null)
     val firstNew = page.messages.firstOrNull()?.offset ?: Long.MAX_VALUE
     val kept = messages.filter { it.offset < firstNew }
     val hasMore = if (kept.isEmpty()) page.hasMore else this.hasMore
@@ -88,8 +98,12 @@ fun ChatUiState.withFreshPage(page: ChatPage): ChatUiState {
  * đúng khung đang xem, kể cả lúc offline. Trang trắng (chưa tải được gì) không
  * đè cache cũ — nếu không rớt mạng một phát là mất sạch tin đã đọc.
  */
-class ChatSnapshotCache {
-    private val snapshots = mutableMapOf<String, ChatUiState>()
+class ChatSnapshotCache(private val maxPanes: Int = MAX_CHAT_SNAPSHOTS) {
+    // Access-order = LRU thật: pane vừa xem/sờ vào thì "mới", rớt pane cũ nhất.
+    private val snapshots = object : LinkedHashMap<String, ChatUiState>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ChatUiState>): Boolean =
+            size > maxPanes
+    }
 
     /** Snapshot đã xem của [pane], null = chưa xem bao giờ. */
     fun forPane(pane: String): ChatUiState? = snapshots[pane]
@@ -99,4 +113,12 @@ class ChatSnapshotCache {
         if (snapshot.messages.isEmpty() && snapshot.rev.isBlank()) return
         snapshots[pane] = snapshot
     }
+
+    /** Đổi server (saveConfig): snapshot cũ là của qsrv khác — bỏ hết. */
+    fun clear() {
+        snapshots.clear()
+    }
+
+    /** Số pane đang giữ — test nắp LRU. */
+    fun size(): Int = snapshots.size
 }

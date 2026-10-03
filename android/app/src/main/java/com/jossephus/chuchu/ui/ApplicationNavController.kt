@@ -8,6 +8,7 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.Uri
+import android.util.Log
 import com.jossephus.chuchu.ui.components.KohiBackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -65,6 +66,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.ui.unit.dp
 
 private val MAIN_TAB_ROUTES = setOf("servers", "dashboard", "queue")
+
+private const val QUEUE_NET_TAG = "QueueNet"
 
 /**
  * Queue mo tu accessory bar trong terminal. Route rieng voi tab QUEUE de
@@ -576,11 +579,17 @@ private fun QueueDestination(
                     sharedQueueVm.setOnline(currentOnline())
                 }
                 override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
-                    sharedQueueVm.setOnline(caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET))
+                    // Caps của MỘT mạng chưa chắc là mạng đang dùng (wifi rớt còn
+                    // mobile) — đọc lại trạng thái thật như onLost.
+                    sharedQueueVm.setOnline(currentOnline())
                 }
             }
             runCatching { cm.registerDefaultNetworkCallback(cb) }
-            onDispose { runCatching { cm.unregisterNetworkCallback(cb) } }
+                .onFailure { Log.w(QUEUE_NET_TAG, "registerDefaultNetworkCallback failed", it) }
+            onDispose {
+                runCatching { cm.unregisterNetworkCallback(cb) }
+                    .onFailure { Log.w(QUEUE_NET_TAG, "unregisterNetworkCallback failed", it) }
+            }
         }
     }
     LifecycleResumeEffect(sharedQueueVm) {
