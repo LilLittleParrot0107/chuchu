@@ -4,7 +4,11 @@ import android.app.Activity
 import android.app.Application
 import android.content.Context
 import android.content.ContextWrapper
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.net.Uri
+import android.util.Log
 import com.jossephus.chuchu.ui.components.KohiBackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -62,6 +66,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.ui.unit.dp
 
 private val MAIN_TAB_ROUTES = setOf("servers", "dashboard", "queue")
+
+private const val QUEUE_NET_TAG = "QueueNet"
 
 /**
  * Queue mo tu accessory bar trong terminal. Route rieng voi tab QUEUE de
@@ -545,10 +551,53 @@ private fun QueueDestination(
     onHomeConsumed: () -> Unit = {},
 ) {
     val ui by sharedQueueVm.ui.collectAsStateWithLifecycle()
+    val context = LocalContext.current
     // FILES trong Queue (23/9): file portal dufs, URL từ Settings như tab Files cũ.
-    val portalUrl by SettingsRepository.getInstance(LocalContext.current.applicationContext as Application).webPortalUrl.collectAsStateWithLifecycle()
+    val portalUrl by SettingsRepository.getInstance(context.applicationContext as Application).webPortalUrl.collectAsStateWithLifecycle()
     val qUrl by sharedQueueVm.queueUrl.collectAsStateWithLifecycle()
     val qToken by sharedQueueVm.queueToken.collectAsStateWithLifecycle()
+    // Reconnect khôn (cand-2, 10/2026): nghe mạng ở TẦNG UI rồi đẩy vào VM qua
+    // setOnline — VM không giữ NetworkCallback (khác cand-1) nên không rò sau khi
+    // VM chết và unit-test được. Sống theo composition của Queue (DisposableEffect
+    // = lifecycle): vào Queue là nghe, rời là huỷ. Cách đọc activeNetwork +
+    // NET_CAPABILITY_INTERNET theo TailscaleStatusChecker (activeNetwork null /
+    // caps null = offline, không đoán).
+    DisposableEffect(context.applicationContext, sharedQueueVm) {
+        val cm = context.applicationContext.getSystemService(ConnectivityManager::class.java)
+        if (cm == null) {
+            sharedQueueVm.setOnline(true)
+            onDispose {}
+        } else {
+            fun currentOnline(): Boolean {
+                val net = cm.activeNetwork ?: return false
+                val caps = cm.getNetworkCapabilities(net) ?: return false
+                return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            }
+            // Giá trị đầu từ mạng hiện tại — mở app lúc đang offline không poll một phát vô ích.
+            sharedQueueVm.setOnline(currentOnline())
+            val cb = object : ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: Network) {
+                    sharedQueueVm.setOnline(true)
+                }
+                override fun onLost(network: Network) {
+                    // Mất MỘT mạng chưa chắc mất hết (wifi rớt còn mobile) — đọc lại
+                    // trạng thái thật thay vì gán false mù.
+                    sharedQueueVm.setOnline(currentOnline())
+                }
+                override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
+                    // Caps của MỘT mạng chưa chắc là mạng đang dùng (wifi rớt còn
+                    // mobile) — đọc lại trạng thái thật như onLost.
+                    sharedQueueVm.setOnline(currentOnline())
+                }
+            }
+            runCatching { cm.registerDefaultNetworkCallback(cb) }
+                .onFailure { Log.w(QUEUE_NET_TAG, "registerDefaultNetworkCallback failed", it) }
+            onDispose {
+                runCatching { cm.unregisterNetworkCallback(cb) }
+                    .onFailure { Log.w(QUEUE_NET_TAG, "unregisterNetworkCallback failed", it) }
+            }
+        }
+    }
     LifecycleResumeEffect(sharedQueueVm) {
         sharedQueueVm.setQueueVisible(true)
         onPauseOrDispose { sharedQueueVm.setQueueVisible(false) }
