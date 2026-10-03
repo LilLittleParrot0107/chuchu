@@ -76,11 +76,23 @@ fun DbtopScreen(
         CashflowEngine.calculatePoints(ui.state.daily, spendByDay)
     }
     val fallbackSpendPerDay = ui.spending?.monthUsd?.takeIf { it > 0.0 }?.div(DAYS_PER_MONTH) ?: 0.0
-    val ratePoints = remember(cashflowPoints, fallbackSpendPerDay) {
-        CashflowEngine.calculateRatePoints(cashflowPoints, fallbackSpendPerDay = fallbackSpendPerDay)
+    // 3/10 (user): SPEND chỉ 30 ngày — cắt cửa sổ TRƯỚC khi tính trailing để đường
+    // dàn chi + yield% đều theo 30d; takeLast an toàn khi history < 30 ngày.
+    val windowedPoints = remember(cashflowPoints) { cashflowPoints.takeLast(CashflowEngine.SPEND_WINDOW_DAYS) }
+    val ratePoints = remember(windowedPoints, fallbackSpendPerDay) {
+        CashflowEngine.calculateRatePoints(windowedPoints, fallbackSpendPerDay = fallbackSpendPerDay)
     }
-    val kpiSummary = remember(capForKpi, currentPerDay, ui.state.apr, ratePoints, cashflowPoints) {
-        CashflowEngine.computeKpis(capForKpi, currentPerDay, ui.state.apr, ratePoints.lastOrNull()?.trailSpend, cashflowPoints)
+    // %APR ung voi moi 1 USD/ngay — chinh he so bien truc USD thanh truc APR.
+    val aprFactor = remember(capForKpi) { if (capForKpi > 0.0) 365.0 / capForKpi * 100.0 else null }
+    // 3/10 (user): GROSS APR theo 30d — trung binh grossRate cac ngay do duoc trong
+    // cua so chia cho von; het von hoac khong do duoc ngay nao thi null de UI hien "--".
+    val gross30Apr = remember(ratePoints, capForKpi) {
+        val rates = ratePoints.filter { it.coverage > 0.0 }.map { it.grossRate }
+        if (rates.isEmpty() || capForKpi <= 0.0) null
+        else rates.average() * 365.0 / capForKpi * 100.0
+    }
+    val kpiSummary = remember(capForKpi, currentPerDay, gross30Apr, ratePoints, windowedPoints) {
+        CashflowEngine.computeKpis(capForKpi, currentPerDay, gross30Apr, ratePoints.lastOrNull()?.trailSpend, windowedPoints)
     }
     val pagerState = rememberPagerState(initialPage = ui.dashboardPage) { DbtopGroup.PAGE_COUNT }
     val coroutineScope = rememberCoroutineScope()
@@ -303,6 +315,9 @@ fun DbtopScreen(
                         daily = ui.state.daily,
                         cap = capForKpi,
                         kpis = kpiSummary,
+                        windowedPoints = windowedPoints,
+                        ratePoints = ratePoints,
+                        aprFactor = aprFactor,
                     )
                     in 2..3 -> WatchlistSubPane(
                         sub = page - DbtopGroup.WATCH.firstPage,
@@ -331,7 +346,6 @@ fun DbtopScreen(
                             row = row,
                             showYield = currentPerDay != null && (row.expiry == null || row.expiry > nowSec),
                             onClose = dismiss,
-                            // 560.dp riêng từng sheet, đừng gộp const chung.
                             maxHeight = 560.dp,
                         )
                     }
