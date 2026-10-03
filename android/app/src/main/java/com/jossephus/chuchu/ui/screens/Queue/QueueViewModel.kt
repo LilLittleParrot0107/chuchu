@@ -66,6 +66,21 @@ class QueueViewModel(
     private val settings: SettingsRepository,
 ) : ViewModel() {
 
+    // ── Mạng + cache transcript (cand-2): snapshot + setOnline từ tầng UI ──────
+    // VM KHÔNG nghe mạng trực tiếp (khác cand-1 giữ NetworkCallback trong VM):
+    // QueueDestination nghe ConnectivityManager theo lifecycle rồi đẩy vào qua
+    // setOnline — VM chỉ là người nghe nên unit-test được mà không cần Context.
+    // _isOnline mặc định true để unit-test (không có UI) vẫn poll như cũ;
+    // máy thật thì UI sửa ngay lúc compose QueueDestination.
+    private val _isOnline = MutableStateFlow(true)
+    val isOnline: StateFlow<Boolean> = _isOnline.asStateFlow()
+    /** true từ lúc rớt mạng tới lần poll online kế — để reset backoff về base. */
+    @Volatile private var chatReconnectPending = false
+
+    /** Transcript đã xem theo pane: giữ NGUYÊN snapshot ChatUiState — mở lại
+     * phát đúng khung đang xem ngay, mất mạng vẫn đọc được. */
+    private val chatSnapshots = ChatSnapshotCache()
+
     private val _ui = MutableStateFlow(QueueUiState())
     val ui: StateFlow<QueueUiState> = _ui.asStateFlow()
 
@@ -86,6 +101,27 @@ class QueueViewModel(
             combine(_ui, _chat) { u, c ->
                 c.pane to c.pane?.let { p -> u.state.agents.firstOrNull { it.pane == p }?.state }
             }.distinctUntilChanged().collect { syncBlockedPolling() }
+        }
+    }
+
+    /**
+     * Tầng UI (QueueDestination) đẩy trạng thái mạng vào đây — VM không giữ
+     * NetworkCallback nên không rò sau khi VM chết, cũng không cần Context.
+     * false->true: đánh dấu reconnect (vòng chat đọc flag này để reset backoff
+     * về base) rồi đá poll ngay nếu đang mở chat — không đợi hết nhịp delay cũ.
+     */
+    fun setOnline(online: Boolean) {
+        val was = _isOnline.value
+        _isOnline.value = online
+        if (!was && online) {
+            chatReconnectPending = true
+            if (_chat.value.pane != null) {
+                // Job đang delay backoff cũ thì huỷ để đọc NGAY; job đang long-poll
+                // thì guard isActive trong syncChatPolling chặn job mới — nhưng chính
+                // nó sắp trả về (mạng đã có) nên không kẹt.
+                chatJob?.cancel(); chatJob = null
+                syncChatPolling()
+            }
         }
     }
 
@@ -286,7 +322,11 @@ class QueueViewModel(
         _chatSeen.update { it + (pane to rev) }
     }
 
-    /** Mở màn chat của [pane]: tải 50 tin cuối rồi long-poll chừng nào màn còn mở. */
+    /**
+     * Mở màn chat của [pane]: có snapshot thì phát tin cũ NGAY (loading=false để
+     * đọc được cả khi mất mạng), rồi vòng poll đọc ngầm trang mới và ghép tiếp
+     * qua [ChatUiState.withFreshPage]. Chưa xem bao giờ mới hiện LOADING.
+     */
     fun openChat(pane: String) {
         if (_chat.value.pane != pane) {
             // Đổi phiên ngay trong chat (dải agent 28/9): job poll cũ còn sống sẽ chặn
@@ -295,14 +335,25 @@ class QueueViewModel(
             // (kết quả bay về trễ đã có guard pane trong chatRefreshOnce nên không corrupt).
             chatJob?.cancel(); chatJob = null
             blockedJob?.cancel(); blockedJob = null
+            val cached = chatSnapshots.forPane(pane)
+            val agent = _ui.value.state.agents.firstOrNull { it.pane == pane }
+            val name = agent?.name?.takeIf { it.isNotBlank() }
+                ?: cached?.name?.takeIf { it.isNotBlank() } ?: pane
+            _chat.value = if (cached != null && (cached.messages.isNotEmpty() || cached.rev.isNotBlank())) {
+                // Snapshot nguyên khung: tin + rev + cursor + meta — phát là đọc được liền.
+                cached.copy(pane = pane, name = name, loading = false, error = null)
+            } else {
+                ChatUiState(pane = pane, name = name, loading = true)
+            }
         }
-        val name = _ui.value.state.agents.firstOrNull { it.pane == pane }?.name ?: pane
-        _chat.value = ChatUiState(pane = pane, name = name, loading = true)
+        // Mở lại đúng pane đang xem: giữ nguyên tin, chỉ đảm bảo poll chạy.
         syncChatPolling()
         syncBlockedPolling()
     }
 
+    /** Đóng màn chat nhưng GIỮ snapshot — mở lại hiện ngay, offline vẫn đọc được. */
     fun closeChat() {
+        _chat.value.pane?.let { chatSnapshots.store(it, _chat.value) }
         chatJob?.cancel(); chatJob = null
         blockedJob?.cancel(); blockedJob = null
         _chat.value = ChatUiState()
@@ -315,10 +366,22 @@ class QueueViewModel(
         if (chatJob?.isActive == true) return
         chatJob = viewModelScope.launch {
             var backoff = 0L
+            var wasOffline = false
             while (isActive && _chat.value.pane == pane) {
+                // Mất mạng: KHÔNG gọi client.chat (kể cả long-poll cũng không),
+                // chỉ ngủ ngắn rồi nhìn lại — log khỏi loè, pin khỏi thức, backoff
+                // ĐÓNG BĂNG (không nhân, không reset) tới khi có mạng lại.
+                if (!shouldPollChat(_isOnline.value, false)) {
+                    wasOffline = true
+                    delay(FOREGROUND_POLL_MS)
+                    continue
+                }
+                val reconnected = wasOffline || chatReconnectPending
+                wasOffline = false
+                chatReconnectPending = false
                 val t0 = System.currentTimeMillis()
                 val failed = chatRefreshOnce(pane, waitSec = LONGPOLL_S)
-                backoff = if (failed) minOf(maxOf(backoff * 2, FOREGROUND_POLL_MS), MAX_FOREGROUND_BACKOFF_MS) else 0L
+                backoff = nextChatBackoff(backoff, reconnected, failed)
                 val elapsed = System.currentTimeMillis() - t0
                 delay(maxOf(backoff, MIN_GAP_MS - elapsed))
             }
@@ -440,15 +503,10 @@ class QueueViewModel(
         return when (val r = result) {
             is QueueClient.ChatFetch.Fresh -> {
                 val page = r.page
-                _chat.update { cur ->
-                    val firstNew = page.messages.firstOrNull()?.offset ?: Long.MAX_VALUE
-                    val kept = cur.messages.filter { it.offset < firstNew }
-                    val hasMore = if (kept.isEmpty()) page.hasMore else cur.hasMore
-                    val cursor = if (kept.isEmpty()) page.cursor else cur.cursor
-                    cur.copy(name = page.name.ifBlank { cur.name }, cwd = page.cwd, home = page.home.ifBlank { cur.home }, size = page.size, rev = page.rev,
-                             messages = kept + page.messages, hasMore = hasMore, cursor = cursor,
-                             loading = false, error = null, updatedAt = System.currentTimeMillis())
-                }
+                _chat.update { cur -> cur.withFreshPage(page) }
+                // Trang mới về là cất snapshot ngay — lần mở sau hiện liền, rớt mạng vẫn còn.
+                // Nhánh Failed/Unchanged bên dưới cố tình KHÔNG đụng snapshot.
+                chatSnapshots.store(pane, _chat.value)
                 markChatSeen(pane, page.rev)
                 false
             }
@@ -481,6 +539,8 @@ class QueueViewModel(
                     else -> st.copy(loadingOlder = false, error = (result as? QueueClient.ChatFetch.Failed)?.message ?: st.error)
                 }
             }
+            // Trang cũ hơn cũng cất — mở lại là đủ cả đầu + đuôi, không phải tải thêm lại.
+            chatSnapshots.store(pane, _chat.value)
         }
     }
 
@@ -847,6 +907,9 @@ class QueueViewModel(
         pollJob?.cancel()
         pollJob = null
         pollingMode = QueuePollingMode.Stopped
+        chatJob?.cancel(); chatJob = null
+        blockedJob?.cancel(); blockedJob = null
+        // Không có callback mạng nào trong VM (cand-2 nghe ở tầng UI) nên không cần unregister.
         super.onCleared()
     }
 
