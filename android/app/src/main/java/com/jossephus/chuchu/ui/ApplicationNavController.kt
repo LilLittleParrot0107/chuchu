@@ -366,6 +366,10 @@ fun ApplicationNavController() {
                 initialPane = backStackEntry.arguments?.getString("pane"),
                 initialMode = if (backStackEntry.arguments?.getString("mode") == "files") QueueMode.Files else null,
                 homeTick = queueHomeTick,
+                // Tick là event 1 lần: QueueScreen nuốt sau khi xử lý, không thì mỗi lần
+                // remount (mở chat lật hideRail, xoay màn) effect chạy lại với tick cũ và
+                // tự đóng chat (bug 3/10: bấm chat chớp rồi ở nguyên conversation).
+                onHomeConsumed = { queueHomeTick = 0 },
                 onBack = onExitApp,
             )
         }
@@ -537,6 +541,8 @@ private fun QueueDestination(
     initialMode: QueueMode? = null,
     /** Tick về HỘI THOẠI mỗi lần bấm tab QUEUE (3/10 user) — session-queue không dùng. */
     homeTick: Int = 0,
+    /** QueueScreen gọi sau khi đã về Threads để tick không kích lại sau remount. */
+    onHomeConsumed: () -> Unit = {},
 ) {
     val ui by sharedQueueVm.ui.collectAsStateWithLifecycle()
     // FILES trong Queue (23/9): file portal dufs, URL từ Settings như tab Files cũ.
@@ -579,6 +585,7 @@ private fun QueueDestination(
         onSearchFiles = sharedQueueVm::searchFiles,
         initialMode = initialMode,
         homeTick = homeTick,
+        onHomeConsumed = onHomeConsumed,
         launchDirs = sharedQueueVm.launchDirs.collectAsStateWithLifecycle().value,        onLaunchOpen = sharedQueueVm::loadLaunchDirs,
         onLaunch = sharedQueueVm::launch,
         onUploadToInbox = sharedQueueVm::uploadToInbox,

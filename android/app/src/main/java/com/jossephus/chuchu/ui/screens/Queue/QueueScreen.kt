@@ -120,6 +120,8 @@ fun QueueScreen(
     initialMode: QueueMode? = null,
     /** Tick về HỘI THOẠI mỗi lần bấm tab QUEUE (3/10 user); 0 = không reset. */
     homeTick: Int = 0,
+    /** Gọi sau khi đã xử lý tick — tick là event 1 lần, không consume là remount tự kích lại. */
+    onHomeConsumed: () -> Unit = {},
     // NEW SESSION (23/9): tấm trượt đáy chọn agent · thư mục · lệnh → qsrv mở phiên.
     launchDirs: List<LaunchDir> = emptyList(),
     onLaunchOpen: () -> Unit = {},
@@ -166,6 +168,7 @@ fun QueueScreen(
         if (homeTick > 0) {
             if (chat.pane != null) onCloseChat()
             pagerState.scrollToPage(QueueMode.Threads.ordinal)
+            onHomeConsumed()
         }
     }
     // Rung nhẹ khi sang trang; bỏ giá trị đầu để mở màn không rung.
