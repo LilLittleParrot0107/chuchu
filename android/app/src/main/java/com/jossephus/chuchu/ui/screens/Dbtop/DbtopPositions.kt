@@ -48,6 +48,14 @@ import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTypography
 import java.util.Locale
 
+/** Vị thế dưới ngưỡng này bị ẩn khỏi danh sách POS (user 4/10: đỡ rác).
+ *  Display-only — tổng/risk phía state vẫn tính đủ mọi vị thế. */
+internal const val MIN_POSITION_USD = 10.0
+
+/** Lọc hiển thị: giữ vị thế có vốn >= [MIN_POSITION_USD] (đúng ngưỡng = giữ). */
+internal fun visiblePositions(rows: List<DappRow>): List<DappRow> =
+    rows.filter { it.cap >= MIN_POSITION_USD }
+
 @Composable
 internal fun PositionsView(
     rows: List<DappRow>,
@@ -62,7 +70,8 @@ internal fun PositionsView(
         return
     }
     // Lớn trước nhỏ sau (29/9 user): vị thế xếp theo vốn giảm dần, ví nằm CUỐI.
-    val ordered = remember(rows) { rows.sortedByDescending { it.cap } }
+    // 4/10: ẩn vị thế < $10 cho đỡ rác (ví vàng vẫn hiện).
+    val ordered = remember(rows) { visiblePositions(rows).sortedByDescending { it.cap } }
     // 30/9 review: cặp sinh đôi giống hệt (cùng positionKey) đánh số thứ tự để key
     // list duy nhất mà selection theo positionKey vẫn dính cả cặp như cũ.
     val itemKeys = remember(ordered) {
