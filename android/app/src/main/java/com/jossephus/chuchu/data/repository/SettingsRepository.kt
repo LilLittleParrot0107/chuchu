@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import com.jossephus.chuchu.BuildConfig
 import com.jossephus.chuchu.data.network.normalizeQueueBaseUrl
+import com.jossephus.chuchu.ui.components.KohiTab
 import com.jossephus.chuchu.ui.screens.Terminal.TerminalTabMode
 import com.jossephus.chuchu.ui.terminal.BuiltinShortcutStore
 import com.jossephus.chuchu.ui.terminal.TerminalAccessoryLayoutStore
@@ -171,6 +172,13 @@ class SettingsRepository(context: Context) {
     )
     val terminalTabMode: StateFlow<TerminalTabMode> = _terminalTabMode.asStateFlow()
 
+    /** Tab mở khi khởi động app (user 4/10: xài QUEUE nhiều hơn nên muốn nó hiện trước).
+     *  Đổi có hiệu lực từ lần mở KẾ TIẾP — NavHost chỉ đọc startDestination một lần. */
+    private val _startTab = MutableStateFlow(
+        parseStartTab(prefs.getString(KEY_START_TAB, KohiTab.HOSTS.name)),
+    )
+    val startTab: StateFlow<KohiTab> = _startTab.asStateFlow()
+
     private val _themeMode = MutableStateFlow(parseThemeMode(prefs.getString(KEY_THEME_MODE, DEFAULT_THEME_MODE.name)))
     val themeMode: StateFlow<ThemeMode> = _themeMode.asStateFlow()
 
@@ -302,6 +310,11 @@ class SettingsRepository(context: Context) {
         _terminalTabMode.value = mode
     }
 
+    fun setStartTab(tab: KohiTab) {
+        prefs.edit().putString(KEY_START_TAB, tab.name).apply()
+        _startTab.value = tab
+    }
+
     fun setAppLockEnabled(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_APP_LOCK_ENABLED, enabled).apply()
         _appLockEnabled.value = enabled
@@ -423,6 +436,7 @@ class SettingsRepository(context: Context) {
             "https://the-real-witch.tail26a258.ts.net/chuchu",
         )
         private const val KEY_TAB_MODE = "terminal_tab_mode"
+        private const val KEY_START_TAB = "start_tab"
         private const val KEY_APP_LOCK_ENABLED = "app_lock_enabled"
         private const val KEY_REQUIRE_AUTH_ON_CONNECT = "require_auth_on_connect"
         private const val KEY_LOCAL_SHELL_ENABLED = "local_shell_enabled"
@@ -459,6 +473,9 @@ class SettingsRepository(context: Context) {
             } catch (_: IllegalArgumentException) {
                 TerminalTabMode.Classic
             }
+
+        private fun parseStartTab(value: String?): KohiTab =
+            KohiTab.entries.find { it.name == value } ?: KohiTab.HOSTS
 
     }
 }

@@ -2,6 +2,8 @@ package com.jossephus.chuchu.ui.screens.Settings
 
 import com.jossephus.chuchu.ui.components.KohiBackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
@@ -34,6 +36,7 @@ import com.jossephus.chuchu.ui.components.ChuSwitch
 import com.jossephus.chuchu.ui.components.ChuText
 import com.jossephus.chuchu.ui.components.ChuTextField
 import com.jossephus.chuchu.ui.screens.Terminal.TerminalTabMode
+import com.jossephus.chuchu.ui.components.KohiTab
 import com.jossephus.chuchu.ui.terminal.TerminalCustomKeyGroup
 import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTypography
@@ -62,6 +65,9 @@ fun SettingsScreen(
     onBuiltinShortcutsChanged: (Map<String, String>) -> Unit = {},
     currentTabMode: TerminalTabMode = TerminalTabMode.Classic,
     onTabModeChanged: (TerminalTabMode) -> Unit = {},
+    /** Tab mở khi khởi động app (user 4/10) — áp dụng từ lần mở kế tiếp. */
+    startTab: KohiTab = KohiTab.HOSTS,
+    onStartTabChanged: (KohiTab) -> Unit = {},
     themeMode: ThemeMode,
     lightThemeName: String,
     onThemeSelected: (String) -> Unit,
@@ -175,6 +181,8 @@ fun SettingsScreen(
                         lightThemeName = lightThemeName,
                         onLightThemeSelected = onLightThemeSelected,
                         onFontSelected = onFontSelected,
+                        startTab = startTab,
+                        onStartTabChanged = onStartTabChanged,
                         appLockEnabled = appLockEnabled,
                         requireAuthOnConnect = requireAuthOnConnect,
                         onAppLockEnabledChanged = onAppLockEnabledChanged,
@@ -256,6 +264,8 @@ private fun GeneralSettings(
     lightThemeName: String,
     onLightThemeSelected: (String) -> Unit,
     onFontSelected: (String) -> Unit,
+    startTab: KohiTab,
+    onStartTabChanged: (KohiTab) -> Unit,
     appLockEnabled: Boolean,
     requireAuthOnConnect: Boolean,
     onAppLockEnabledChanged: (Boolean) -> Unit,
@@ -279,6 +289,19 @@ private fun GeneralSettings(
         currentFont = currentFont,
         onFontSelected = onFontSelected,
     )
+    Spacer(modifier = Modifier.height(16.dp))
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        ChuText("── ", style = typography.labelSmall, color = colors.textMuted)
+        ChuText("STARTUP", style = typography.labelSmall, color = colors.textMuted)
+        ChuText(" ", style = typography.labelSmall, color = colors.textMuted)
+        Box(modifier = Modifier.height(1.dp).background(colors.textMuted).fillMaxWidth())
+    }
+    Spacer(modifier = Modifier.height(12.dp))
+    ChuText("tab on launch", style = typography.label)
+    Spacer(modifier = Modifier.height(6.dp))
+    StartTabPills(startTab = startTab, onStartTabChanged = onStartTabChanged)
+    Spacer(modifier = Modifier.height(4.dp))
+    ChuText("applies next time kohi opens.", style = typography.bodySmall, color = colors.textMuted)
     Spacer(modifier = Modifier.height(16.dp))
     Row(verticalAlignment = Alignment.CenterVertically) {
         ChuText("── ", style = typography.labelSmall, color = colors.textMuted)
@@ -344,4 +367,41 @@ private fun GeneralSettings(
         autoFocus = false,
         supportingText = "dịch buzz trong dashboard · aistudio.google.com",
     )
+}
+
+/**
+ * Chọn tab mở khi khởi động (user 4/10: xài QUEUE nhiều hơn HOSTS) — cùng grammar
+ * pill với ThemeModePills; đổi có hiệu lực từ lần mở app kế tiếp.
+ */
+@Composable
+private fun StartTabPills(
+    startTab: KohiTab,
+    onStartTabChanged: (KohiTab) -> Unit,
+) {
+    val colors = ChuColors.current
+    val typography = ChuTypography.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(colors.surface),
+    ) {
+        KohiTab.entries.forEach { tab ->
+            val isSelected = tab == startTab
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .background(color = if (isSelected) colors.accent else Color.Transparent)
+                    .clickable { onStartTabChanged(tab) }
+                    .padding(vertical = 10.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                ChuText(
+                    tab.contentDescription.lowercase(),
+                    style = typography.label,
+                    color = if (isSelected) colors.background else colors.textSecondary,
+                )
+            }
+        }
+    }
 }

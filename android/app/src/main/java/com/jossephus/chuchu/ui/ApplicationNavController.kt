@@ -108,6 +108,9 @@ fun ApplicationNavController() {
     var appLockBlockedUntilToggle by rememberSaveable { mutableStateOf(false) }
     val settingsRepo = SettingsRepository.getInstance(application)
     val appLockEnabled by settingsRepo.appLockEnabled.collectAsStateWithLifecycle()
+    // Tab mở khi khởi động (Setting → STARTUP): đọc MỘT lần lúc dựng graph — đổi
+    // setting áp dụng từ lần mở app kế tiếp, không rebuild NavHost giữa phiên.
+    val startTab = remember { settingsRepo.startTab.value }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { source, event ->
@@ -256,6 +259,10 @@ fun ApplicationNavController() {
     ) {
         NavHost(
             navController = navController,
+            // startDestination LUÔN là "servers" (route phẳng): "queue" là route có tham
+            // số (queue?pane&mode) nên không dùng làm startDestination được. Tab khởi
+            // động (Setting → STARTUP) đạt bằng auto-navigate ngay sau frame đầu —
+            // đúng như user bấm tab, mọi contract popUpTo(servers) giữ nguyên.
             startDestination = "servers",
             enterTransition = {
                 val targetBase = targetState.destination.route?.substringBefore('?')
@@ -417,6 +424,7 @@ fun ApplicationNavController() {
             val terminalFontSize by settingsRepo.terminalFontSize.collectAsStateWithLifecycle()
             val lightThemeName by settingsRepo.lightThemeName.collectAsStateWithLifecycle()
             val geminiApiKey by settingsRepo.geminiApiKey.collectAsStateWithLifecycle()
+            val startTabPref by settingsRepo.startTab.collectAsStateWithLifecycle()
             SettingsScreen(
                 currentTheme = themeName,
                 currentFont = fontName,
@@ -434,6 +442,8 @@ fun ApplicationNavController() {
                 onBuiltinShortcutsChanged = settingsRepo::setBuiltinShortcuts,
                 currentTabMode = tabMode,
                 onTabModeChanged = settingsRepo::setTerminalTabMode,
+                startTab = startTabPref,
+                onStartTabChanged = settingsRepo::setStartTab,
                 themeMode = themeMode,
                 lightThemeName = lightThemeName,
                 onThemeSelected = settingsRepo::setTheme,
@@ -526,6 +536,20 @@ fun ApplicationNavController() {
             )
         }
 
+        }
+        // Tab khởi động (Setting → STARTUP, user 4/10): mở app là tới thẳng tab đã chọn.
+        // Chạy đúng MỘT lần sau frame đầu; nếu deep link (kohi-focus) đã chiếm màn thì
+        // currentDestination không còn là "servers" → nhường, không giật màn hình.
+        LaunchedEffect(Unit) {
+            if (startTab != KohiTab.HOSTS &&
+                navController.currentDestination?.route?.substringBefore('?') == "servers"
+            ) {
+                navController.navigate(startTab.route) {
+                    popUpTo("servers") { saveState = true }
+                    launchSingleTop = true
+                    restoreState = true
+                }
+            }
         }
     }
 
