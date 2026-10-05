@@ -143,12 +143,7 @@ fun ServerListScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    ChuText("$ ", style = typography.headline, color = colors.textMuted)
-                    ChuText("kohi", style = typography.headline)
-                }
+                KohiTitleWithTailscaleDot()
 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (!isSearchVisible && hosts.isNotEmpty()) {
@@ -567,5 +562,48 @@ private fun HostCard(
                 }
             }
         }
+    }
+}
+
+/**
+ * Tiêu đề "$ kohi" + một chấm bên phải = trạng thái Tailscale; chạm vào tiêu đề để
+ * bật/tắt bằng tay (user chốt 8/9, port lại 5/10 — không auto bật/tắt theo app).
+ * ● xanh up, ○ xám down, · đang chuyển. Bật mà không lên thì
+ * [com.jossephus.chuchu.service.TailscaleToggle] tự mở app Tailscale cho user bấm.
+ */
+@Composable
+private fun KohiTitleWithTailscaleDot() {
+    val colors = ChuColors.current
+    val typography = ChuTypography.current
+    val context = LocalContext.current
+    val state by com.jossephus.chuchu.service.TailscaleToggle.state.collectAsStateWithLifecycle()
+    androidx.lifecycle.compose.LifecycleResumeEffect(Unit) {
+        com.jossephus.chuchu.service.TailscaleToggle.refresh(context)
+        onPauseOrDispose {}
+    }
+    val busy = state is com.jossephus.chuchu.service.TailscaleToggle.State.Connecting ||
+        state is com.jossephus.chuchu.service.TailscaleToggle.State.Disconnecting
+    val up = state is com.jossephus.chuchu.service.TailscaleToggle.State.Up
+    Row(
+        modifier = Modifier.clickable(enabled = !busy) {
+            com.jossephus.chuchu.service.TailscaleToggle.toggle(context)
+        },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        ChuText("$ ", style = typography.headline, color = colors.textMuted)
+        ChuText("kohi", style = typography.headline)
+        ChuText(
+            when {
+                busy -> " ·"
+                up -> " ●"
+                else -> " ○"
+            },
+            style = typography.headline,
+            color = when {
+                busy -> colors.textSecondary
+                up -> colors.success
+                else -> colors.textMuted
+            },
+        )
     }
 }

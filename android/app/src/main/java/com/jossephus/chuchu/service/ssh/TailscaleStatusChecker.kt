@@ -28,7 +28,7 @@ class TailscaleStatusChecker(
     }
 
     /** "iface ip" của interface đang mang địa chỉ tailnet, null nếu không có. */
-    private fun tailnetAddress(): String? {
+    fun tailnetAddress(): String? {
         return try {
             NetworkInterface.getNetworkInterfaces()
                 ?.toList()
