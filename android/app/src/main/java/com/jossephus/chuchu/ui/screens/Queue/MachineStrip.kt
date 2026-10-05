@@ -330,17 +330,18 @@ private fun MachineTabPage(
                     MachinePage(readout, glance.alpha)
                 }
             }
-        }
-        // Chân trang: minHeight thay vì height cứng (30/9 user: Box 20dp cứng mà nội
-        // dung cao hơn là tràn lên đè thời gian đếm ngược).
-        Box(Modifier.fillMaxWidth().defaultMinSize(minHeight = FOOTER_HEIGHT_DP.dp)) {
+            // 5/10 fix (user: "tab machine nội dung đè nhau"): chân trang nằm HẲN trong
+            // Column. Bản cũ để nó là Box con thứ hai của BoxWithConstraints mà không có
+            // align → Box con mặc định TopStart → footer đè lên dải liếc (RAM/CPU/OC·WK
+            // + tuổi số) ở mép phải. Giờ nó chiếm chỗ thật ở đáy, không đè gì.
             UsageFooterActions(
                 readout = readout,
                 onRefreshUsage = onRefreshUsage,
                 onSwitchAgyAccount = onSwitchAgyAccount,
                 modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .padding(end = 8.dp),
+                    .align(Alignment.End)
+                    .padding(end = 8.dp)
+                    .defaultMinSize(minHeight = FOOTER_HEIGHT_DP.dp),
             )
         }
     }
