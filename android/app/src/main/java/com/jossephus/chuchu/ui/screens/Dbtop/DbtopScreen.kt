@@ -97,6 +97,21 @@ fun DbtopScreen(
     val currentPage = pagerState.currentPage
     val currentGroup = DbtopGroup.groupOf(currentPage)
 
+    // 5/10 (user: mở app vào dashboard bị "lửng lơ giữa POS và SPEND"): pager là
+    // rememberSaveable nên khi app bị kill giữa chừng, nó khôi phục NGUYÊN cả offset
+    // đang dở (nửa trang giữa POS và SPEND), còn dashboardPage trong VM thì không lưu
+    // → VM mới = 0; hai effect dưới chỉ so currentPage (đã tròn) với VM nên thấy "khớp"
+    // và không kéo về → dải nằm lửng lơ mãi. Lần compose đầu: snap offset lẻ về trang
+    // hiện tại, và để PAGER làm chuẩn khôi phục — đẩy ngược vào VM thay vì animate về 0.
+    LaunchedEffect(Unit) {
+        if (pagerState.currentPageOffsetFraction != 0f) {
+            pagerState.scrollToPage(pagerState.currentPage)
+        }
+        if (ui.dashboardPage == 0 && pagerState.currentPage != 0) {
+            viewModel.selectPage(pagerState.currentPage)
+        }
+    }
+
     // Đồng bộ khi người dùng vuốt xong sang trang khác (settled)
     LaunchedEffect(pagerState.settledPage) {
         val settled = pagerState.settledPage
