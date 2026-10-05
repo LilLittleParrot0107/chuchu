@@ -598,7 +598,8 @@ private fun KohiTitleWithTailscaleDot() {
                 up -> " ●"
                 else -> " ○"
             },
-            style = typography.headline,
+            // Chấm nhỏ hơn tiêu đề (user 5/10): title 16sp thay vì headline 22sp.
+            style = typography.title,
             color = when {
                 busy -> colors.textSecondary
                 up -> colors.success
