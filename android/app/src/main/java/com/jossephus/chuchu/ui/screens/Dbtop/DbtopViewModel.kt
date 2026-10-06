@@ -36,13 +36,15 @@ import kotlinx.coroutines.withContext
 enum class DbtopGroup(val tab: String, val pages: IntRange) {
     POS("POS", 0..0),
     SPEND("SPEND", 1..1),
-    WATCH("WATCH", 2..3),
-    PROJ("PROJ", 4..6);
+    // 5/10 (user): TOKENS + GAINERS gộp MỘT trang — token của mình trước, nối xuống
+    // gainer luôn (trước là 2 trang 2..3 với dải sub-tab).
+    WATCH("WATCH", 2..2),
+    PROJ("PROJ", 3..5);
 
     val firstPage: Int get() = pages.first
 
     companion object {
-        const val PAGE_COUNT = 7
+        const val PAGE_COUNT = 6
 
         // Total (29/9 review): page lạ (vd state cũ sau khi đổi số trang) không được
         // ném — âm về POS, vượt về PROJ (cuối).

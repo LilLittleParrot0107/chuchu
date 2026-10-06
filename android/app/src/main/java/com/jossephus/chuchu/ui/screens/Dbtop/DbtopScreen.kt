@@ -91,8 +91,8 @@ fun DbtopScreen(
     }
     val pagerState = rememberPagerState(initialPage = ui.dashboardPage) { DbtopGroup.PAGE_COUNT }
     val coroutineScope = rememberCoroutineScope()
-    // Nhớ sub-tab xem dở mỗi nhóm (user chốt 27/9: chạm WATCH/PROJ về đúng chỗ đang xem).
-    var watchPage by rememberSaveable { mutableIntStateOf(DbtopGroup.WATCH.firstPage) }
+    // Nhớ sub-tab xem dở của PROJ (user chốt 27/9: chạm BUZZ/FOLLOW/PROJECTS về đúng chỗ
+    // đang xem). WATCH từ 5/10 chỉ còn MỘT trang (TOKENS+GAINERS gộp) nên bỏ watchPage.
     var projPage by rememberSaveable { mutableIntStateOf(DbtopGroup.PROJ.firstPage) }
     val currentPage = pagerState.currentPage
     val currentGroup = DbtopGroup.groupOf(currentPage)
@@ -102,10 +102,12 @@ fun DbtopScreen(
     // đang dở (nửa trang giữa POS và SPEND), còn dashboardPage trong VM thì không lưu
     // → VM mới = 0; hai effect dưới chỉ so currentPage (đã tròn) với VM nên thấy "khớp"
     // và không kéo về → dải nằm lửng lơ mãi. Lần compose đầu: snap offset lẻ về trang
-    // hiện tại, và để PAGER làm chuẩn khôi phục — đẩy ngược vào VM thay vì animate về 0.
+    // hiện tại, kẹp trang lưu từ bản cũ (7→6 trang) và để PAGER làm chuẩn khôi phục —
+    // đẩy ngược vào VM thay vì animate về 0.
     LaunchedEffect(Unit) {
-        if (pagerState.currentPageOffsetFraction != 0f) {
-            pagerState.scrollToPage(pagerState.currentPage)
+        val page = pagerState.currentPage.coerceIn(0, DbtopGroup.PAGE_COUNT - 1)
+        if (pagerState.currentPageOffsetFraction != 0f || page != pagerState.currentPage) {
+            pagerState.scrollToPage(page)
         }
         if (ui.dashboardPage == 0 && pagerState.currentPage != 0) {
             viewModel.selectPage(pagerState.currentPage)
@@ -116,7 +118,6 @@ fun DbtopScreen(
     LaunchedEffect(pagerState.settledPage) {
         val settled = pagerState.settledPage
         when (DbtopGroup.groupOf(settled)) {
-            DbtopGroup.WATCH -> watchPage = settled
             DbtopGroup.PROJ -> projPage = settled
             else -> Unit
         }
@@ -209,7 +210,7 @@ fun DbtopScreen(
                     val target = when (nextGroup) {
                         DbtopGroup.POS -> 0
                         DbtopGroup.SPEND -> 1
-                        DbtopGroup.WATCH -> watchPage.coerceIn(DbtopGroup.WATCH.pages)
+                        DbtopGroup.WATCH -> DbtopGroup.WATCH.firstPage
                         DbtopGroup.PROJ -> projPage.coerceIn(DbtopGroup.PROJ.pages)
                     }
                     // Bấm tab = tới thẳng trang, KHÔNG lướt (user 27/9); vuốt tay vẫn
@@ -222,11 +223,8 @@ fun DbtopScreen(
 
             // Dải sub-tab giờ nằm NGOÀI pager, suy ra từ currentPage; bấm thì nhảy
             // thẳng trang còn vuốt thì đi lần lượt qua từng sub-tab (user chốt 27/9).
+            // WATCH từ 5/10 chỉ còn một trang nên không có dải sub-tab nữa.
             val subTabs = when (currentGroup) {
-                DbtopGroup.WATCH -> listOf(
-                    "TOKENS" to watchlistItems.size,
-                    "GAINERS" to (ui.explorer?.gain?.size ?: 0),
-                )
                 DbtopGroup.PROJ -> listOf(
                     "BUZZ" to (ui.explorer?.x?.size ?: 0),
                     "FOLLOW" to (ui.explorer?.follow?.size ?: 0),
@@ -247,9 +245,9 @@ fun DbtopScreen(
                 )
             }
 
-            // HorizontalPager: vuốt trái/phải đi lần lượt 7 trang — POS · SPEND ·
-            // TOKENS · GAINERS · BUZZ · PROJECTS · YIELD (28/9: bỏ TRENDING,
-            // BUZZ lên đầu PROJ).
+            // HorizontalPager: vuốt trái/phải đi lần lượt 6 trang — POS · SPEND ·
+            // WATCH (tokens + gainers gộp) · BUZZ · FOLLOW · PROJECTS (5/10 gộp WATCH,
+            // trước là 7 trang với TOKENS/GAINERS riêng).
             HorizontalPager(
                 state = pagerState,
                 key = { it },
@@ -327,8 +325,7 @@ fun DbtopScreen(
                         ratePoints = ratePoints,
                         aprFactor = aprFactor,
                     )
-                    in 2..3 -> WatchlistSubPane(
-                        sub = page - DbtopGroup.WATCH.firstPage,
+                    DbtopGroup.WATCH.firstPage -> WatchlistMergedPane(
                         items = watchlistItems,
                         explorer = ui.explorer,
                         moneyDisplay = ui.moneyDisplay,

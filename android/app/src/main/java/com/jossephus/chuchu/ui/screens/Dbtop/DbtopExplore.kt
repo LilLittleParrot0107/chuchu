@@ -279,17 +279,71 @@ internal fun FollowPane(
     }
 }
 
-/** Pane GAINERS của WATCH: 24h trước, phần chỉ lọt top 7 ngày xếp sau (pipeline sắp). */
+/**
+ * Pane WATCH (5/10, user: "gộp gainer vs token vào làm 1 tab, hiện hết token của mình
+ * xong nối xuống gainer luôn"): MỘT LazyColumn — token của mình trước, dải mảnh
+ * "GAINERS" làm mốc, rồi tới gainer; cuộn liền một mạch (không lồng LazyColumn).
+ * Sheet chi tiết gainer giữ nguyên như pane GAINERS cũ.
+ */
 @Composable
-internal fun GainersPane(explorer: ExplorerState) {
+internal fun WatchlistMergedPane(
+    items: List<WatchlistTokenItem>,
+    explorer: ExplorerState?,
+    moneyDisplay: MoneyDisplay = MoneyDisplay.USD,
+    vndRate: Double = 0.0,
+) {
+    if (items.isEmpty() && explorer == null) {
+        DashboardEmpty("NO TOKENS IN WATCHLIST")
+        return
+    }
+    val type = ChuTypography.current
+    val colors = ChuColors.current
     var gainSheet by remember { mutableStateOf<ExplorerGain?>(null) }
+    val gains = explorer?.gain ?: emptyList()
+    val imgs = explorer?.imgs ?: emptyMap()
 
-    LazyColumn(modifier = Modifier.fillMaxSize()) {
-        items(explorer.gain, key = { it.asset ?: it.sym }) { g ->
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(bottom = 8.dp),
+    ) {
+        items(items, key = { "tok:" + it.symbol }) { token ->
+            WatchlistTokenRow(
+                token = token,
+                img = imgs[token.symbol],
+                hold = if (token.totalUsd > 0.0) {
+                    formatMoney(token.totalUsd, moneyDisplay, vndRate, compact = true)
+                } else {
+                    "—"
+                },
+            )
+        }
+        if (items.isEmpty()) {
+            item(key = "empty-tok") { EmptyPane("NO TOKENS IN WATCHLIST") }
+        }
+        item(key = "gain-head") {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 10.dp, end = 10.dp, top = 10.dp, bottom = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                ChuText("GAINERS", style = type.labelSmall, color = colors.textMuted)
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .height(1.dp)
+                        .background(colors.border.copy(alpha = CHU_HAIRLINE_ALPHA)),
+                )
+            }
+        }
+        items(gains, key = { "gain:" + (it.asset ?: it.sym) }) { g ->
             GainRow(gain = g, onClick = { gainSheet = g })
         }
-        if (explorer.gain.isEmpty()) {
-            item(key = "empty") { EmptyPane("NO GAINER DATA · CHECK PIPELINE") }
+        if (gains.isEmpty()) {
+            item(key = "empty-gain") {
+                EmptyPane(if (explorer == null) "NO EXPLORER DATA (SCAN PENDING)" else "NO GAINER DATA · CHECK PIPELINE")
+            }
         }
     }
 

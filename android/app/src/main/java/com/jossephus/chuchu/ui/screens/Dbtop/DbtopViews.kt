@@ -62,69 +62,14 @@ import java.util.Locale
 import kotlin.math.abs
 
 /**
- * WATCH: 2 sub-tab TOKENS · GAINERS là 2 TRANG của pager phẳng (28/9 bỏ TRENDING) —
- * dải sub-tab do DbtopScreen vẽ, ở đây chỉ còn nội dung theo `sub`. Explorer chưa
- * về thì trang GAINERS báo chờ scan thay vì rỗng.
- */
-@Composable
-internal fun WatchlistSubPane(
-    sub: Int,
-    items: List<WatchlistTokenItem>,
-    explorer: ExplorerState?,
-    moneyDisplay: MoneyDisplay = MoneyDisplay.USD,
-    vndRate: Double = 0.0,
-) {
-    if (items.isEmpty() && explorer == null) {
-        DashboardEmpty("NO TOKENS IN WATCHLIST")
-        return
-    }
-    when (sub.coerceIn(0, 1)) {
-        0 -> TokensPane(
-            items = items,
-            imgs = explorer?.imgs ?: emptyMap(),
-            moneyDisplay = moneyDisplay,
-            vndRate = vndRate,
-        )
-        else -> if (explorer != null) GainersPane(explorer = explorer) else DashboardEmpty("NO EXPLORER DATA (SCAN PENDING)")
-    }
-}
-
-@Composable
-private fun TokensPane(
-    items: List<WatchlistTokenItem>,
-    imgs: Map<String, String>,
-    moneyDisplay: MoneyDisplay,
-    vndRate: Double,
-) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 8.dp),
-    ) {
-        items(items, key = { it.symbol }) { token ->
-            WatchlistTokenRow(
-                token = token,
-                img = imgs[token.symbol],
-                hold = if (token.totalUsd > 0.0) {
-                    formatMoney(token.totalUsd, moneyDisplay, vndRate, compact = true)
-                } else {
-                    "—"
-                },
-            )
-        }
-        if (items.isEmpty()) {
-            item(key = "empty") { EmptyPane("NO TOKENS IN WATCHLIST") }
-        }
-    }
-}
-
-/**
  * Hàng TOKENS theo đúng khuôn 2 dòng của GainRow (user chốt proto 27/9 —
  * "đổi TOKENS theo TRENDING/GAINERS"): logo · SYM, dòng 2 = giá trị đang giữ
  * (`hold $…` từ totalUsd, theo chế độ tiền đang chọn), cột phải là vùng liếc số
- * (giá · %24h). Bỏ hairline + cỡ chữ body của bản 1 dòng cũ để ba sub-tab cùng nhịp.
+ * (giá · %24h). 5/10: WATCH gộp TOKENS+GAINERS một trang (WatchlistMergedPane) nên
+ * hàng này internal để file explore dùng lại, không còn TokensPane riêng.
  */
 @Composable
-private fun WatchlistTokenRow(
+internal fun WatchlistTokenRow(
     token: WatchlistTokenItem,
     img: String?,
     hold: String,
