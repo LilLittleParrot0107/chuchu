@@ -72,7 +72,7 @@ import kotlin.math.abs
 internal fun WatchlistTokenRow(
     token: WatchlistTokenItem,
     img: String?,
-    hold: String,
+    hold: String?,
     modifier: Modifier = Modifier,
 ) {
     val colors = ChuColors.current
@@ -97,15 +97,18 @@ internal fun WatchlistTokenRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            ChuText(
-                "hold $hold",
-                style = type.labelSmall.copy(
-                    fontFamily = FontFamily.Monospace,
-                    fontFeatureSettings = "tnum",
-                ),
-                color = colors.textMuted,
-                maxLines = 1,
-            )
+            // hold = null: ẩn hẳn dòng số đang giữ (6/10 user: riêng BTC không hiện).
+            hold?.let {
+                ChuText(
+                    "hold $it",
+                    style = type.labelSmall.copy(
+                        fontFamily = FontFamily.Monospace,
+                        fontFeatureSettings = "tnum",
+                    ),
+                    color = colors.textMuted,
+                    maxLines = 1,
+                )
+            }
         }
         Spacer(Modifier.width(6.dp))
         Column(horizontalAlignment = Alignment.End) {

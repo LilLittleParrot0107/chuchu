@@ -310,7 +310,10 @@ internal fun WatchlistMergedPane(
             WatchlistTokenRow(
                 token = token,
                 img = imgs[token.symbol],
-                hold = if (token.totalUsd > 0.0) {
+                // 6/10 (user: "riêng btc thì bỏ dòng hold bao nhiêu"): BTC ẩn số đang giữ.
+                hold = if (token.symbol.equals("BTC", ignoreCase = true)) {
+                    null
+                } else if (token.totalUsd > 0.0) {
                     formatMoney(token.totalUsd, moneyDisplay, vndRate, compact = true)
                 } else {
                     "—"
@@ -486,17 +489,9 @@ private fun GainRow(
                     color = colors.textPrimary,
                     maxLines = 1,
                 )
-                if (gain.name.isNotBlank()) {
-                    Spacer(Modifier.width(4.dp))
-                    ChuText(
-                        gain.name,
-                        style = type.labelSmall,
-                        color = colors.textMuted,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f),
-                    )
-                }
+                // 6/10 (user: "bỏ cái chú thích bên cạnh tên đầy đủ của ticker — ấn vào
+                // hiện ra cũng được"): hàng gainer chỉ còn ticker; tên đầy đủ nằm ở
+                // tiêu đề tấm chi tiết (GainerSheet "SYM · name").
             }
             ChuText(
                 line2,
