@@ -489,9 +489,18 @@ private fun GainRow(
                     color = colors.textPrimary,
                     maxLines = 1,
                 )
-                // 6/10 (user: "bỏ cái chú thích bên cạnh tên đầy đủ của ticker — ấn vào
-                // hiện ra cũng được"): hàng gainer chỉ còn ticker; tên đầy đủ nằm ở
-                // tiêu đề tấm chi tiết (GainerSheet "SYM · name").
+                // 6/10 (user): GIỮ tên đầy đủ nhưng cách ticker ra — 4dp sát quá khó đọc.
+                if (gain.name.isNotBlank()) {
+                    Spacer(Modifier.width(8.dp))
+                    ChuText(
+                        gain.name,
+                        style = type.labelSmall,
+                        color = colors.textMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
             }
             ChuText(
                 line2,
