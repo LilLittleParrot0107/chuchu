@@ -72,6 +72,6 @@ object TailscaleToggle {
             TailscaleStatusChecker(context).tailnetAddress()?.let { State.Up(it) } ?: State.Down
         }
 
-    private const val UP_WAIT_MS = 10_000L
+    private const val UP_WAIT_MS = 4_000L   // 7/10 user: 10s lâu quá — chờ 4s rồi mở app Tailscale
     private const val DOWN_WAIT_MS = 5_000L
 }
