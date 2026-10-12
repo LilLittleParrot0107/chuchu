@@ -77,6 +77,20 @@
             </intent-filter>
         </activity>
 
+        <!-- Bubble gắn thông báo agent (NEEDS YOU / XONG): cửa sổ nổi chỉ dựng
+             BubbleShell. documentLaunchMode=always + taskAffinity rỗng = mỗi pane
+             một bubble task riêng, không kéo theo task chính. -->
+        <activity
+            android:name="com.jossephus.chuchu.ui.bubble.AgentBubbleActivity"
+            android:enabled="true"
+            android:exported="false"
+            android:launchMode="standard"
+            android:documentLaunchMode="always"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.Chuchu" />
+
         <service
             android:name="com.jossephus.chuchu.service.terminal.SessionForegroundService"
             android:enabled="true"
@@ -85,6 +99,18 @@
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Maintains a live, interactive SSH/terminal session connection while the app is backgrounded so the remote shell and running commands are not dropped. This persistent interactive network session is not covered by camera, connectedDevice, dataSync, health, location, mediaPlayback, mediaProjection, microphone, phoneCall, or remoteMessaging types." />
+        </service>
+
+        <!-- Trực /state khi app xuống nền để nổi NEEDS YOU / XONG. Cùng họ
+             specialUse với session SSH (không thuộc loại nào khác). -->
+        <service
+            android:name="com.jossephus.chuchu.service.agents.AgentWatchService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Keeps watching the agent queue in the background and posts needs-you / finished alerts as bubbles for the person's own agent sessions." />
         </service>
 
         <provider

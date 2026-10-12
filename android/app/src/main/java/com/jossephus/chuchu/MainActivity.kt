@@ -40,6 +40,12 @@ object DeepLinkBus {
 
     /** herdr pane id (e.g. "w4:p1") to jump to once the terminal attaches. */
     val pendingPane = MutableStateFlow<String?>(null)
+
+    /**
+     * Agent alert (notification bubble NEEDS YOU / XONG) mở thẳng phiên chat:
+     * pane cần mở trong màn Queue. NavController tiêu thụ sau gate khóa app.
+     */
+    val pendingChatPane = MutableStateFlow<String?>(null)
 }
 
 class MainActivity : FragmentActivity() {
@@ -102,14 +108,28 @@ class MainActivity : FragmentActivity() {
         }
     }
 
+    /**
+     * Thông báo agent (từ [com.jossephus.chuchu.service.agents.AgentNotifier]) mang
+     * pane trong EXTRA thay vì URL — chỉ nhận pane đúng định dạng herdr, cùng luật
+     * với deep link (MainActivity exported, không tin chuỗi lạ).
+     */
+    private fun captureChatPaneIntent(intent: Intent?) {
+        val pane = intent?.getStringExtra(com.jossephus.chuchu.service.agents.AgentNotifier.EXTRA_PANE)
+            ?.trim()?.ifEmpty { null } ?: return
+        if (!PANE_RE.matches(pane)) return
+        DeepLinkBus.pendingChatPane.value = pane
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         captureDeepLink(intent)
+        captureChatPaneIntent(intent)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         captureDeepLink(intent)
+        captureChatPaneIntent(intent)
         val settings = SettingsRepository.getInstance(this)
         lifecycleScope.launch {
             settings.hideScreenContents.collect { hideScreenContents ->

@@ -128,6 +128,10 @@ fun ApplicationNavController() {
             // snapshot cho tab đang mở (audit 4/9 P1).
             if (event == Lifecycle.Event.ON_START) {
                 sessions.setForeground(true)
+                // Về app: UI đầy đủ đã hiện trạng thái agent — tắt vòng trực nền và
+                // dọn alert (alert trùng với những gì user đang nhìn).
+                com.jossephus.chuchu.service.agents.AgentWatchService.stop(application)
+                com.jossephus.chuchu.service.agents.AgentNotifier.cancelAll(application)
             }
             if (event == Lifecycle.Event.ON_STOP) {
                 sessions.setForeground(false)
@@ -137,6 +141,8 @@ fun ApplicationNavController() {
                     appUnlocked = false
                     unlockPromptRequested = false
                     appLockBlockedUntilToggle = false
+                    // Xuống nền: trực /state hộ user (báo NEEDS YOU / XONG qua bubble).
+                    com.jossephus.chuchu.service.agents.AgentWatchService.startIfEnabled(application)
                 }
             }
         }
@@ -234,11 +240,28 @@ fun ApplicationNavController() {
     )
     var bubbleExpanded by rememberSaveable { mutableStateOf(false) }
     if (bubbleWindow && !bubbleExpanded) {
+        // Bubble window: alert (bấm thông báo khi app đang ở dạng bubble/split hẹp)
+        // mở thẳng chat trong chính shell này — NavHost chưa dựng nên không navigate.
+        val alertPane by com.jossephus.chuchu.DeepLinkBus.pendingChatPane.collectAsStateWithLifecycle()
+        LaunchedEffect(alertPane) {
+            val pane = alertPane ?: return@LaunchedEffect
+            com.jossephus.chuchu.DeepLinkBus.pendingChatPane.value = null
+            sharedQueueVm.openChat(pane)
+        }
         BubbleShell(
             queueVm = sharedQueueVm,
             onExpand = { bubbleExpanded = true },
         )
         return
+    }
+
+    // Agent alert (bubble NEEDS YOU / XONG) mở thẳng phiên chat của Queue. Như deep
+    // link host: nam SAU gate khoa app + sau nhanh bubble (NavHost chua setGraph).
+    val deepLinkChatPane by com.jossephus.chuchu.DeepLinkBus.pendingChatPane.collectAsStateWithLifecycle()
+    LaunchedEffect(deepLinkChatPane) {
+        val pane = deepLinkChatPane ?: return@LaunchedEffect
+        com.jossephus.chuchu.DeepLinkBus.pendingChatPane.value = null
+        navController.navigate(sessionQueueRoute(pane)) { launchSingleTop = true }
     }
 
     val backStackEntry by navController.currentBackStackEntryAsState()
