@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.Person
@@ -82,10 +83,14 @@ object AgentNotifier {
         pushShortcut(context, pane, name, shortcutId)
 
         val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        // Bubble: PendingIntent trong BubbleMetadata BẮT BUỘC mutable — hệ thống
+        // nhét activity options của cửa sổ bubble vào lúc nở (NMS từ chối thẳng:
+        // "PendingIntents attached to bubbles must be mutable").
+        val bubbleFlags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
         val bubbleIntent = Intent(context, AgentBubbleActivity::class.java)
             .setAction(Intent.ACTION_VIEW)
             .putExtra(EXTRA_PANE, pane)
-        val bubblePending = PendingIntent.getActivity(context, pane.hashCode(), bubbleIntent, flags)
+        val bubblePending = PendingIntent.getActivity(context, pane.hashCode(), bubbleIntent, bubbleFlags)
         val contentIntent = Intent(context, MainActivity::class.java)
             .setAction(ACTION_OPEN_AGENT_CHAT)
             .putExtra(EXTRA_PANE, pane)
@@ -126,6 +131,10 @@ object AgentNotifier {
         runCatching {
             NotificationManagerCompat.from(context).notify(pane, ALERT_ID, builder.build())
             alertedPanes += pane
+        }.onFailure {
+            // NMS từ chối (thiếu quyền, bubble sai luật…) — nuốt lỗi nhưng để lại
+            // vết trong logcat, đừng câm như đã từng (mutable PendingIntent, 13/10).
+            Log.w("AgentNotifier", "notify failed pane=$pane", it)
         }
     }
 
