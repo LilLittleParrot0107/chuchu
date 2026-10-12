@@ -60,7 +60,15 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
+import com.jossephus.chuchu.ui.bubble.BubbleShell
+import com.jossephus.chuchu.ui.bubble.bubbleWindowEligible
+import com.jossephus.chuchu.ui.components.KohiCompactAction
 import androidx.compose.foundation.layout.height
 import androidx.compose.ui.unit.dp
 
@@ -215,6 +223,23 @@ fun ApplicationNavController() {
         onPauseOrDispose { sharedQueueVm.setAppActive(false) }
     }
 
+    // ── Bubble shell (Android 17 app-bubbles / split-screen hẹp) ────────────────
+    // Cửa sổ thấp là vào màn gọn CHAT+MONEY; ⤢ trong band thoát về UI đầy đủ và
+    // nút ⤡ nổi ở góc quay lại. Luật cửa sổ nằm trong bubbleWindowEligible (unit test).
+    val configuration = LocalConfiguration.current
+    val bubbleWindow = bubbleWindowEligible(
+        screenHeightDp = configuration.screenHeightDp,
+        inMultiWindow = context.findActivity()?.isInMultiWindowMode == true,
+    )
+    var bubbleExpanded by rememberSaveable { mutableStateOf(false) }
+    if (bubbleWindow && !bubbleExpanded) {
+        BubbleShell(
+            queueVm = sharedQueueVm,
+            onExpand = { bubbleExpanded = true },
+        )
+        return
+    }
+
     val backStackEntry by navController.currentBackStackEntryAsState()
     // route pattern cua queue la "queue?pane={pane}" — cat phan query de khop tab.
     val currentRoute = backStackEntry?.destination?.route?.substringBefore('?')
@@ -235,6 +260,7 @@ fun ApplicationNavController() {
         animationSpec = tween(150, easing = FastOutLinearInEasing),
     )
 
+    Box(modifier = Modifier.fillMaxSize()) {
     KohiNavShell(
         selectedRoute = currentRoute,
         queueBadge = queueAmbientSummary.takeIf { it.totalActive > 0 }?.totalActive,
@@ -550,6 +576,17 @@ fun ApplicationNavController() {
                     restoreState = true
                 }
             }
+        }
+    }
+        // Đang ở cửa sổ bubble mà đã ⤢ sang UI đầy đủ: lối quay về màn gọn.
+        if (bubbleWindow) {
+            KohiCompactAction(
+                label = "⤡ kohi",
+                onClick = { bubbleExpanded = false },
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(6.dp),
+            )
         }
     }
 

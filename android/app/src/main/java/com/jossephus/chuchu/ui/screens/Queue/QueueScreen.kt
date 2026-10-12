@@ -741,7 +741,9 @@ private const val FEEDBACK_TTL_MS = 3_200L
  * hẹp/rộng (28/9) mà không chép hai bản — meta và QueueChatView chỉ định nghĩa một lần.
  */
 @Composable
-private fun ChatThreadView(
+// internal (đổi từ private 12/10): BubbleShell tái dùng đúng màn chat này —
+// một implementation duy nhất cho cả Queue đầy đủ lẫn bubble, không fork UI chat.
+internal fun ChatThreadView(
     chat: ChatUiState,
     chatAgent: QueueAgent?,
     chatMessages: List<ChatMessage>,
@@ -753,8 +755,7 @@ private fun ChatThreadView(
     composerFocus: FocusRequester,
     keyboard: SoftwareKeyboardController?,
     modifier: Modifier = Modifier,
-) {
-    val colors = ChuColors.current
+) {    val colors = ChuColors.current
     Column(modifier = modifier) {
         val dotColor = chatAgent?.tone?.color() ?: colors.textMuted
         Row(
