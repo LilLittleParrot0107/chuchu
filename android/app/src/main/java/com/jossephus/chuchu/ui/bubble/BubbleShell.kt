@@ -12,7 +12,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -100,7 +103,14 @@ fun BubbleShell(
         onDispose {}
     }
 
-    Column(Modifier.fillMaxSize().background(colors.background)) {
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(colors.background)
+            // Bubble thật thường không có system bar (insets = 0); split-screen thì có —
+            // thiếu cái này là band chui dưới status bar / composer dưới thanh gesture.
+            .windowInsetsPadding(WindowInsets.safeDrawing),
+    ) {
         BubbleBand(
             title = title,
             titleColor = titleColor,
@@ -140,22 +150,28 @@ private fun BubbleBand(
             .padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        ChuText("●", style = type.labelSmall, color = titleColor)
-        Spacer(Modifier.width(5.dp))
-        ChuText(
-            title,
-            style = type.label.copy(fontWeight = FontWeight.Bold, fontSize = 13.sp, letterSpacing = 0.5.sp),
-            color = titleColor,
-            maxLines = 1,
-        )
-        Spacer(Modifier.width(5.dp))
-        ChuText(
-            "· ${if (segment == SEG_MONEY) "MONEY" else "CHAT"}",
-            style = type.labelSmall,
-            color = colors.textSecondary,
-            maxLines = 1,
-        )
-        Spacer(Modifier.weight(1f))
+        // Nhóm trái co giãn: cửa sổ siêu hẹp (bubble ~267dp) title cắt ellipsis,
+        // segmented + ⤢ LUÔN giữ chỗ — trước đây title cứng 16 ký tự đẩy 2 thứ đó ra ngoài mép.
+        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+            ChuText("●", style = type.labelSmall, color = titleColor)
+            Spacer(Modifier.width(5.dp))
+            ChuText(
+                title,
+                style = type.label.copy(fontWeight = FontWeight.Bold, fontSize = 13.sp, letterSpacing = 0.5.sp),
+                color = titleColor,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            Spacer(Modifier.width(5.dp))
+            ChuText(
+                "· ${if (segment == SEG_MONEY) "MONEY" else "CHAT"}",
+                style = type.labelSmall,
+                color = colors.textSecondary,
+                maxLines = 1,
+            )
+        }
+        Spacer(Modifier.width(6.dp))
         BubbleSegment(segment, needsYou, onSegment)
         Spacer(Modifier.width(6.dp))
         KohiCompactAction(label = "⤢", onClick = onExpand)
