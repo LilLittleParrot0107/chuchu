@@ -292,8 +292,10 @@ private fun GeneralSettings(
     // 13/10: kiểm tra miễn tối ưu pin — về lại Settings (từ dialog hệ thống) là đọc lại.
     val context = LocalContext.current
     var batteryExempt by remember { mutableStateOf(isIgnoringBatteryOptimizations(context)) }
+    var alarmsOk by remember { mutableStateOf(canScheduleExactAlarms(context)) }
     LifecycleResumeEffect(Unit) {
         batteryExempt = isIgnoringBatteryOptimizations(context)
+        alarmsOk = canScheduleExactAlarms(context)
         onPauseOrDispose {}
     }
     ThemeSelectorSection(
@@ -410,6 +412,25 @@ private fun GeneralSettings(
             color = colors.textMuted,
         )
     }
+    // 13/10: nhịp trực nền bằng ALARM — chưa cấp quyền exact thì máy idle có thể trễ vài
+    // phút; nút này mở màn cấp quyền "Alarms & reminders" của hệ thống.
+    if (agentAlertsEnabled && !alarmsOk) {
+        Spacer(modifier = Modifier.height(8.dp))
+        ChuButton(
+            onClick = { requestExactAlarms(context) },
+            variant = ChuButtonVariant.Outlined,
+            bracketed = true,
+            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+        ) {
+            ChuText("allow alarms", style = typography.label)
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        ChuText(
+            "keeps the background check on time while the phone sleeps.",
+            style = typography.bodySmall,
+            color = colors.textMuted,
+        )
+    }
     Spacer(modifier = Modifier.height(16.dp))
     Row(verticalAlignment = Alignment.CenterVertically) {
         ChuText("── ", style = typography.labelSmall, color = colors.textMuted)
@@ -482,6 +503,23 @@ private fun isIgnoringBatteryOptimizations(context: Context): Boolean {
 private fun requestIgnoreBatteryOptimizations(context: Context) {
     val intent = Intent(
         AndroidSettings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+        Uri.parse("package:${context.packageName}"),
+    )
+    runCatching { context.startActivity(intent) }
+}
+
+/** Exact-alarm (API 31+): nhịp trực nền đúng giờ khi máy idle; <31 luôn sẵn. */
+private fun canScheduleExactAlarms(context: Context): Boolean {
+    if (android.os.Build.VERSION.SDK_INT < 31) return true
+    val am = context.getSystemService(android.app.AlarmManager::class.java) ?: return true
+    return am.canScheduleExactAlarms()
+}
+
+/** Mở màn "Alarms & reminders" của hệ thống để cấp quyền exact-alarm cho kohi. */
+private fun requestExactAlarms(context: Context) {
+    if (android.os.Build.VERSION.SDK_INT < 31) return
+    val intent = Intent(
+        AndroidSettings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
         Uri.parse("package:${context.packageName}"),
     )
     runCatching { context.startActivity(intent) }

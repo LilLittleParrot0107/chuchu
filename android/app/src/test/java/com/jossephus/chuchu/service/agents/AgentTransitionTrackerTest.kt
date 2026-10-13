@@ -105,4 +105,13 @@ class AgentTransitionTrackerTest {
         val actions = tracker.onState(listOf(snap("w1:p1", "Working")))
         assertEquals(listOf(AgentAlertAction.Cancel("w1:p1")), actions)
     }
+
+    @Test
+    fun `restore thi so tiep khong seed lai (song qua process chet)`() {
+        val tracker = AgentTransitionTracker()
+        tracker.restore(listOf(snap("w1:p1", "Working")))
+        val actions = tracker.onState(listOf(snap("w1:p1", "Done", preview = "Xong")))
+        val post = actions.single() as AgentAlertAction.Post
+        assertEquals(AgentAlertKind.Done, post.kind)
+    }
 }

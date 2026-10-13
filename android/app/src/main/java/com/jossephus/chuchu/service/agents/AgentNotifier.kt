@@ -1,6 +1,5 @@
 package com.jossephus.chuchu.service.agents
 
-import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -36,9 +35,7 @@ object AgentNotifier {
     const val EXTRA_PANE = "com.jossephus.chuchu.extra.AGENT_PANE"
 
     private const val CHANNEL_ALERTS = "agent_alerts"
-    private const val CHANNEL_WATCH = "agent_watch"
     private const val ALERT_ID = 4101
-    const val WATCH_NOTIFICATION_ID = 3003
 
     private val alertedPanes = ConcurrentHashMap.newKeySet<String>()
 
@@ -57,16 +54,8 @@ object AgentNotifier {
             }
             manager.createNotificationChannel(channel)
         }
-        if (manager.getNotificationChannel(CHANNEL_WATCH) == null) {
-            val channel = NotificationChannel(
-                CHANNEL_WATCH,
-                "Agent watch",
-                NotificationManager.IMPORTANCE_LOW,
-            )
-            channel.description = "Keeps watching agent sessions while the app is in the background"
-            channel.setShowBadge(false)
-            manager.createNotificationChannel(channel)
-        }
+        // 13/10: bỏ FGS "watching" — dọn luôn channel thường trú cũ khỏi Settings máy.
+        runCatching { manager.deleteNotificationChannel("agent_watch") }
     }
 
     fun postAlert(
@@ -80,7 +69,12 @@ object AgentNotifier {
         ensureChannels(context)
         val name = agentName.ifBlank { pane }
         val shortcutId = shortcutIdFor(pane)
-        pushShortcut(context, pane, name, shortcutId)
+        val person = Person.Builder()
+            .setName(name)
+            .setKey(shortcutId)
+            .setImportant(true)
+            .build()
+        pushShortcut(context, pane, name, shortcutId, person)
 
         val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         // Bubble: PendingIntent trong BubbleMetadata BẮT BUỘC mutable — hệ thống
@@ -101,20 +95,29 @@ object AgentNotifier {
             )
         val contentPending = PendingIntent.getActivity(context, pane.hashCode() + 1, contentIntent, flags)
 
-        val body = text.trim().ifBlank {
+        val body = refineAlertText(text).ifBlank {
             if (kind == AgentAlertKind.NeedsYou) "Waiting for your answer" else "Finished"
         }
-        val title = when (kind) {
-            AgentAlertKind.NeedsYou -> "● NEEDS YOU · $name"
-            AgentAlertKind.Done -> "✓ XONG · $name"
-        }
+        // 13/10 (user: "refine thông báo tin nhắn cuối cho thanh lịch hơn"): thay title
+        // "✓ XONG · name" bằng notification HỘI THOẠI — tên agent là conversation title,
+        // tin cuối là một message trong khung chat (MessagingStyle), trạng thái nằm ở
+        // subText nhỏ ("● NEEDS YOU" / "✓ XONG"). Gọn, đúng ngữ cảnh, và vẫn là
+        // conversation notification nên bubble giữ nguyên.
+        val user = Person.Builder().setName("kohi").build()
+        val style = NotificationCompat.MessagingStyle(user)
+            .setConversationTitle(name)
+            .addMessage(body, System.currentTimeMillis(), person)
         val builder = NotificationCompat.Builder(context, CHANNEL_ALERTS)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(title)
-            .setContentText(body)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setStyle(style)
             .setShortcutId(shortcutId)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+            .setSubText(
+                when (kind) {
+                    AgentAlertKind.NeedsYou -> "● NEEDS YOU"
+                    AgentAlertKind.Done -> "✓ XONG"
+                },
+            )
             .setAutoCancel(true)
             .setOnlyAlertOnce(false)
             .setShowWhen(true)
@@ -150,28 +153,6 @@ object AgentNotifier {
         }
     }
 
-    fun buildWatchNotification(context: Context): Notification {
-        val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        val tapIntent = Intent(context, MainActivity::class.java).addFlags(
-            Intent.FLAG_ACTIVITY_NEW_TASK or
-                Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                Intent.FLAG_ACTIVITY_CLEAR_TOP,
-        )
-        val tapPending = PendingIntent.getActivity(context, 0, tapIntent, flags)
-        return NotificationCompat.Builder(context, CHANNEL_WATCH)
-            .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("kohi · watching agents")
-            .setContentText("Alerts when an agent needs you or finishes")
-            .setOngoing(true)
-            .setAutoCancel(false)
-            .setOnlyAlertOnce(true)
-            .setShowWhen(false)
-            .setCategory(NotificationCompat.CATEGORY_SERVICE)
-            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
-            .setContentIntent(tapPending)
-            .build()
-    }
-
     /** Dynamic shortcut id — chỉ [a-zA-Z0-9._] được phép. */
     private fun shortcutIdFor(pane: String): String =
         "agent_" + pane.map { if (it.isLetterOrDigit() || it == '_' || it == '.') it else '_' }
@@ -182,12 +163,13 @@ object AgentNotifier {
      * (Android 11+). Push trước mỗi lần notify — shortcut dynamic có thể bị hệ
      * thống cắt bớt khi app bị dọn nên không dựa vào lần push cũ.
      */
-    private fun pushShortcut(context: Context, pane: String, agentName: String, shortcutId: String) {
-        val person = Person.Builder()
-            .setName(agentName)
-            .setKey(shortcutId)
-            .setImportant(true)
-            .build()
+    private fun pushShortcut(
+        context: Context,
+        pane: String,
+        agentName: String,
+        shortcutId: String,
+        person: Person,
+    ) {
         val bubbleIntent = Intent(context, AgentBubbleActivity::class.java)
             .setAction(Intent.ACTION_VIEW)
             .putExtra(EXTRA_PANE, pane)

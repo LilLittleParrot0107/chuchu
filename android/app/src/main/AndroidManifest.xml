@@ -10,6 +10,9 @@
     <!-- Xin miễn tối ưu pin (dialog hệ thống) — để mạng nền sống trong doze, alert không nổ trễ.
          App sideload cá nhân, không phát hành qua Play nên không vướng policy của quyền này. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- Nhịp trực nền bằng alarm (13/10): xin quyền exact-alarm để nhịp đúng giờ khi máy
+         idle; chưa cấp thì vẫn chạy inexact (trễ vài phút), Settings có nút xin. -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 
     <!-- Gửi broadcast tường minh tới app Tailscale (bật/tắt VPN bằng nút) cần khai gói này từ API 30. -->
     <queries>
@@ -104,17 +107,13 @@
                 android:value="Maintains a live, interactive SSH/terminal session connection while the app is backgrounded so the remote shell and running commands are not dropped. This persistent interactive network session is not covered by camera, connectedDevice, dataSync, health, location, mediaPlayback, mediaProjection, microphone, phoneCall, or remoteMessaging types." />
         </service>
 
-        <!-- Trực /state khi app xuống nền để nổi NEEDS YOU / XONG. Cùng họ
-             specialUse với session SSH (không thuộc loại nào khác). -->
-        <service
-            android:name="com.jossephus.chuchu.service.agents.AgentWatchService"
+        <!-- Trực /state khi app xuống nền để nổi NEEDS YOU / XONG — bằng ALARM
+             (13/10: bỏ FGS "watching" vì user không muốn thông báo thường trú;
+             mỗi nhịp alarm thức dậy poll 1 phát, không notification nền). -->
+        <receiver
+            android:name="com.jossephus.chuchu.service.agents.AgentWatchReceiver"
             android:enabled="true"
-            android:exported="false"
-            android:foregroundServiceType="specialUse">
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Keeps watching the agent queue in the background and posts needs-you / finished alerts as bubbles for the person's own agent sessions." />
-        </service>
+            android:exported="false" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

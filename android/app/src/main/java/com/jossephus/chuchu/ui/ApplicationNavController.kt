@@ -130,7 +130,7 @@ fun ApplicationNavController() {
                 sessions.setForeground(true)
                 // Về app: UI đầy đủ đã hiện trạng thái agent — tắt vòng trực nền và
                 // dọn alert (alert trùng với những gì user đang nhìn).
-                com.jossephus.chuchu.service.agents.AgentWatchService.stop(application)
+                com.jossephus.chuchu.service.agents.AgentWatch.stop(application)
                 com.jossephus.chuchu.service.agents.AgentNotifier.cancelAll(application)
             }
             if (event == Lifecycle.Event.ON_STOP) {
@@ -142,7 +142,7 @@ fun ApplicationNavController() {
                     unlockPromptRequested = false
                     appLockBlockedUntilToggle = false
                     // Xuống nền: trực /state hộ user (báo NEEDS YOU / XONG qua bubble).
-                    com.jossephus.chuchu.service.agents.AgentWatchService.startIfEnabled(application)
+                    com.jossephus.chuchu.service.agents.AgentWatch.start(application)
                 }
             }
         }
@@ -512,7 +512,7 @@ fun ApplicationNavController() {
                     if (!enabled) {
                         // Tắt switch ngay lúc đang mở Settings (service không chạy vì app
                         // đang hiện) — dọn alert treo cho khớp hành vi "app cũ".
-                        com.jossephus.chuchu.service.agents.AgentWatchService.stop(application)
+                        com.jossephus.chuchu.service.agents.AgentWatch.stop(application)
                         com.jossephus.chuchu.service.agents.AgentNotifier.cancelAll(application)
                     }
                 },

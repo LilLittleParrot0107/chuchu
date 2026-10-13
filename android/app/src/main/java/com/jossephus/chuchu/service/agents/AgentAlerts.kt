@@ -3,7 +3,7 @@ package com.jossephus.chuchu.service.agents
 import com.jossephus.chuchu.ui.screens.Queue.AgentState
 
 /**
- * Luật báo thức của [AgentWatchService] — tách khỏi Android để unit-test bằng JVM thuần.
+ * Luật báo thức của [AgentWatch] — tách khỏi Android để unit-test bằng JVM thuần.
  *
  * Hai sự kiện duy nhất đáng nổi thông báo (user chốt 12/10):
  *  · vào Blocked  → NEEDS YOU (agent đang chờ người trả lời)
@@ -46,6 +46,16 @@ class AgentTransitionTracker {
         seeded = false
     }
 
+    /**
+     * Nạp trạng thái đã lưu (phiên trực bằng alarm sống qua process bị dọn): so TIẾP,
+     * không seed lại — seed lại là nuốt mất chuyển trạng thái đã xảy ra lúc vắng mặt.
+     */
+    fun restore(agents: List<AgentSnap>) {
+        last.clear()
+        agents.forEach { last[it.pane] = it }
+        seeded = true
+    }
+
     fun onState(agents: List<AgentSnap>): List<AgentAlertAction> {
         if (!seeded) {
             seeded = true
@@ -83,4 +93,25 @@ class AgentTransitionTracker {
         }
         return out
     }
+}
+
+/**
+ * Làm gọn tin cuối trước khi lên notification (user 13/10: "thanh lịch hơn"): dồn
+ * khoảng trắng, bỏ ký hiệu markdown/quote/bullet đầu dòng, cắt ở RANH GIỚI TỪ (không
+ * cắt giữa chữ) — tin cuối của agent hay có `**`, `#`, danh sách, URL dài.
+ */
+internal fun refineAlertText(raw: String, limit: Int = 140): String {
+    // Bỏ markdown/quote/bullet theo TỪNG DÒNG trước khi dồn trắng — dồn trước là mất
+    // anchor đầu dòng, bullet của dòng 2+ thành giữa câu (test bắt 13/10).
+    var t = raw
+    t = t.replace(Regex("(?m)^#{1,6}\\s*"), "")
+    t = t.replace(Regex("(?m)^>\\s*"), "")
+    t = t.replace(Regex("(?m)^[-•·]+\\s*"), "")
+    t = t.replace(Regex("[`*]+"), "")
+    t = t.replace(Regex("\\s+"), " ").trim()
+    if (t.length > limit) {
+        val cut = t.take(limit)
+        t = cut.substringBeforeLast(' ', cut).trimEnd().trimEnd(',', ';', ':') + "…"
+    }
+    return t.trim()
 }
