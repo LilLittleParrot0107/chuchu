@@ -136,6 +136,21 @@ android {
         compose = true
         buildConfig = true
     }
+    testOptions {
+        unitTests {
+            // Robolectric needs the merged resources to resolve app resources in tests.
+            isIncludeAndroidResources = true
+            all { test ->
+                // Roborazzi gates PNG capture on this system property; the Gradle
+                // plugin usually wires it, but we pass it through manually so
+                // `-Proborazzi.test.record=true` works with plain test tasks.
+                test.systemProperty(
+                    "roborazzi.test.record",
+                    providers.gradleProperty("roborazzi.test.record").orElse("false").get(),
+                )
+            }
+        }
+    }
 }
 
 dependencies {
@@ -160,6 +175,12 @@ dependencies {
     // org.json cua Android chi la stub trong unit test (moi ham nem
     // "not mocked"). Them ban that de test parser hang doi chay duoc tren JVM.
     testImplementation("org.json:json:20240303")
+    testImplementation(libs.androidx.test.core)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.roborazzi)
+    testImplementation(libs.roborazzi.compose)
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.junit)
     implementation(libs.androidx.compose.foundation)
     implementation(libs.androidx.compose.material.icons.core)

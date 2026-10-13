@@ -35,6 +35,8 @@ import com.jossephus.chuchu.ui.components.ChuButtonVariant
 import com.jossephus.chuchu.ui.components.ChuSwitch
 import com.jossephus.chuchu.ui.components.ChuText
 import com.jossephus.chuchu.ui.components.ChuTextField
+import com.jossephus.chuchu.ui.screens.Keys.KeysContent
+import com.jossephus.chuchu.ui.screens.Keys.KeysViewModel
 import com.jossephus.chuchu.ui.screens.Terminal.TerminalTabMode
 import com.jossephus.chuchu.ui.components.KohiTab
 import com.jossephus.chuchu.ui.terminal.TerminalCustomKeyGroup
@@ -45,6 +47,7 @@ import com.jossephus.chuchu.ui.theme.ThemeMode
 enum class SettingsCategory(val label: String) {
     General("general"),
     Terminal("terminal"),
+    Keys("keys"),
 }
 
 @Composable
@@ -57,6 +60,7 @@ fun SettingsScreen(
     keepScreenAwake: Boolean,
     hideScreenContents: Boolean,
     agentAlertsEnabled: Boolean = true,
+    disableAutocorrect: Boolean,
     currentAccessoryLayoutIds: List<String>,
     accessoryBarSingleRow: Boolean,
     currentTerminalCustomKeyGroups: List<TerminalCustomKeyGroup>,
@@ -81,6 +85,7 @@ fun SettingsScreen(
     onKeepScreenAwakeChanged: (Boolean) -> Unit,
     onHideScreenContentsChanged: (Boolean) -> Unit,
     onAgentAlertsEnabledChanged: (Boolean) -> Unit = {},
+    onDisableAutocorrectChanged: (Boolean) -> Unit,
     onAccessoryLayoutChanged: (List<String>) -> Unit,
     onAccessoryBarSingleRowChanged: (Boolean) -> Unit,
     currentTerminalFontSize: Float = 14f,
@@ -89,6 +94,7 @@ fun SettingsScreen(
     geminiApiKey: String = "",
     onGeminiApiKeyChanged: (String) -> Unit = {},
     backupViewModel: SettingsBackupViewModel? = null,
+    keysViewModel: KeysViewModel,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -113,17 +119,13 @@ fun SettingsScreen(
         }
     }
 
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(colors.background),
-    ) {
+    Box(modifier = modifier.fillMaxSize().background(colors.background)) {
         LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .windowInsetsPadding(WindowInsets.safeDrawing)
-                .padding(16.dp)
-                .imePadding(),
+            modifier =
+                Modifier.fillMaxSize()
+                    .windowInsetsPadding(WindowInsets.safeDrawing)
+                    .padding(16.dp)
+                    .imePadding(),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             item {
@@ -159,7 +161,8 @@ fun SettingsScreen(
                             onClick = { selectedCategory = category },
                             variant = ChuButtonVariant.Outlined,
                             borderColor = if (isSelected) colors.accent else colors.border,
-                            backgroundColor = if (isSelected) colors.accent.copy(alpha = 0.12f) else null,
+                            backgroundColor =
+                                if (isSelected) colors.accent.copy(alpha = 0.12f) else null,
                             modifier = Modifier.weight(1f),
                         ) {
                             ChuText(
@@ -216,7 +219,10 @@ fun SettingsScreen(
                         onKeepScreenAwakeChanged = onKeepScreenAwakeChanged,
                         hideScreenContents = hideScreenContents,
                         onHideScreenContentsChanged = onHideScreenContentsChanged,
+                        disableAutocorrect = disableAutocorrect,
+                        onDisableAutocorrectChanged = onDisableAutocorrectChanged,
                     )
+                    SettingsCategory.Keys -> KeysContent(vm = keysViewModel)
                 }
             }
         }
@@ -291,10 +297,7 @@ private fun GeneralSettings(
         onThemeModeChanged = onThemeModeChanged,
     )
     Spacer(modifier = Modifier.height(16.dp))
-    FontSelectorSection(
-        currentFont = currentFont,
-        onFontSelected = onFontSelected,
-    )
+    FontSelectorSection(currentFont = currentFont, onFontSelected = onFontSelected)
     Spacer(modifier = Modifier.height(16.dp))
     Row(verticalAlignment = Alignment.CenterVertically) {
         ChuText("── ", style = typography.labelSmall, color = colors.textMuted)
@@ -334,7 +337,11 @@ private fun GeneralSettings(
         ChuSwitch(checked = requireAuthOnConnect, onCheckedChange = onRequireAuthOnConnectChanged)
     }
     Spacer(modifier = Modifier.height(4.dp))
-    ChuText("use biometrics or device PIN/pattern.", style = typography.bodySmall, color = colors.textMuted)
+    ChuText(
+        "use biometrics or device PIN/pattern.",
+        style = typography.bodySmall,
+        color = colors.textMuted,
+    )
     Spacer(modifier = Modifier.height(16.dp))
     Row(
         modifier = Modifier.fillMaxWidth(),

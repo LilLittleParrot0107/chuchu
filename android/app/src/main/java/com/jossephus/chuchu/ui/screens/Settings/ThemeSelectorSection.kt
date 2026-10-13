@@ -165,16 +165,19 @@ private fun SingleThemePicker(
     var showPreview by rememberSaveable { mutableStateOf(false) }
     val pickerListState = rememberLazyListState()
 
-    val previewTheme = remember(currentTheme, themeByName) { themeByName[currentTheme] }
-
     // Mở danh sách là đứng ngay theme ĐANG dùng (user 17/9: "bắt đầu từ theme hiện
     // tại... để lựa lần lượt cho dễ") — 463 theme xếp A→Z, quay lại tìm rất mỏi.
-    // Chỉ chạy lúc mở; gõ search thì giữ nguyên từ đầu kết quả như cũ.
+    // upstream #115: chỉ nhảy khi ô search TRỐNG; gõ search thì về đầu kết quả.
     LaunchedEffect(expanded) {
-        if (!expanded) return@LaunchedEffect
+        if (!expanded || themeQuery.isNotBlank()) return@LaunchedEffect
         val index = filteredThemes.indexOf(currentTheme)
         if (index > 0) pickerListState.scrollToItem(index)
     }
+    LaunchedEffect(themeQuery) {
+        if (themeQuery.isNotBlank()) pickerListState.scrollToItem(0)
+    }
+
+    val previewTheme = remember(currentTheme, themeByName) { themeByName[currentTheme] }
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(
@@ -205,7 +208,7 @@ private fun SingleThemePicker(
                 onQueryChange = { themeQuery = it },
                 filteredThemes = filteredThemes,
                 currentTheme = currentTheme,
-                onThemeSelected = { onThemeSelected(it); expanded = false },
+                onThemeSelected = onThemeSelected,
                 themeByName = themeByName,
                 listState = pickerListState,
             )
@@ -247,7 +250,7 @@ private fun ThemePickerDropdown(
     currentTheme: String,
     onThemeSelected: (String) -> Unit,
     themeByName: Map<String, GhosttyTheme?>,
-    listState: LazyListState,
+    listState: LazyListState = rememberLazyListState(),
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         ChuTextField(

@@ -4,7 +4,9 @@
 .externalNativeBuild
 .cxx
 local.properties
-.agents/
+.agents/*
+!.agents/setup
+!.agents/resume
 .idea/
 .kotlin/
 .npm/
@@ -15,6 +17,9 @@ scripts/
 
 # Gemini key nhét lúc build (như vbook) — không vào git
 .secrets/
+
+# Amp orbs
+.amp/portals/
 
 # Android
 android/app/src/main/jniLibs/
