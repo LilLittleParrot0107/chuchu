@@ -7,6 +7,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Xin miễn tối ưu pin (dialog hệ thống) — để mạng nền sống trong doze, alert không nổ trễ.
+         App sideload cá nhân, không phát hành qua Play nên không vướng policy của quyền này. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <!-- Gửi broadcast tường minh tới app Tailscale (bật/tắt VPN bằng nút) cần khai gói này từ API 30. -->
     <queries>

@@ -1,5 +1,10 @@
 package com.jossephus.chuchu.ui.screens.Settings
 
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.os.PowerManager
+import android.provider.Settings as AndroidSettings
 import com.jossephus.chuchu.ui.components.KohiBackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -29,7 +34,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.jossephus.chuchu.ui.components.ChuButton
 import com.jossephus.chuchu.ui.components.ChuButtonVariant
 import com.jossephus.chuchu.ui.components.ChuSwitch
@@ -282,6 +289,13 @@ private fun GeneralSettings(
 ) {
     val typography = ChuTypography.current
     val colors = ChuColors.current
+    // 13/10: kiểm tra miễn tối ưu pin — về lại Settings (từ dialog hệ thống) là đọc lại.
+    val context = LocalContext.current
+    var batteryExempt by remember { mutableStateOf(isIgnoringBatteryOptimizations(context)) }
+    LifecycleResumeEffect(Unit) {
+        batteryExempt = isIgnoringBatteryOptimizations(context)
+        onPauseOrDispose {}
+    }
     ThemeSelectorSection(
         darkThemeName = currentTheme,
         onDarkThemeSelected = onThemeSelected,
@@ -376,6 +390,26 @@ private fun GeneralSettings(
         style = typography.bodySmall,
         color = colors.textMuted,
     )
+    // 13/10 (user: "thông báo đã xong chỉ đến khi vào app"): OriginOS/doze bóp mạng nền khi
+    // ngủ sâu → vòng trực 25s treo, alert nổ trễ lúc mở app. Miễn tối ưu pin = app được dùng
+    // mạng trong doze → thông báo nổ đúng lúc agent xong, không phải lúc cầm máy lên.
+    if (agentAlertsEnabled && !batteryExempt) {
+        Spacer(modifier = Modifier.height(8.dp))
+        ChuButton(
+            onClick = { requestIgnoreBatteryOptimizations(context) },
+            variant = ChuButtonVariant.Outlined,
+            bracketed = true,
+            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+        ) {
+            ChuText("allow background", style = typography.label)
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        ChuText(
+            "without this, OriginOS can hold alerts back until you open the app.",
+            style = typography.bodySmall,
+            color = colors.textMuted,
+        )
+    }
     Spacer(modifier = Modifier.height(16.dp))
     Row(verticalAlignment = Alignment.CenterVertically) {
         ChuText("── ", style = typography.labelSmall, color = colors.textMuted)
@@ -433,4 +467,22 @@ private fun StartTabPills(
             }
         }
     }
+}
+
+/**
+ * Miễn tối ưu pin (battery optimization exemption): điều kiện để app còn được dùng mạng
+ * khi máy ngủ sâu (doze) — không có nó, vòng trực nền bị treo và alert nổ trễ lúc mở app.
+ */
+private fun isIgnoringBatteryOptimizations(context: Context): Boolean {
+    val pm = context.getSystemService(PowerManager::class.java) ?: return true
+    return pm.isIgnoringBatteryOptimizations(context.packageName)
+}
+
+/** Mở dialog hệ thống xin miễn tối ưu pin cho kohi (app sideload, không qua Play). */
+private fun requestIgnoreBatteryOptimizations(context: Context) {
+    val intent = Intent(
+        AndroidSettings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+        Uri.parse("package:${context.packageName}"),
+    )
+    runCatching { context.startActivity(intent) }
 }
