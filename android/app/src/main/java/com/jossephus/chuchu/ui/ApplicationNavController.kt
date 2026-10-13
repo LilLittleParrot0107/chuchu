@@ -470,6 +470,7 @@ fun ApplicationNavController() {
             val localShellEnabled by settingsRepo.localShellEnabled.collectAsStateWithLifecycle()
             val keepScreenAwake by settingsRepo.keepScreenAwake.collectAsStateWithLifecycle()
             val hideScreenContents by settingsRepo.hideScreenContents.collectAsStateWithLifecycle()
+            val agentAlertsEnabled by settingsRepo.agentAlertsEnabled.collectAsStateWithLifecycle()
             val themeMode by settingsRepo.themeMode.collectAsStateWithLifecycle()
             val terminalFontSize by settingsRepo.terminalFontSize.collectAsStateWithLifecycle()
             val lightThemeName by settingsRepo.lightThemeName.collectAsStateWithLifecycle()
@@ -505,6 +506,16 @@ fun ApplicationNavController() {
                 onLocalShellEnabledChanged = settingsRepo::setLocalShellEnabled,
                 onKeepScreenAwakeChanged = settingsRepo::setKeepScreenAwake,
                 onHideScreenContentsChanged = settingsRepo::setHideScreenContents,
+                agentAlertsEnabled = agentAlertsEnabled,
+                onAgentAlertsEnabledChanged = { enabled ->
+                    settingsRepo.setAgentAlertsEnabled(enabled)
+                    if (!enabled) {
+                        // Tắt switch ngay lúc đang mở Settings (service không chạy vì app
+                        // đang hiện) — dọn alert treo cho khớp hành vi "app cũ".
+                        com.jossephus.chuchu.service.agents.AgentWatchService.stop(application)
+                        com.jossephus.chuchu.service.agents.AgentNotifier.cancelAll(application)
+                    }
+                },
                 onAccessoryLayoutChanged = settingsRepo::setAccessoryLayoutIds,
                 onAccessoryBarSingleRowChanged = settingsRepo::setAccessoryBarSingleRow,
                 currentTerminalFontSize = terminalFontSize,

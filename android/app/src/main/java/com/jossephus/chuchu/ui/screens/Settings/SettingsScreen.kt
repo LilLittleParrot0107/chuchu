@@ -56,6 +56,7 @@ fun SettingsScreen(
     localShellEnabled: Boolean,
     keepScreenAwake: Boolean,
     hideScreenContents: Boolean,
+    agentAlertsEnabled: Boolean = true,
     currentAccessoryLayoutIds: List<String>,
     accessoryBarSingleRow: Boolean,
     currentTerminalCustomKeyGroups: List<TerminalCustomKeyGroup>,
@@ -79,6 +80,7 @@ fun SettingsScreen(
     onLocalShellEnabledChanged: (Boolean) -> Unit,
     onKeepScreenAwakeChanged: (Boolean) -> Unit,
     onHideScreenContentsChanged: (Boolean) -> Unit,
+    onAgentAlertsEnabledChanged: (Boolean) -> Unit = {},
     onAccessoryLayoutChanged: (List<String>) -> Unit,
     onAccessoryBarSingleRowChanged: (Boolean) -> Unit,
     currentTerminalFontSize: Float = 14f,
@@ -187,6 +189,8 @@ fun SettingsScreen(
                         requireAuthOnConnect = requireAuthOnConnect,
                         onAppLockEnabledChanged = onAppLockEnabledChanged,
                         onRequireAuthOnConnectChanged = onRequireAuthOnConnectChanged,
+                        agentAlertsEnabled = agentAlertsEnabled,
+                        onAgentAlertsEnabledChanged = onAgentAlertsEnabledChanged,
                         onOpenBackup = { showBackupSheet = true },
                         geminiApiKey = geminiApiKey,
                         onGeminiApiKeyChanged = onGeminiApiKeyChanged,
@@ -270,6 +274,8 @@ private fun GeneralSettings(
     requireAuthOnConnect: Boolean,
     onAppLockEnabledChanged: (Boolean) -> Unit,
     onRequireAuthOnConnectChanged: (Boolean) -> Unit,
+    agentAlertsEnabled: Boolean = true,
+    onAgentAlertsEnabledChanged: (Boolean) -> Unit = {},
     onOpenBackup: () -> Unit = {},
     geminiApiKey: String = "",
     onGeminiApiKeyChanged: (String) -> Unit = {},
@@ -347,6 +353,29 @@ private fun GeneralSettings(
     }
     Spacer(modifier = Modifier.height(4.dp))
     ChuText("encrypted export/import.", style = typography.bodySmall, color = colors.textMuted)
+    Spacer(modifier = Modifier.height(16.dp))
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        ChuText("── ", style = typography.labelSmall, color = colors.textMuted)
+        ChuText("AGENT ALERTS", style = typography.labelSmall, color = colors.textMuted)
+        ChuText(" ", style = typography.labelSmall, color = colors.textMuted)
+        Box(modifier = Modifier.height(1.dp).background(colors.textMuted).fillMaxWidth())
+    }
+    Spacer(modifier = Modifier.height(12.dp))
+    // 13/10: user chốt switch — tắt = hành vi app cũ (không trực nền, không thông báo).
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        ChuText("watch in background", style = typography.label)
+        ChuSwitch(checked = agentAlertsEnabled, onCheckedChange = onAgentAlertsEnabledChanged)
+    }
+    Spacer(modifier = Modifier.height(4.dp))
+    ChuText(
+        "needs-you & finished bubbles while kohi is not on screen.",
+        style = typography.bodySmall,
+        color = colors.textMuted,
+    )
     Spacer(modifier = Modifier.height(16.dp))
     Row(verticalAlignment = Alignment.CenterVertically) {
         ChuText("── ", style = typography.labelSmall, color = colors.textMuted)

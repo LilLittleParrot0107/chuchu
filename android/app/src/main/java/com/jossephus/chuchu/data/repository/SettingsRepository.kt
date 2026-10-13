@@ -167,6 +167,13 @@ class SettingsRepository(context: Context) {
     private val _hideScreenContents = MutableStateFlow(prefs.getBoolean(KEY_HIDE_SCREEN_CONTENTS, false))
     val hideScreenContents: StateFlow<Boolean> = _hideScreenContents.asStateFlow()
 
+    /**
+     * Trực nền + thông báo bubble NEEDS YOU / XONG khi app không hiển thị (13/10, user
+     * chốt có switch). Tắt = hành vi như app cũ: không service, không thông báo.
+     */
+    private val _agentAlertsEnabled = MutableStateFlow(prefs.getBoolean(KEY_AGENT_ALERTS_ENABLED, true))
+    val agentAlertsEnabled: StateFlow<Boolean> = _agentAlertsEnabled.asStateFlow()
+
     private val _terminalTabMode = MutableStateFlow(
         parseTabMode(prefs.getString(KEY_TAB_MODE, TerminalTabMode.Classic.name)),
     )
@@ -340,6 +347,11 @@ class SettingsRepository(context: Context) {
         _hideScreenContents.value = enabled
     }
 
+    fun setAgentAlertsEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_AGENT_ALERTS_ENABLED, enabled).apply()
+        _agentAlertsEnabled.value = enabled
+    }
+
     fun setThemeMode(mode: ThemeMode) {
         prefs.edit().putString(KEY_THEME_MODE, mode.name).apply()
         _themeMode.value = mode
@@ -442,6 +454,7 @@ class SettingsRepository(context: Context) {
         private const val KEY_LOCAL_SHELL_ENABLED = "local_shell_enabled"
         private const val KEY_KEEP_SCREEN_AWAKE = "keep_screen_awake"
         private const val KEY_HIDE_SCREEN_CONTENTS = "hide_screen_contents"
+        private const val KEY_AGENT_ALERTS_ENABLED = "agent_alerts_enabled"
         private const val KEY_THEME_MODE = "theme_mode"
         private const val KEY_LIGHT_THEME = "light_theme_name"
         private const val KEY_TERMINAL_FONT_SIZE = "terminal_font_size_sp"

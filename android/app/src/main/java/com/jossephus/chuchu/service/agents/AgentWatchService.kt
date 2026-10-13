@@ -79,8 +79,12 @@ class AgentWatchService : Service() {
         var rev: String? = null
         var failures = 0
         while (currentCoroutineContext().isActive) {
-            // User tắt quyền thông báo giữa chừng: vòng trực thành vô nghĩa.
-            if (!NotificationManagerCompat.from(this).areNotificationsEnabled()) {
+            // User tắt quyền thông báo / tắt switch agent alerts giữa chừng: vòng trực
+            // thành vô nghĩa (switch nằm trong app nên thường không xảy ra khi đang nền —
+            // đây là lưới an toàn, vd khôi phục backup lúc đang chạy).
+            if (!NotificationManagerCompat.from(this).areNotificationsEnabled() ||
+                !settings.agentAlertsEnabled.value
+            ) {
                 stopSelf()
                 return
             }
@@ -138,7 +142,9 @@ class AgentWatchService : Service() {
 
         fun startIfEnabled(context: Context) {
             val app = context.applicationContext
-            if (SettingsRepository.getInstance(app).queueUrl.value.isBlank()) return
+            val settings = SettingsRepository.getInstance(app)
+            if (settings.queueUrl.value.isBlank()) return
+            if (!settings.agentAlertsEnabled.value) return
             if (!NotificationManagerCompat.from(app).areNotificationsEnabled()) return
             val intent = Intent(app, AgentWatchService::class.java)
             runCatching {
