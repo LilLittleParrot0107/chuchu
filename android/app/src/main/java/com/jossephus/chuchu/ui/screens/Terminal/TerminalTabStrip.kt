@@ -88,10 +88,21 @@ fun TerminalTabStrip(
         .eachCount()
 
     val activeTabOffset = activeTabId?.let { tabOffsets[it] }
+    val initialScrollDone = remember { mutableStateOf(false) }
 
     LaunchedEffect(activeTabId, activeTabOffset) {
         val target = activeTabOffset ?: return@LaunchedEffect
-        scrollState.animateScrollTo(target)
+        if (initialScrollDone.value) {
+            scrollState.animateScrollTo(target)
+        } else {
+            // Đo offset LẦN ĐẦU sau khi mở màn (vào phiên từ home): đứng thẳng ở tab
+            // đang xem, KHÔNG trượt. Từ upstream #90, effect còn chạy lại lúc offset
+            // vừa đo xong nên strip trượt ngang ngay khi vào phiên — lại giật vì
+            // animation đè lên frame đầu (parse snapshot) của terminal (user 13/10).
+            // Chuyển tab SAU đó vẫn trượt mượt như trước.
+            initialScrollDone.value = true
+            scrollState.scrollTo(target)
+        }
     }
 
     Box(
