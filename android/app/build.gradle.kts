@@ -148,6 +148,14 @@ android {
                     "roborazzi.test.record",
                     providers.gradleProperty("roborazzi.test.record").orElse("false").get(),
                 )
+                // ThemeScreenshotTest dựng Compose bằng createComposeRule() → cần
+                // androidx.activity.ComponentActivity trong manifest, entry đó chỉ được
+                // ui-test-manifest thêm vào variant DEBUG (upstream chỉ chạy assembleRelease
+                // nên không dính). CI fork chạy cả testReleaseUnitTest → loại test này khỏi
+                // release, debug vẫn chạy đủ (13/10).
+                if (test.name.contains("Release")) {
+                    test.exclude("**/ThemeScreenshotTest*")
+                }
             }
         }
     }
