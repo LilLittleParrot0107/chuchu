@@ -58,6 +58,32 @@ object AgentNotifier {
         runCatching { manager.deleteNotificationChannel("agent_watch") }
     }
 
+    /**
+     * Bubbles có đang được hệ thống cho phép cho kohi không (switch "bubbles" ở Settings
+     * đọc cái này để hiện trạng thái thật). Android 11+: quyền bong bóng là PREFERENCE
+     * của người dùng — app không tự bật được, chỉ mở được màn cài đặt của hệ thống
+     * (giống Messenger). canBubble() của channel phản ánh cả preference cấp app.
+     */
+    fun bubblesAllowed(context: Context): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return false
+        ensureChannels(context)
+        val manager = context.getSystemService(NotificationManager::class.java) ?: return false
+        val channel = manager.getNotificationChannel(CHANNEL_ALERTS) ?: return false
+        return channel.canBubble()
+    }
+
+    /** Gửi 1 alert THỬ (đúng đường thật: channel + shortcut + BubbleMetadata) để user
+     *  xem bong bóng có nổi không — nút "send test bubble" ở Settings. */
+    fun postTestAlert(context: Context) {
+        postAlert(
+            context,
+            AgentAlertKind.Done,
+            "w9:p9",
+            "kohi · test",
+            "Bong bóng thử nghiệm — nếu anh thấy nó nổi ở cạnh màn hình, mọi thứ đã chạy.",
+        )
+    }
+
     fun postAlert(
         context: Context,
         kind: AgentAlertKind,

@@ -14,6 +14,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -37,6 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
+import com.jossephus.chuchu.service.agents.AgentNotifier
 import com.jossephus.chuchu.ui.components.ChuButton
 import com.jossephus.chuchu.ui.components.ChuButtonVariant
 import com.jossephus.chuchu.ui.components.ChuSwitch
@@ -293,9 +295,11 @@ private fun GeneralSettings(
     val context = LocalContext.current
     var batteryExempt by remember { mutableStateOf(isIgnoringBatteryOptimizations(context)) }
     var alarmsOk by remember { mutableStateOf(canScheduleExactAlarms(context)) }
+    var bubblesOn by remember { mutableStateOf(AgentNotifier.bubblesAllowed(context)) }
     LifecycleResumeEffect(Unit) {
         batteryExempt = isIgnoringBatteryOptimizations(context)
         alarmsOk = canScheduleExactAlarms(context)
+        bubblesOn = AgentNotifier.bubblesAllowed(context)
         onPauseOrDispose {}
     }
     ThemeSelectorSection(
@@ -431,6 +435,37 @@ private fun GeneralSettings(
             color = colors.textMuted,
         )
     }
+    // 14/10 (user: "bubble vẫn chưa được — tạo switch allow bubble như Messenger"):
+    // quyền bong bóng là cài đặt CỦA HỆ THỐNG, app không tự bật được (Messenger cũng vậy)
+    // — switch này hiện trạng thái thật (channel.canBubble) và mở màn Bubbles của hệ thống.
+    if (agentAlertsEnabled) {
+        Spacer(modifier = Modifier.height(12.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                ChuText("bubbles", style = typography.label)
+                ChuText(
+                    if (bubblesOn) "on — alerts pop as bubbles"
+                    else "off — opens Android's bubble settings for kohi",
+                    style = typography.bodySmall,
+                    color = colors.textMuted,
+                )
+            }
+            ChuSwitch(checked = bubblesOn, onCheckedChange = { openBubbleSettings(context) })
+        }
+        Spacer(modifier = Modifier.height(6.dp))
+        ChuButton(
+            onClick = { AgentNotifier.postTestAlert(context) },
+            variant = ChuButtonVariant.Ghost,
+            bracketed = true,
+            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+        ) {
+            ChuText("send test bubble", style = typography.label, color = colors.textMuted)
+        }
+    }
     Spacer(modifier = Modifier.height(16.dp))
     Row(verticalAlignment = Alignment.CenterVertically) {
         ChuText("── ", style = typography.labelSmall, color = colors.textMuted)
@@ -523,4 +558,20 @@ private fun requestExactAlarms(context: Context) {
         Uri.parse("package:${context.packageName}"),
     )
     runCatching { context.startActivity(intent) }
+}
+
+/**
+ * Mở màn "Bubbles" của kohi trong cài đặt HỆ THỐNG (cùng cách Messenger làm — app không
+ * tự bật được bubble, chỉ mở được màn cài đặt). ROM không có màn riêng thì lùi về màn
+ * notification settings của app.
+ */
+private fun openBubbleSettings(context: Context) {
+    if (android.os.Build.VERSION.SDK_INT >= 29) {
+        val bubble = Intent(AndroidSettings.ACTION_APP_NOTIFICATION_BUBBLE_SETTINGS)
+            .putExtra(AndroidSettings.EXTRA_APP_PACKAGE, context.packageName)
+        if (runCatching { context.startActivity(bubble) }.isSuccess) return
+    }
+    val fallback = Intent(AndroidSettings.ACTION_APP_NOTIFICATION_SETTINGS)
+        .putExtra(AndroidSettings.EXTRA_APP_PACKAGE, context.packageName)
+    runCatching { context.startActivity(fallback) }
 }
