@@ -265,6 +265,9 @@ class QueueViewModel(
 
     private var pollJob: Job? = null
     private var pollingMode = QueuePollingMode.Stopped
+    /** SSE (/events): qsrv hỗ trợ thì thay long-poll — lúc rảnh 0 request; 404 = server cũ. */
+    private var sseUnsupported = false
+    @Volatile private var eventsConn: java.net.HttpURLConnection? = null
     private var isAppActive = false
     private var isQueueVisible = false
     private val actionJobs = mutableMapOf<String, Job>()
@@ -664,6 +667,11 @@ class QueueViewModel(
         val targetMode = resolveQueuePollingMode(isAppActive, isQueueVisible)
         if (targetMode == pollingMode && pollJob?.isActive == true) return
 
+        // Đóng stream SSE TRƯỚC khi cancel/khởi job mới: job cũ đang chặn ở readLine
+        // không tự thoát theo cancellation, mà nếu để invokeOnCompletion làm thì callback
+        // chạy sau khi job MỚI đã set eventsConn → disconnect nhầm kết nối mới, còn
+        // kết nối cũ rò lại (test emulator 14/10: 2 kết nối /events).
+        runCatching { eventsConn?.disconnect() }
         pollJob?.cancel()
         pollingMode = targetMode
         pollJob = when (targetMode) {
@@ -677,10 +685,82 @@ class QueueViewModel(
     // tới khi rev đổi. Lúc rảnh ~2 request/phút thay vì 30 (foreground) / 4–17 (ambient),
     // thay đổi hiện ngay. MIN_GAP chặn vòng xoáy khi rev đổi liên tục (agent đổi trạng
     // thái từng giây); hỏng thì giãn theo backoff như cũ.
+    // SSE trước (14/10, "tải nhẹ hơn"): qsrv mới giữ 1 kết nối /events đẩy state khi rev
+    // đổi — lúc rảnh KHÔNG request nào (long-poll cũ: 2-3 request/phút). qsrv cũ 404 →
+    // sseUnsupported → lùi hẳn về long-poll như trước. Đứt mạng giữa stream thì nối lại
+    // theo backoff, không đếm là "unsupported".
+    private enum class SseOutcome { Connected, Unsupported, Failed }
+
+    private suspend fun streamEventsOnce(): SseOutcome = withContext(Dispatchers.IO) {
+        val c = client() ?: return@withContext SseOutcome.Unsupported
+        val (open, conn) = c.openEvents()
+        when (open) {
+            QueueClient.EventsOpen.Unsupported -> return@withContext SseOutcome.Unsupported
+            QueueClient.EventsOpen.Failed -> return@withContext SseOutcome.Failed
+            QueueClient.EventsOpen.Ok -> Unit
+        }
+        val connection = conn ?: return@withContext SseOutcome.Failed
+        eventsConn = connection
+        persistAuthRecovery(c)
+        try {
+            connection.inputStream.bufferedReader().use { reader ->
+                var event = ""
+                while (true) {
+                    val line = reader.readLine() ?: break
+                    when {
+                        line.startsWith("event:") -> event = line.substring(6).trim()
+                        line.startsWith("data:") && event == "state" -> {
+                            val st = runCatching { QueueState.parse(line.substring(5).trim()) }.getOrNull()
+                            if (st != null && st.rev.isNotBlank()) applyPushedState(st)
+                        }
+                        line.isBlank() -> event = ""
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            // Đứt/timeout giữa stream — vòng ngoài nối lại theo nhịp; vẫn tính Connected
+            // (stream ĐÃ mở) để không tăng strike oan khi mạng chập.
+        } finally {
+            eventsConn = null
+            runCatching { connection.disconnect() }
+        }
+        SseOutcome.Connected
+    }
+
+    /** Áp state đẩy từ /events — cùng đường với refreshOnce.Fresh (lock + autoClearDone). */
+    private suspend fun applyPushedState(state: QueueState) {
+        refreshMutex.withLock { applyStateLocked(state) }
+        autoClearDone(state)
+    }
+
+    private fun applyStateLocked(state: QueueState) {
+        _ui.update {
+            it.copy(state = state, loading = false, everLoaded = true,
+                    error = null, needsSetup = false)
+        }
+        _ambientSummary.value = QueueAmbientSummary.from(state, null)
+    }
+
     private fun launchForegroundPolling(): Job = viewModelScope.launch {
         var backoff = 0L
         var firstScan = true
         while (isActive) {
+            if (!sseUnsupported) {
+                when (streamEventsOnce()) {
+                    SseOutcome.Connected -> {
+                        backoff = 0L
+                        firstScan = false
+                        delay(MIN_GAP_MS)
+                        continue
+                    }
+                    SseOutcome.Unsupported -> sseUnsupported = true   // rơi xuống long-poll
+                    SseOutcome.Failed -> {
+                        backoff = minOf(maxOf(backoff * 2, FOREGROUND_POLL_MS), MAX_FOREGROUND_BACKOFF_MS)
+                        delay(backoff)
+                        continue
+                    }
+                }
+            }
             val t0 = System.currentTimeMillis()
             // Mỗi lần mở Queue phải lấy lại full payload. Nếu chỉ gửi `since`,
             // một state UI cũ/khuyết có thể mắc kẹt mãi sau các lượt 304.
@@ -695,6 +775,13 @@ class QueueViewModel(
     /** Ambient (app mở nhưng không ở tab Queue): cũng long-poll, chỉ khác nhịp lúc hỏng. */
     private fun launchAmbientPolling(): Job = viewModelScope.launch {
         while (isActive) {
+            if (!sseUnsupported) {
+                when (streamEventsOnce()) {
+                    SseOutcome.Connected -> { delay(AMBIENT_MIN_GAP_MS); continue }
+                    SseOutcome.Unsupported -> sseUnsupported = true   // rơi xuống long-poll
+                    SseOutcome.Failed -> { delay(AMBIENT_IDLE_POLL_MS); continue }
+                }
+            }
             val t0 = System.currentTimeMillis()
             val failed = refreshOnce(waitSec = LONGPOLL_S)
             val elapsed = System.currentTimeMillis() - t0
@@ -727,11 +814,7 @@ class QueueViewModel(
         var fresh: QueueState? = null
         val failed = refreshMutex.withLock { when (val r = result) {
             is QueueClient.Fetch.Fresh -> {
-                _ui.update {
-                    it.copy(state = r.state, loading = false, everLoaded = true,
-                            error = null, needsSetup = false)
-                }
-                _ambientSummary.value = QueueAmbientSummary.from(r.state, null)
+                applyStateLocked(r.state)
                 fresh = r.state
                 false
             }
@@ -905,6 +988,10 @@ class QueueViewModel(
         settings.setQueueUrl(url)
         settings.setQueueToken(token)
         autoCleared.clear()
+        // Server mới: thử lại SSE từ đầu (server cũ 404 thì đã lùi long-poll) + cắt stream
+        // đang mở của server cũ để vòng poll nối lại đúng chỗ mới.
+        sseUnsupported = false
+        runCatching { eventsConn?.disconnect() }
         // Đổi server: transcript + rev đã xem của qsrv CŨ là rác — xoá hết để
         // khỏi hiện tin server cũ, badge "MỚI" cũng tính lại từ đầu.
         chatRefreshSeq.incrementAndGet()
@@ -938,6 +1025,7 @@ class QueueViewModel(
     }
 
     override fun onCleared() {
+        runCatching { eventsConn?.disconnect() }   // stream SSE không thoát theo cancel
         pollJob?.cancel()
         pollJob = null
         pollingMode = QueuePollingMode.Stopped

@@ -47,6 +47,59 @@ class QueueClient(
         data class Failed(val message: String, val needsAuth: Boolean = false) : Fetch
     }
 
+    /** Kết quả mở stream SSE: phân biệt "qsrv cũ không có /events" (lùi hẳn về long-poll)
+     *  với "đứt mạng" (vòng ngoài cứ thử lại). */
+    enum class EventsOpen { Ok, Unsupported, Failed }
+
+    /**
+     * Mở `/events` (SSE, 14/10 — user chốt "tải nhẹ hơn"): giữ kết nối, server đẩy
+     * `event: state` mỗi khi rev đổi; lúc rảnh KHÔNG có request nào (long-poll cũ:
+     * 2-3 request/phút). Caller đọc `inputStream` từng dòng rồi disconnect khi cần.
+     * 404 → Unsupported (qsrv cũ). 401 + có token → đánh dấu recover (lần sau bỏ token)
+     * rồi trả Failed để vòng ngoài thử lại.
+     */
+    fun openEvents(): Pair<EventsOpen, HttpURLConnection?> {
+        val endpoint = normalizeQueueBaseUrl(baseUrl)
+        val configuredToken = token.takeUnless { omitConfiguredToken || it.isBlank() }
+        val conn = try {
+            (URL(endpoint + "/events").openConnection() as HttpURLConnection).apply {
+                connectTimeout = connectTimeoutMs
+                // > heartbeat 15s của qsrv: im quá 90s = đứt, đọc sẽ ném timeout để nối lại.
+                readTimeout = 90_000
+                if (!configuredToken.isNullOrBlank()) {
+                    setRequestProperty("Authorization", "Bearer $configuredToken")
+                }
+                setRequestProperty("Accept", "text/event-stream")
+            }
+        } catch (e: Exception) {
+            return EventsOpen.Failed to null
+        }
+        return try {
+            when (conn.responseCode) {
+                HttpURLConnection.HTTP_OK -> EventsOpen.Ok to conn
+                HttpURLConnection.HTTP_NOT_FOUND -> {
+                    runCatching { conn.disconnect() }
+                    EventsOpen.Unsupported to null
+                }
+                HttpURLConnection.HTTP_UNAUTHORIZED -> {
+                    if (configuredToken != null) {
+                        omitConfiguredToken = true
+                        recoveredWithoutToken = true
+                    }
+                    runCatching { conn.disconnect() }
+                    EventsOpen.Failed to null
+                }
+                else -> {
+                    runCatching { conn.disconnect() }
+                    EventsOpen.Failed to null
+                }
+            }
+        } catch (e: Exception) {
+            runCatching { conn.disconnect() }
+            EventsOpen.Failed to null
+        }
+    }
+
     sealed interface Act {
         data class Ok(val rev: String, val taskId: Int? = null) : Act
         /** Hàng đợi đã đổi từ lúc đọc — phải tải lại rồi thao tác lại. */
