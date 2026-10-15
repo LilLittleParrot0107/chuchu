@@ -721,6 +721,10 @@ private fun QueueDestination(
         onSendChat = sharedQueueVm::sendChat,
         onAnswerBlocked = sharedQueueVm::answerBlocked,
         onSubmitBlocked = sharedQueueVm::answerBlockedMulti,
+        // Model opencode (15/10): picker trong màn CHAT.
+        ocPicker = sharedQueueVm.ocPicker.collectAsStateWithLifecycle().value,
+        onLoadOcModels = sharedQueueVm::loadOcModels,
+        onSwitchOcModel = sharedQueueVm::switchOcModel,
         // FILES + NEW SESSION (23/9, thay TIMELINE)
         portalUrl = portalUrl,
         // Ô search FILES (25/9): debounce ở UI, VM chỉ lo gọi qsrv + hồi phục auth.

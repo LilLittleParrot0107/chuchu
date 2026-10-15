@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.drop
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import com.jossephus.chuchu.ui.components.KohiBackHandler
@@ -25,6 +26,10 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -36,6 +41,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -112,6 +118,10 @@ fun QueueScreen(
     /** Thẻ NEEDS YOU trong chat (21/9): chạm lựa chọn n → qsrv gõ số đó vào pane. */
     onAnswerBlocked: (Int) -> Unit = {},
     onSubmitBlocked: (List<Int>) -> Unit = {},
+    /** Model opencode (15/10): picker cho pane agent=opencode — chip ◆ cạnh nút ⊕. */
+    ocPicker: QueueViewModel.OcPickerState? = null,
+    onLoadOcModels: () -> Unit = {},
+    onSwitchOcModel: (String, String, String?) -> Unit = { _, _, _ -> },
     // FILES (23/9, thay TIMELINE): file portal dufs nhúng vào trang phải của pager.
     portalUrl: String = "",
     /** Ô search tab FILES (25/9): UI debounce rồi gọi cái này → qsrv /files/search. */
@@ -140,6 +150,8 @@ fun QueueScreen(
     // Tấm NEW SESSION (23/9): mở là nạp danh sách thư mục gợi ý.
     var launchOpen by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(launchOpen) { if (launchOpen) onLaunchOpen() }
+    // Picker model opencode (15/10): mở bằng chip ◆ trong composer (chỉ pane opencode).
+    var ocSheet by rememberSaveable { mutableStateOf(false) }
 
     // HorizontalPager: vuốt trái/phải giữa HỘI THOẠI (0) ↔ FILES (1) ↔ MACHINE (2).
     // Trang pager LÀ chế độ màn — nguồn sự thật duy nhất (21/9). Trước đây còn biến `mode`
@@ -621,20 +633,29 @@ fun QueueScreen(
                     },
                     sendLabel = if (chatOpen) "[SEND ↵]" else "[SEND]",
                     // ⊕ giữa ô gõ và [GỬI], cùng màu với nút gửi lúc rảnh (user 16/9: "màu đồng nhất").
+                    // Chip ◆ model (15/10) đứng trước ⊕ — chỉ pane agent=opencode mới có.
                     trailing = if (!chatOpen) null else {
                         {
-                            ChuButton(
-                                onClick = { if (!chat.uploading) attachLauncher.launch("*/*") },
-                                enabled = !chat.uploading,
-                                variant = ChuButtonVariant.Ghost,
-                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 5.dp),
-                                minHeight = 34.dp,
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(2.dp),
                             ) {
-                                ChuText(
-                                    if (chat.uploading) "…" else "⊕",
-                                    style = ChuTypography.current.label.copy(fontWeight = FontWeight.Bold),
-                                    color = if (chat.uploading) colors.disabledText else colors.textMuted,
-                                )
+                                if (chatAgent?.agent == "opencode") {
+                                    OcModelChip(picker = ocPicker, onClick = { ocSheet = true; onLoadOcModels() })
+                                }
+                                ChuButton(
+                                    onClick = { if (!chat.uploading) attachLauncher.launch("*/*") },
+                                    enabled = !chat.uploading,
+                                    variant = ChuButtonVariant.Ghost,
+                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 5.dp),
+                                    minHeight = 34.dp,
+                                ) {
+                                    ChuText(
+                                        if (chat.uploading) "…" else "⊕",
+                                        style = ChuTypography.current.label.copy(fontWeight = FontWeight.Bold),
+                                        color = if (chat.uploading) colors.disabledText else colors.textMuted,
+                                    )
+                                }
                             }
                         }
                     },
@@ -667,6 +688,18 @@ fun QueueScreen(
                     inspectedTaskId = null
                 },
             )
+        }
+
+        // Picker model opencode (15/10): tấm đáy, giữ mở sau khi chọn để đổi variant tiếp.
+        if (ocSheet && chatOpen) {
+            com.jossephus.chuchu.ui.components.KohiBottomSheet(onDismiss = { ocSheet = false }) {
+                OcModelSheet(
+                    state = ocPicker,
+                    agentName = chatAgent?.name ?: chat.name,
+                    onReload = onLoadOcModels,
+                    onPick = { p, id, v -> onSwitchOcModel(p, id, v) },
+                )
+            }
         }
 
         if (configOpen || (ui.needsSetup && !setupPromptDismissed)) {
@@ -809,4 +842,130 @@ internal fun queueBackAction(chatOpen: Boolean, tasksOpen: Boolean, mode: QueueM
     tasksOpen -> QueueBackAction.CloseTasks
     mode != QueueMode.Threads -> QueueBackAction.GoToThreads
     else -> QueueBackAction.Leave
+}
+
+/**
+ * Chip ◆ model opencode (15/10) — dùng chung màn CHAT đầy đủ và bubble shell.
+ * Nhãn: model đang dùng (id + #variant), chưa nạp xong thì "◆ …" / "◆ model".
+ */
+@Composable
+internal fun OcModelChip(
+    picker: QueueViewModel.OcPickerState?,
+    onClick: () -> Unit,
+) {
+    val colors = ChuColors.current
+    val cur = picker?.session?.model
+    val label = when {
+        cur != null ->
+            "◆ " + cur.id.take(14) +
+                (cur.variant?.takeIf { it.isNotBlank() }?.let { "#" + it.take(5) } ?: "")
+        picker?.loading == true -> "◆ …"
+        else -> "◆ model"
+    }
+    ChuButton(
+        onClick = onClick,
+        variant = ChuButtonVariant.Ghost,
+        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 5.dp),
+        minHeight = 34.dp,
+    ) {
+        ChuText(label, style = ChuTypography.current.labelSmall, color = colors.textMuted, maxLines = 1)
+    }
+}
+
+/**
+ * Tấm chọn model opencode (15/10). Một màn, không điều hướng: mỗi model một hàng; model
+ * có variant thì hiện hàng chip variant ngay dưới — chạm chip là đổi luôn (tấm giữ mở để
+ * chỉnh tiếp). Model/variant đang dùng tô accent. Đổi model chỉ ăn với pane opencode 2.
+ */
+@Composable
+internal fun OcModelSheet(
+    state: QueueViewModel.OcPickerState?,
+    agentName: String,
+    onReload: () -> Unit,
+    onPick: (providerID: String, id: String, variant: String?) -> Unit,
+) {
+    val colors = ChuColors.current
+    val type = ChuTypography.current
+    val cur = state?.session?.model
+    Column(
+        modifier = Modifier.fillMaxWidth().heightIn(max = 480.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                ChuText("MODEL · ${agentName.uppercase()}", style = type.labelSmall, color = colors.textMuted)
+                state?.session?.title?.takeIf { it.isNotBlank() }?.let {
+                    ChuText(
+                        it,
+                        style = type.bodySmall,
+                        color = colors.textMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            ChuButton(
+                onClick = onReload,
+                variant = ChuButtonVariant.Ghost,
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+            ) {
+                ChuText("⟳", style = type.label, color = colors.textMuted)
+            }
+        }
+        when {
+            state?.error != null ->
+                ChuText(state.error, style = type.bodySmall, color = colors.error)
+            state?.loading == true && state.models.isEmpty() ->
+                ChuText("loading models…", style = type.bodySmall, color = colors.textMuted)
+            state?.models.isNullOrEmpty() ->
+                ChuText("no models", style = type.bodySmall, color = colors.textMuted)
+            else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                items(state.models, key = { it.providerID + "/" + it.id }) { m ->
+                    val isCur = cur != null && cur.providerID == m.providerID && cur.id == m.id
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(if (isCur) colors.accent.copy(alpha = 0.10f) else Color.Transparent)
+                            .clickable { onPick(m.providerID, m.id, if (isCur) cur?.variant else null) }
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            ChuText(
+                                m.name,
+                                style = type.label,
+                                color = if (isCur) colors.accent else colors.textPrimary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f),
+                            )
+                            ChuText(m.providerID, style = type.labelSmall, color = colors.textMuted)
+                        }
+                        if (m.variants.isNotEmpty()) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                m.variants.forEach { v ->
+                                    val vCur = isCur && cur?.variant == v
+                                    ChuText(
+                                        v,
+                                        style = type.labelSmall,
+                                        color = if (vCur) colors.onAccent else colors.textSecondary,
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(if (vCur) colors.accent else colors.surfaceVariant)
+                                            .clickable { onPick(m.providerID, m.id, v) }
+                                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

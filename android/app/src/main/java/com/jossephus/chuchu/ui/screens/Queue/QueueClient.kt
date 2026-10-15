@@ -119,6 +119,76 @@ class QueueClient(
         data class Failed(val message: String, val needsAuth: Boolean = false) : ChatFetch
     }
 
+    // ── Model opencode cho picker trong màn CHAT (15/10) ──────────────────────
+    // qsrv map pane herdr → session opencode (cwd + tên pane) rồi gọi API nội bộ
+    // opencode 2. Chỉ có ý nghĩa với pane đang chạy opencode 2.
+    data class OcModelRef(val providerID: String, val id: String, val variant: String?)
+    data class OcModel(val providerID: String, val id: String, val name: String, val variants: List<String>)
+    data class OcSession(val id: String, val title: String, val model: OcModelRef?)
+
+    sealed interface OcModelsFetch {
+        data class Ok(val session: OcSession?, val models: List<OcModel>) : OcModelsFetch
+        data class Failed(val message: String, val needsAuth: Boolean = false) : OcModelsFetch
+    }
+
+    fun ocModels(pane: String): OcModelsFetch = try {
+        val (code, body) = request("/oc/models?pane=" + URLEncoder.encode(pane, "UTF-8"), null)
+        when (code) {
+            HttpURLConnection.HTTP_OK -> {
+                val o = JSONObject(body)
+                val s = o.optJSONObject("session")
+                val sm = s?.optJSONObject("model")
+                val models = ArrayList<OcModel>()
+                o.optJSONArray("models")?.let { arr ->
+                    for (i in 0 until arr.length()) {
+                        val m = arr.optJSONObject(i) ?: continue
+                        val mid = m.optString("id")
+                        if (mid.isBlank()) continue
+                        val vs = ArrayList<String>()
+                        m.optJSONArray("v")?.let { va -> for (j in 0 until va.length()) vs += va.optString(j) }
+                        models += OcModel(m.optString("p"), mid, m.optString("name").ifBlank { mid }, vs)
+                    }
+                }
+                OcModelsFetch.Ok(
+                    session = s?.let {
+                        OcSession(
+                            id = it.optString("id"),
+                            title = it.optString("title"),
+                            model = sm?.let { mm ->
+                                OcModelRef(
+                                    mm.optString("providerID"), mm.optString("id"),
+                                    mm.optString("variant").takeIf { v -> v.isNotBlank() },
+                                )
+                            },
+                        )
+                    },
+                    models = models,
+                )
+            }
+            HttpURLConnection.HTTP_UNAUTHORIZED ->
+                OcModelsFetch.Failed("The token is invalid or has changed", needsAuth = true)
+            else -> OcModelsFetch.Failed(
+                runCatching { JSONObject(body).optString("error") }.getOrNull()?.takeIf { it.isNotBlank() }
+                    ?: "Model server error ($code)",
+            )
+        }
+    } catch (e: IOException) {
+        OcModelsFetch.Failed(offlineMessage(e))
+    } catch (e: Exception) {
+        OcModelsFetch.Failed("Could not read models (${e.javaClass.simpleName})")
+    }
+
+    /** `POST /oc/model` — đổi model session opencode của pane (qsrv gọi API opencode 2). */
+    fun ocSwitchModel(pane: String, providerID: String, id: String, variant: String?): Act = send(
+        "/oc/model",
+        JSONObject().apply {
+            put("pane", pane)
+            put("providerID", providerID)
+            put("id", id)
+            if (!variant.isNullOrBlank()) put("variant", variant)
+        },
+    )
+
 
     sealed interface SwitchAccountResult {
         /** Server trả ngay `{ok, acc}`; việc làm mới quota chạy nền phía server. */

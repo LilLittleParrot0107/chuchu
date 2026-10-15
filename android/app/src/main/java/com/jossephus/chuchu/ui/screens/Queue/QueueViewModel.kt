@@ -362,6 +362,10 @@ class QueueViewModel(
         // Mở lại đúng pane đang xem: giữ nguyên tin, chỉ đảm bảo poll chạy.
         syncChatPolling()
         syncBlockedPolling()
+        // Pane opencode: nạp model hiện tại cho chip ◆ (nền, im lặng — lỗi để picker lo).
+        if (_ui.value.state.agents.firstOrNull { it.pane == pane }?.agent == "opencode") {
+            loadOcModels()
+        }
     }
 
     /** Đóng màn chat nhưng GIỮ snapshot — mở lại hiện ngay, offline vẫn đọc được. */
@@ -371,6 +375,68 @@ class QueueViewModel(
         blockedJob?.cancel(); blockedJob = null
         chatRefreshSeq.incrementAndGet()
         _chat.value = ChatUiState()
+        _ocPicker.value = null
+    }
+
+    // ── Model opencode — picker trong màn CHAT (15/10) ────────────────────────
+    // Chỉ pane agent=opencode mới có (qsrv map pane→session rồi gọi API opencode 2).
+    data class OcPickerState(
+        val loading: Boolean = false,
+        val session: QueueClient.OcSession? = null,
+        val models: List<QueueClient.OcModel> = emptyList(),
+        val error: String? = null,
+    )
+
+    private val _ocPicker = MutableStateFlow<OcPickerState?>(null)
+    val ocPicker: StateFlow<OcPickerState?> = _ocPicker.asStateFlow()
+
+    /** Nạp/refresh danh sách model cho pane đang chat (mở picker hoặc mới vào chat). */
+    fun loadOcModels() {
+        val pane = _chat.value.pane ?: return
+        _ocPicker.value = (_ocPicker.value ?: OcPickerState()).copy(loading = true, error = null)
+        viewModelScope.launch(Dispatchers.IO) {
+            val c = client()
+            if (c == null) {
+                _ocPicker.value = OcPickerState(error = "No Queue URL in Settings")
+                return@launch
+            }
+            when (val r = c.ocModels(pane)) {
+                is QueueClient.OcModelsFetch.Ok ->
+                    _ocPicker.value = OcPickerState(session = r.session, models = r.models)
+                is QueueClient.OcModelsFetch.Failed ->
+                    _ocPicker.value = OcPickerState(error = r.message)
+            }
+            persistAuthRecovery(c)
+        }
+    }
+
+    fun dismissOcPicker() {
+        _ocPicker.value = null
+    }
+
+    fun switchOcModel(providerID: String, id: String, variant: String?) {
+        val pane = _chat.value.pane ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            val c = client() ?: return@launch
+            when (val r = c.ocSwitchModel(pane, providerID, id, variant)) {
+                is QueueClient.Act.Ok -> {
+                    // Cập nhật tại chỗ để chip đổi ngay, khỏi chờ vòng poll kế.
+                    _ocPicker.update { st ->
+                        st?.copy(session = st.session?.copy(model = QueueClient.OcModelRef(providerID, id, variant)))
+                    }
+                    postFeedback(
+                        "model → $id${variant?.takeIf { it.isNotBlank() }?.let { "#$it" } ?: ""}",
+                        "Model switched",
+                        QueueFeedbackTone.Success,
+                    )
+                }
+                is QueueClient.Act.Conflict ->
+                    postFeedback("State changed — try again", "Model switch conflict", QueueFeedbackTone.Warning)
+                is QueueClient.Act.Failed ->
+                    postFeedback(r.message, "Model switch failed", QueueFeedbackTone.Error)
+            }
+            persistAuthRecovery(c)
+        }
     }
 
     private fun syncChatPolling() {

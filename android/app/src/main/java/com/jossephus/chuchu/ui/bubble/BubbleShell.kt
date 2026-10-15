@@ -53,6 +53,9 @@ import com.jossephus.chuchu.ui.screens.Queue.ChatThreadView
 import com.jossephus.chuchu.ui.screens.Queue.QueueAgentRail
 import com.jossephus.chuchu.ui.screens.Queue.QueueComposer
 import com.jossephus.chuchu.ui.screens.Queue.QueueViewModel
+import com.jossephus.chuchu.ui.components.KohiBottomSheet
+import com.jossephus.chuchu.ui.screens.Queue.OcModelChip
+import com.jossephus.chuchu.ui.screens.Queue.OcModelSheet
 import com.jossephus.chuchu.ui.screens.Queue.collapseAssistantTurns
 import com.jossephus.chuchu.ui.theme.AgentKind
 import com.jossephus.chuchu.ui.theme.CHU_HAIRLINE_ALPHA
@@ -238,12 +241,14 @@ private fun BubbleChatPane(
     val colors = ChuColors.current
     val ui by vm.ui.collectAsStateWithLifecycle()
     val chat by vm.chat.collectAsStateWithLifecycle()
+    val ocPicker by vm.ocPicker.collectAsStateWithLifecycle()
     val fontSize by vm.terminalFontSize.collectAsStateWithLifecycle()
     val agents = ui.state.agents
     val chatAgent = agents.firstOrNull { it.pane == chat.pane }
     val chatMessages = remember(chat.messages) { collapseAssistantTurns(chat.messages) }
     val listState = rememberLazyListState()
     var prompt by rememberSaveable { mutableStateOf("") }
+    var ocSheet by rememberSaveable { mutableStateOf(false) }
     val composerFocus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
 
@@ -255,47 +260,63 @@ private fun BubbleChatPane(
         }
     }
 
-    Column(modifier) {
-        if (chat.pane != null) {
-            ChatThreadView(
-                chat = chat,
-                chatAgent = chatAgent,
-                chatMessages = chatMessages,
-                chatFontSizeSp = fontSize,
-                chatListState = listState,
-                onLoadOlder = vm::loadOlderChat,
-                onAnswerBlocked = vm::answerBlocked,
-                onSubmitBlocked = vm::answerBlockedMulti,
-                composerFocus = composerFocus,
-                keyboard = keyboard,
-                modifier = Modifier.fillMaxWidth().weight(1f),
-            )
-            QueueAgentRail(
-                agents = agents,
-                currentPane = chat.pane,
-                chatSeen = chatSeen,
-                onSwitch = { p -> vm.openChat(p) },
-                orientation = AgentRailOrientation.Horizontal,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            QueueComposer(
-                value = prompt,
-                onValueChange = { prompt = it },
-                agent = chatAgent,
-                sending = chat.sending,
-                onSend = {
-                    val text = prompt.trim()
-                    if (text.isNotEmpty()) {
-                        vm.sendChat(text)
-                        prompt = ""
-                    }
-                },
-                placeholder = "Reply to ${chatAgent?.name ?: "agent"}…",
-                focusRequester = composerFocus,
-            )
-        } else {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                ChuText("connecting…", style = ChuTypography.current.labelSmall, color = colors.textMuted)
+    Box(modifier) {
+        Column(Modifier.fillMaxSize()) {
+            if (chat.pane != null) {
+                ChatThreadView(
+                    chat = chat,
+                    chatAgent = chatAgent,
+                    chatMessages = chatMessages,
+                    chatFontSizeSp = fontSize,
+                    chatListState = listState,
+                    onLoadOlder = vm::loadOlderChat,
+                    onAnswerBlocked = vm::answerBlocked,
+                    onSubmitBlocked = vm::answerBlockedMulti,
+                    composerFocus = composerFocus,
+                    keyboard = keyboard,
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                )
+                QueueAgentRail(
+                    agents = agents,
+                    currentPane = chat.pane,
+                    chatSeen = chatSeen,
+                    onSwitch = { p -> vm.openChat(p) },
+                    orientation = AgentRailOrientation.Horizontal,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                QueueComposer(
+                    value = prompt,
+                    onValueChange = { prompt = it },
+                    agent = chatAgent,
+                    sending = chat.sending,
+                    onSend = {
+                        val text = prompt.trim()
+                        if (text.isNotEmpty()) {
+                            vm.sendChat(text)
+                            prompt = ""
+                        }
+                    },
+                    placeholder = "Reply to ${chatAgent?.name ?: "agent"}…",
+                    focusRequester = composerFocus,
+                    // Chip ◆ model opencode (15/10) — bubble là surface chat chính.
+                    trailing = if (chatAgent?.agent == "opencode") {
+                        { OcModelChip(picker = ocPicker, onClick = { ocSheet = true; vm.loadOcModels() }) }
+                    } else null,
+                )
+            } else {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    ChuText("connecting…", style = ChuTypography.current.labelSmall, color = colors.textMuted)
+                }
+            }
+        }
+        if (ocSheet && chat.pane != null) {
+            KohiBottomSheet(onDismiss = { ocSheet = false }) {
+                OcModelSheet(
+                    state = ocPicker,
+                    agentName = chatAgent?.name ?: chat.name,
+                    onReload = vm::loadOcModels,
+                    onPick = { p, id, v -> vm.switchOcModel(p, id, v) },
+                )
             }
         }
     }
