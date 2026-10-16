@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.Row
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.drop
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import com.jossephus.chuchu.ui.components.KohiBackHandler
@@ -29,7 +28,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -76,6 +74,7 @@ import com.jossephus.chuchu.ui.components.KohiCompactAction
 import com.jossephus.chuchu.ui.components.KohiFeedbackBand
 import com.jossephus.chuchu.ui.components.KohiNoticeBand
 import com.jossephus.chuchu.ui.components.KohiSectionBand
+import com.jossephus.chuchu.ui.components.KohiSelectableRow
 import com.jossephus.chuchu.ui.components.ChuText
 import com.jossephus.chuchu.ui.screens.Files.MachineUiState
 import com.jossephus.chuchu.ui.theme.AgentKind
@@ -941,31 +940,15 @@ internal fun OcModelSheet(
         modifier = Modifier.fillMaxWidth().heightIn(max = 480.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                ChuText("MODEL · ${agentName.uppercase()}", style = type.labelSmall, color = colors.textMuted)
-                state?.session?.title?.takeIf { it.isNotBlank() }?.let {
-                    ChuText(
-                        it,
-                        style = type.bodySmall,
-                        color = colors.textMuted,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-            ChuButton(
-                onClick = onReload,
-                variant = ChuButtonVariant.Ghost,
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-            ) {
-                ChuText("⟳", style = type.label, color = colors.textMuted)
-            }
-        }
+        // Header dùng nguyên ngữ pháp section của app (▌ LABEL · meta + token hành
+        // động) — hết khối "MODEL · …" + ⟳ riêng lẻ không giống ai.
+        KohiSectionBand(
+            label = "MODEL",
+            meta = cleanSessionName(agentName),
+            trailing = {
+                KohiCompactAction(label = "SYNC", onClick = onReload)
+            },
+        )
         when {
             state?.error != null ->
                 ChuText(state.error, style = type.bodySmall, color = colors.error)
@@ -976,7 +959,7 @@ internal fun OcModelSheet(
             else -> {
                 // 16/10 (user: "list model sao toàn của b.ai vậy"): catalog ~95 model
                 // từ ~3 provider xếp dọc 95 hàng như nhau thì không đọc ra cấu trúc —
-                // thêm header nhóm khi ĐỔI provider (qsrv xếp provider đang dùng lên đầu).
+                // header nhóm khi ĐỔI provider (qsrv xếp provider đang dùng lên đầu).
                 val headerFlags = remember(state.models) {
                     val seen = HashSet<String>()
                     BooleanArray(state.models.size).also { flags ->
@@ -988,51 +971,54 @@ internal fun OcModelSheet(
                         state.models.forEach { c[it.providerID] = (c[it.providerID] ?: 0) + 1 }
                     }
                 }
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     itemsIndexed(state.models, key = { _, m -> m.providerID + "/" + m.id }) { i, m ->
                         if (headerFlags[i]) {
                             ChuText(
                                 "${m.providerID.uppercase()} · ${providerCount[m.providerID]}",
-                                style = type.labelSmall,
+                                style = type.labelSmall.copy(fontWeight = FontWeight.Bold),
                                 color = colors.textMuted,
-                                modifier = Modifier.padding(top = 4.dp),
+                                modifier = Modifier.padding(start = 2.dp, top = 8.dp, bottom = 3.dp),
                             )
                         }
                         val isCur = cur != null && cur.providerID == m.providerID && cur.id == m.id
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(if (isCur) colors.accent.copy(alpha = 0.10f) else Color.Transparent)
-                                .clickable { onPick(m.providerID, m.id, if (isCur) cur?.variant else null) }
-                                .padding(horizontal = 8.dp, vertical = 6.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        // Hàng model dùng nguyên khuôn chọn của app (KohiSelectableRow —
+                        // như hàng POS/watch): surface + viền tone + rail 3dp khi đang
+                        // dùng; variant là nhãn bracket [MAX] cùng ngữ pháp [SEND].
+                        KohiSelectableRow(
+                            selected = isCur,
+                            tone = colors.accent,
+                            onClick = { onPick(m.providerID, m.id, if (isCur) cur?.variant else null) },
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 7.dp),
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
                                 ChuText(
                                     m.name,
-                                    style = type.label,
+                                    style = type.label.copy(
+                                        fontWeight = if (isCur) FontWeight.Bold else FontWeight.Normal,
+                                    ),
                                     color = if (isCur) colors.accent else colors.textPrimary,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.weight(1f),
                                 )
-                                ChuText(m.providerID, style = type.labelSmall, color = colors.textMuted)
-                            }
-                            if (m.variants.isNotEmpty()) {
-                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    m.variants.forEach { v ->
-                                        val vCur = isCur && cur?.variant == v
-                                        ChuText(
-                                            v,
-                                            style = type.labelSmall,
-                                            color = if (vCur) colors.onAccent else colors.textSecondary,
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(4.dp))
-                                                .background(if (vCur) colors.accent else colors.surfaceVariant)
-                                                .clickable { onPick(m.providerID, m.id, v) }
-                                                .padding(horizontal = 6.dp, vertical = 2.dp),
-                                        )
+                                if (m.variants.isNotEmpty()) {
+                                    Row(
+                                        modifier = Modifier.padding(top = 2.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    ) {
+                                        m.variants.forEach { v ->
+                                            val vCur = isCur && cur?.variant == v
+                                            ChuText(
+                                                "[${v.uppercase()}]",
+                                                style = type.labelSmall.copy(
+                                                    fontWeight = if (vCur) FontWeight.Bold else FontWeight.Normal,
+                                                ),
+                                                color = if (vCur) colors.accent else colors.textSecondary,
+                                                modifier = Modifier
+                                                    .clickable { onPick(m.providerID, m.id, v) }
+                                                    .padding(vertical = 3.dp),
+                                            )
+                                        }
                                     }
                                 }
                             }
