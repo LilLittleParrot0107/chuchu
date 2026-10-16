@@ -117,14 +117,15 @@ private fun RailVDivider() {
     )
 }
 
-/** Vạch ngang phân cách 2 hàng dọc. */
+/** Vạch ngang phân cách 2 hàng dọc — CHẠY HẾT NGANG (17/10): bản trước thụt
+ *  10dp cả 2 đầu nên không chạm mép nào, ghép với vạch phải bị đè thành dải
+ *  "méo + phân cách đứt đoạn". Hàng đã full-width nền thì vạch cũng full-width. */
 @Composable
 private fun RailHDivider() {
     val colors = ChuColors.current
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 10.dp)
             .height(1.dp)
             .background(colors.border.copy(alpha = CHU_HAIRLINE_ALPHA)),
     )

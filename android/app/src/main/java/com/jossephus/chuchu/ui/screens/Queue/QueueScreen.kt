@@ -60,8 +60,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -498,18 +496,17 @@ fun QueueScreen(
                             chatSeen = chatSeen,
                             onSwitch = onSwitchAgent,
                             orientation = AgentRailOrientation.Vertical,
-                            modifier = Modifier
-                                .width(148.dp)
+                            modifier = Modifier.width(148.dp).fillMaxHeight(),
+                        )
+                        // Vạch phân cách rail|chat là BOX 1dp THẬT nằm NGOÀI rail:
+                        // bản trước vẽ bằng drawBehind trên container rail → bị NỀN
+                        // hàng (background đặc) đè mất, chỉ ló 2 khe 8dp trên/dưới =
+                        // "đường phân cách đứt đoạn" + dải trông méo (user bắt 17/10).
+                        Box(
+                            Modifier
+                                .width(1.dp)
                                 .fillMaxHeight()
-                                .drawBehind {
-                                    val stroke = 1.dp.toPx()
-                                    drawLine(
-                                        colors.border.copy(alpha = CHU_HAIRLINE_ALPHA),
-                                        Offset(size.width - stroke / 2, 0f),
-                                        Offset(size.width - stroke / 2, size.height),
-                                        stroke,
-                                    )
-                                },
+                                .background(colors.border.copy(alpha = CHU_HAIRLINE_ALPHA)),
                         )
                         Column(Modifier.weight(1f).fillMaxHeight()) {
                             ChatThreadView(
