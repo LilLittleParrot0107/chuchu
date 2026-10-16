@@ -47,6 +47,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -975,43 +976,67 @@ internal fun OcModelSheet(
                 ChuText("loading models…", style = type.bodySmall, color = colors.textMuted)
             state?.models.isNullOrEmpty() ->
                 ChuText("no models", style = type.bodySmall, color = colors.textMuted)
-            else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                items(state.models, key = { it.providerID + "/" + it.id }) { m ->
-                    val isCur = cur != null && cur.providerID == m.providerID && cur.id == m.id
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(if (isCur) colors.accent.copy(alpha = 0.10f) else Color.Transparent)
-                            .clickable { onPick(m.providerID, m.id, if (isCur) cur?.variant else null) }
-                            .padding(horizontal = 8.dp, vertical = 6.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+            else -> {
+                // 16/10 (user: "list model sao toàn của b.ai vậy"): catalog ~95 model
+                // từ ~3 provider xếp dọc 95 hàng như nhau thì không đọc ra cấu trúc —
+                // thêm header nhóm khi ĐỔI provider (qsrv xếp provider đang dùng lên đầu).
+                val headerFlags = remember(state.models) {
+                    val seen = HashSet<String>()
+                    BooleanArray(state.models.size).also { flags ->
+                        state.models.forEachIndexed { i, m -> flags[i] = seen.add(m.providerID) }
+                    }
+                }
+                val providerCount = remember(state.models) {
+                    HashMap<String, Int>().also { c ->
+                        state.models.forEach { c[it.providerID] = (c[it.providerID] ?: 0) + 1 }
+                    }
+                }
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    itemsIndexed(state.models, key = { _, m -> m.providerID + "/" + m.id }) { i, m ->
+                        if (headerFlags[i]) {
                             ChuText(
-                                m.name,
-                                style = type.label,
-                                color = if (isCur) colors.accent else colors.textPrimary,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f),
+                                "${m.providerID.uppercase()} · ${providerCount[m.providerID]}",
+                                style = type.labelSmall,
+                                color = colors.textMuted,
+                                modifier = Modifier.padding(top = 4.dp),
                             )
-                            ChuText(m.providerID, style = type.labelSmall, color = colors.textMuted)
                         }
-                        if (m.variants.isNotEmpty()) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                m.variants.forEach { v ->
-                                    val vCur = isCur && cur?.variant == v
-                                    ChuText(
-                                        v,
-                                        style = type.labelSmall,
-                                        color = if (vCur) colors.onAccent else colors.textSecondary,
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(4.dp))
-                                            .background(if (vCur) colors.accent else colors.surfaceVariant)
-                                            .clickable { onPick(m.providerID, m.id, v) }
-                                            .padding(horizontal = 6.dp, vertical = 2.dp),
-                                    )
+                        val isCur = cur != null && cur.providerID == m.providerID && cur.id == m.id
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (isCur) colors.accent.copy(alpha = 0.10f) else Color.Transparent)
+                                .clickable { onPick(m.providerID, m.id, if (isCur) cur?.variant else null) }
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                ChuText(
+                                    m.name,
+                                    style = type.label,
+                                    color = if (isCur) colors.accent else colors.textPrimary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                ChuText(m.providerID, style = type.labelSmall, color = colors.textMuted)
+                            }
+                            if (m.variants.isNotEmpty()) {
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    m.variants.forEach { v ->
+                                        val vCur = isCur && cur?.variant == v
+                                        ChuText(
+                                            v,
+                                            style = type.labelSmall,
+                                            color = if (vCur) colors.onAccent else colors.textSecondary,
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(4.dp))
+                                                .background(if (vCur) colors.accent else colors.surfaceVariant)
+                                                .clickable { onPick(m.providerID, m.id, v) }
+                                                .padding(horizontal = 6.dp, vertical = 2.dp),
+                                        )
+                                    }
                                 }
                             }
                         }
