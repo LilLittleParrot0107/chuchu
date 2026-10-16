@@ -15,10 +15,12 @@ import org.json.JSONObject
 /**
  * Vòng trực agent bằng ALARM (13/10 — thay foreground service theo yêu cầu user:
  * "bỏ cái thông báo watching alert đi"). FGS bắt buộc phải có notification thường trú
- * theo luật Android, nên đổi sang alarm: KHÔNG thông báo thường trú; mỗi [INTERVAL_MS]
- * thức dậy đúng một nhịp — poll /state một phát (không long-poll), chấm chuyển trạng
- * thái, nổ NEEDS YOU / XONG, hẹn mốc kế. Máy ngủ sâu thì Android bóp alarm xuống ~9'
- * một nhịp (luật doze) — chấp nhận đánh đổi, còn hơn notification thường trú.
+ * theo luật Android, nên đổi sang alarm: KHÔNG thông báo thường trú; mỗi nhịp —
+ * poll /state một phát (không long-poll), chấm chuyển trạng thái, nổ NEEDS YOU /
+ * XONG, hẹn mốc kế. Nhịp thích ứng (17/10): có agent đang chạy/bị chặn = 15s,
+ * rảnh = 60s (xem [watchIntervalMs]) — hết cảnh NEEDS YOU về trễ nửa phút. Máy
+ * ngủ sâu thì Android bóp alarm xuống ~9' một nhịp (luật doze) — chấp nhận đánh
+ * đổi, còn hơn notification thường trú.
  *
  * Trạng thái trực (nhãn từng pane + rev) lưu SharedPreferences: process bị dọn giữa
  * phiên thì nhịp sau ĐỌC LẠI và so tiếp — không seed lại (seed lại = nuốt mất chuyển
@@ -28,7 +30,6 @@ object AgentWatch {
     private const val PREFS = "agent_watch"
     private const val KEY_REV = "rev"
     private const val KEY_SNAP = "snap"
-    private const val INTERVAL_MS = 60_000L
 
     fun start(context: Context) {
         val app = context.applicationContext
@@ -52,17 +53,19 @@ object AgentWatch {
     /** Một nhịp: poll → báo → hẹn nhịp kế. Chạy trên thread nền của receiver. */
     fun poll(context: Context) {
         val app = context.applicationContext
-        // Hẹn nhịp KẾ trước khi poll: goAsync chỉ cho ~10s, poll bị hệ thống cắt giữa
-        // đường (mạng chậm) cũng không làm đứt chuỗi alarm.
-        schedule(app, INTERVAL_MS)
         val settings = SettingsRepository.getInstance(app)
+        val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        // Hẹn nhịp KẾ trước khi poll: goAsync chỉ cho ~10s, poll bị hệ thống cắt giữa
+        // đường (mạng chậm) cũng không làm đứt chuỗi alarm. Nhịp lấy từ snapshot LƯU
+        // (17/10): có agent đang chạy/bị chặn → 15s thay vì 60s — hết cảnh "trễ
+        // thông báo nửa phút".
+        schedule(app, watchIntervalMs(parseSnaps(prefs.getString(KEY_SNAP, null) ?: "[]")))
         if (settings.queueUrl.value.isBlank() || !settings.agentAlertsEnabled.value ||
             !NotificationManagerCompat.from(app).areNotificationsEnabled()
         ) {
             stop(app)
             return
         }
-        val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val tracker = AgentTransitionTracker()
         prefs.getString(KEY_SNAP, null)?.let { saved ->
             runCatching { tracker.restore(parseSnaps(saved)) }
@@ -88,6 +91,9 @@ object AgentWatch {
                     .putString(KEY_REV, fetch.state.rev)
                     .putString(KEY_SNAP, snapsJson(snaps))
                     .apply()
+                // Đổi alarm đang treo theo trạng thái MỚI (FLAG_UPDATE_CURRENT thay
+                // thế — không đứt chuỗi): vừa thấy agent chạy → 15s; về rảnh → 60s.
+                schedule(app, watchIntervalMs(snaps))
             }
             QueueClient.Fetch.Unchanged -> Unit
             is QueueClient.Fetch.Failed -> Unit

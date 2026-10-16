@@ -154,7 +154,12 @@ object AgentNotifier {
                 NotificationCompat.BubbleMetadata.Builder(
                     bubblePending,
                     IconCompat.createWithResource(context, R.drawable.ic_notification),
-                ).build(),
+                )
+                    // 17/10 (user: "bubble quá bé để dùng"): không set height thì hệ
+                    // thống nở cửa sổ theo mặc định thấp — đặt 600dp (trần chỉ là
+                    // chiều cao màn).
+                    .setDesiredHeight(600)
+                    .build(),
             )
         }
         runCatching {

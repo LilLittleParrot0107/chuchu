@@ -16,6 +16,23 @@ import com.jossephus.chuchu.ui.screens.Queue.AgentState
  */
 enum class AgentAlertKind { NeedsYou, Done }
 
+// Nhịp trực (17/10 — user: "chủ yếu là trễ thông báo"): 60s cố định là thứ làm
+// NEEDS YOU về trễ tới một phút. Có phiên đang chạy/bị chặn thì rút còn 15s
+// (mỗi nhịp chỉ 1 fetch ngắn — không long-poll vì goAsync chỉ có ~10s); mọi phiên
+// rảnh thì giãn 60s đỡ đánh thức máy. Nhãn lạ/"" xem như rảnh (chưa phân loại
+// được = chưa phải việc cần báo gấp).
+internal const val WATCH_INTERVAL_ACTIVE_MS = 15_000L
+internal const val WATCH_INTERVAL_IDLE_MS = 60_000L
+
+internal fun watchIntervalMs(snaps: List<AgentSnap>): Long {
+    val active = setOf("working", "busy", "blocked", "unsure", "sent")
+    return if (snaps.any { it.label.lowercase().trim() in active }) {
+        WATCH_INTERVAL_ACTIVE_MS
+    } else {
+        WATCH_INTERVAL_IDLE_MS
+    }
+}
+
 data class AgentSnap(
     val pane: String,
     val name: String,
