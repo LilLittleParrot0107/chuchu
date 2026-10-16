@@ -51,8 +51,9 @@ class ChatPageParseTest {
     fun clockAndAge() {
         assertEquals("", chatClock("rác"))
         assertEquals(5, chatClock("2026-09-16T05:04:31.123Z").length)
-        assertEquals("updated 12s ago", chatAge(1_000_000L, 1_012_000L))
-        assertEquals("updated 3m ago", chatAge(1_000_000L, 1_000_000L + 3 * 60_000L))
+        // 4B (duyệt preview 16/10): bỏ tiền tố "updated " — meta gọn, màn gập còn thấy cwd.
+        assertEquals("12s ago", chatAge(1_000_000L, 1_012_000L))
+        assertEquals("3m ago", chatAge(1_000_000L, 1_000_000L + 3 * 60_000L))
         assertEquals("", chatAge(0L))
     }
 }
