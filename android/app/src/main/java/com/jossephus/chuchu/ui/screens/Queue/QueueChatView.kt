@@ -536,10 +536,12 @@ internal fun epochClock(sec: Long): String =
 internal fun chatAge(updatedAt: Long, now: Long = System.currentTimeMillis()): String {
     if (updatedAt <= 0L) return ""
     val s = ((now - updatedAt) / 1000).coerceAtLeast(0)
+    // 4B (duyệt preview 16/10): bỏ tiền tố "updated " — hàng meta gọn, màn gập
+    // còn thấy cwd; ngữ nghĩa "ago" đã nói thời gian.
     return when {
-        s < 60 -> "updated ${s}s ago"
-        s < 3600 -> "updated ${s / 60}m ago"
-        else -> "updated ${s / 3600}h ago"
+        s < 60 -> "${s}s ago"
+        s < 3600 -> "${s / 60}m ago"
+        else -> "${s / 3600}h ago"
     }
 }
 

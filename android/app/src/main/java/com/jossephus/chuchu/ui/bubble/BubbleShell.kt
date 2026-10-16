@@ -51,6 +51,7 @@ import com.jossephus.chuchu.ui.screens.Dbtop.formatMoney
 import com.jossephus.chuchu.ui.screens.Queue.AgentRailOrientation
 import com.jossephus.chuchu.ui.screens.Queue.ChatThreadView
 import com.jossephus.chuchu.ui.screens.Queue.QueueAgentRail
+import com.jossephus.chuchu.ui.screens.Queue.cleanSessionName
 import com.jossephus.chuchu.ui.screens.Queue.QueueComposer
 import com.jossephus.chuchu.ui.screens.Queue.QueueViewModel
 import com.jossephus.chuchu.ui.components.KohiBottomSheet
@@ -92,7 +93,8 @@ fun BubbleShell(
     val chatAgent = ui.state.agents.firstOrNull { it.pane == chat.pane }
     // Badge trên tab CHAT: số phiên có tin mới (cùng luật chấm "tin mới" của rail/roster).
     val needsYou = ui.state.agents.count { it.chatRev != null && it.chatRev != chatSeen[it.pane] }
-    val title = chatAgent?.name?.uppercase(Locale.US)?.take(16) ?: "KOHI"
+    // 1B (duyệt preview 16/10): tên phiên sạch — hết tiền tố "OC |" lặp.
+    val title = chatAgent?.name?.let { cleanSessionName(it) }?.uppercase(Locale.US)?.take(16) ?: "KOHI"
     val titleColor = chatAgent
         ?.let { AgentKind.of(it.agent).sessionColor(it.name) }
         ?: colors.textPrimary
@@ -296,7 +298,7 @@ private fun BubbleChatPane(
                             prompt = ""
                         }
                     },
-                    placeholder = "Reply to ${chatAgent?.name ?: "agent"}…",
+                    placeholder = "Reply to ${chatAgent?.name?.let { cleanSessionName(it) } ?: "agent"}…",
                     focusRequester = composerFocus,
                     // Chip ◆ model opencode (15/10) — bubble là surface chat chính.
                     trailing = if (chatAgent?.agent == "opencode") {
@@ -313,7 +315,7 @@ private fun BubbleChatPane(
             KohiBottomSheet(onDismiss = { ocSheet = false }) {
                 OcModelSheet(
                     state = ocPicker,
-                    agentName = chatAgent?.name ?: chat.name,
+                    agentName = chatAgent?.name?.let { cleanSessionName(it) } ?: chat.name,
                     onReload = vm::loadOcModels,
                     onPick = { p, id, v -> vm.switchOcModel(p, id, v) },
                 )

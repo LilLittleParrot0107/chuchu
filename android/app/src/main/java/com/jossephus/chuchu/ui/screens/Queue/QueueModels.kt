@@ -581,6 +581,14 @@ data class BlockedOption(
 
 // ── DÒNG THỜI GIAN kiểu T2 (user chốt 22/9): ô 30 phút, trong ô gom theo phiên ──────────────
 
+/**
+ * Bỏ tiền tố "OC | " mà TUI opencode gắn vào title pane (qsrv cũng dùng nó để map
+ * phiên — app chỉ HIỂN THỊ tên, nên cắt ở lớp hiển thị; màu session vẫn hash từ tên
+ * gốc qua [AgentKind.sessionColor] nên không đổi màu khi cắt). 1B duyệt preview 16/10.
+ */
+internal fun cleanSessionName(name: String): String =
+    if (name.startsWith("OC | ")) name.removePrefix("OC | ") else name
+
 /** "2026-09-16T05:04:31.123Z" → epoch giây; chuỗi lạ → null. */
 fun isoEpochSec(ts: String): Long? {
     if (ts.length < 19) return null

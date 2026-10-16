@@ -258,7 +258,8 @@ internal fun QueueConversationList(
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         ChuText(
-                            agent.name,
+                            // 1B (duyệt preview 16/10): tên phiên sạch — hết "OC |" lặp.
+                            cleanSessionName(agent.name),
                             style = type.label.copy(fontWeight = FontWeight.Bold),
                             color = kColor,
                             maxLines = 1,
@@ -443,6 +444,9 @@ internal fun QueueComposer(
     /** Màn CHAT truyền "Reply to <agent>…"; null = "Describe the task…" như cũ. */
     placeholder: String? = null,
     sendLabel: String = "[SEND]",
+    /** 3B (duyệt preview 16/10): màn CHAT truyền false — bỏ "@agent" trong ô gõ
+     *  (đang ở phòng của chính phiên đó, placeholder đã nói rõ); bảng VIỆC giữ. */
+    showAgentMention: Boolean = true,
     /** Thẻ NEEDS YOU chọn "Type something" → xin focus ô gõ để trả lời ngay (21/9). */
     focusRequester: FocusRequester? = null,
     /** Nút đứng GIỮA ô gõ và nút gửi (màn CHAT: ⊕ đính file). null = không có. */
@@ -453,9 +457,9 @@ internal fun QueueComposer(
     val canSend = agent != null && value.isNotBlank() && !sending
 
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
-    // Man hep: bo "@ten-agent" di, o nhap moi la thu can cho. Agent dang nhan
-    // da hien ro o hang AGENTS ngay tren, khong can nhac lai. Man rong (may gap
-    // mo ra) thi con cho, hien lai.
+    // 3B (duyệt preview 16/10): "@ten-agent" trong ô gõ CHỈ còn ở bảng VIỆC (đích
+    // gửi cần thấy). Màn CHAT bỏ — placeholder "Reply to <phiên>…" đã nói rõ, và
+    // màn mở từng lặp 2 lần liền: "@OC | Đọc r… › Reply to OC | Đọc repo…".
     val wide = maxWidth >= 600.dp
     Row(
         modifier = Modifier
@@ -486,7 +490,7 @@ internal fun QueueComposer(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            if (wide) agent?.let {
+            if (wide && showAgentMention) agent?.let {
                 ChuText(
                     "@${it.name}",
                     style = type.label,

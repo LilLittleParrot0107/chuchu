@@ -163,7 +163,8 @@ private fun AgentRailTab(
         )
         Spacer(Modifier.width(6.dp))
         ChuText(
-            agent.name,
+            // 1B (duyệt preview 16/10): tên phiên sạch — hết tiền tố "OC |" lặp.
+            cleanSessionName(agent.name),
             style = type.label,
             // 30/9 (user): tên phiên luôn mang màu session — chưa mở thì nhạt
             // (alpha), đang mở mới đúng màu.
@@ -210,7 +211,8 @@ private fun AgentRailSideItem(
         )
         Spacer(Modifier.width(7.dp))
         ChuText(
-            agent.name,
+            // 1B (duyệt preview 16/10): tên phiên sạch — hết tiền tố "OC |" lặp.
+            cleanSessionName(agent.name),
             style = type.label,
             // 30/9 (user): như tab ngang — nhạt khi chưa mở, đúng màu khi mở.
             color = if (active) kColor else kColor.copy(alpha = RAIL_IDLE_ALPHA),

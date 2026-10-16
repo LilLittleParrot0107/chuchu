@@ -59,6 +59,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -78,6 +80,7 @@ import com.jossephus.chuchu.ui.components.KohiSectionBand
 import com.jossephus.chuchu.ui.components.ChuText
 import com.jossephus.chuchu.ui.screens.Files.MachineUiState
 import com.jossephus.chuchu.ui.theme.AgentKind
+import com.jossephus.chuchu.ui.theme.CHU_HAIRLINE_ALPHA
 import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.sessionColor
 import com.jossephus.chuchu.ui.theme.ChuTypography
@@ -344,7 +347,10 @@ fun QueueScreen(
                 else -> colors.success
             }
             KohiCommandBand(
-                title = if (chatOpen) chat.name.uppercase().take(16) else "QUEUE",
+                // 1B (duyệt preview 16/10): bỏ tiền tố "OC |" (màu band đã báo loại
+                // agent) và bỏ .take(16) cắt cứng GIỮA TỪ — band tự Ellipsis theo
+                // độ rộng thật của màn (mở 760dp hay gập 390dp đều dùng hết chỗ).
+                title = if (chatOpen) cleanSessionName(chat.name) else "QUEUE",
                 // Tên phiên tô màu theo loại agent khi mở CHAT (như roster).
                 titleColor = if (chatOpen) AgentKind.of(chatAgent?.agent).sessionColor(chatAgent?.name ?: chat.name) else colors.textPrimary,
                 status = if (chatOpen) "· CHAT" else status,
@@ -354,12 +360,14 @@ fun QueueScreen(
                 // Toi mau nen theme: status bar + band + content + rail (man
                 // rong) la MOT ton, khong con khoi surface sac bep o tren.
                 containerColor = colors.background,
-                // Tiêu đề QUEUE to hơn chuẩn (user chốt 17/9: "tăng kích thước chữ Queue").
-                titleSize = 18.sp,
+                // 1B: chữ tên phiên nhỏ xuống 15sp cho tên dài còn đọc được; chữ
+                // QUEUE giữ 18sp (user chốt 17/9 "tăng kích thước chữ Queue").
+                titleSize = if (chatOpen) 15.sp else 18.sp,
                 modifier = Modifier.onSizeChanged { commandBandHeightPx = it.height },
             ) {
-                if (chatOpen) {
-                    // Chỉ một nút: nhảy xuống tin mới nhất. Tìm kiếm [⌕] để bước 2.
+                if (chatOpen && chatListState.canScrollForward) {
+                    // 4B (duyệt preview 16/10): ↓ "nhảy xuống tin mới nhất" chỉ hiện
+                    // khi ĐÃ cuộn lên — đang ở đáy thì nút là affordance chết.
                     KohiCompactAction(label = "↓", onClick = {
                         chatScope.launch { if (chatMessages.isNotEmpty()) chatListState.scrollToItem(chatMessages.size) }
                     })
@@ -402,14 +410,86 @@ fun QueueScreen(
                 if (!chatOpen) KohiCompactAction(label = "CFG", onClick = { configOpen = true })
             }
 
+            // Dải máy (hàng liếc) + ô gõ — dùng chung cho chat lẫn bảng VIỆC; trong
+            // nhánh wide-rail (2B) nó nằm trong CỘT PHẢI nên tách lambda khỏi chỗ gọi.
+            val queueBottomBar: @Composable () -> Unit = {
+                MachineStrip(machine, preview = true, cells = stripCells)
+                QueueComposer(
+                    modifier = Modifier.onSizeChanged { composerHeightPx = it.height },
+                    value = prompt,
+                    onValueChange = { prompt = it },
+                    agent = if (chatOpen) chatAgent else selectedAgent,
+                    sending = if (chatOpen) chat.sending else isAdding,
+                    focusRequester = composerFocus,
+                    placeholder = when {
+                        // 1B: tên phiên sạch (bỏ "OC |") — hết cụt "dự á…".
+                        chatOpen -> "Reply to ${cleanSessionName(chat.name)}…"
+                        selectedAgent != null -> "Queue / reply to ${cleanSessionName(selectedAgent.name)}…"
+                        else -> "Pick a session first…"
+                    },
+                    sendLabel = if (chatOpen) "[SEND ↵]" else "[SEND]",
+                    // 3B (duyệt preview 16/10): màn CHAT bỏ "@agent" — đang ở trong phòng
+                    // của chính phiên đó, placeholder đã nói rõ người nhận; chip ◆ model
+                    // dời lên cuối hàng meta. Bảng VIỆC giữ @agent (đích gửi cần thấy).
+                    showAgentMention = !chatOpen,
+                    // ⊕ giữa ô gõ và [GỬI], cùng màu với nút gửi lúc rảnh (user 16/9: "màu đồng nhất").
+                    trailing = if (!chatOpen) null else {
+                        {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                            ) {
+                                ChuButton(
+                                    onClick = { if (!chat.uploading) attachLauncher.launch("*/*") },
+                                    enabled = !chat.uploading,
+                                    variant = ChuButtonVariant.Ghost,
+                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 5.dp),
+                                    minHeight = 34.dp,
+                                ) {
+                                    ChuText(
+                                        if (chat.uploading) "…" else "⊕",
+                                        style = ChuTypography.current.label.copy(fontWeight = FontWeight.Bold),
+                                        color = if (chat.uploading) colors.disabledText else colors.textMuted,
+                                    )
+                                }
+                            }
+                        }
+                    },
+                    onSend = {
+                        val text = prompt.trim()
+                        if (text.isEmpty()) return@QueueComposer
+                        when {
+                            chatOpen -> {
+                                onSendChat(text)
+                                prompt = ""
+                            }
+                            // Bảng VIỆC: xếp task như cũ, nhắm agent đang chọn.
+                            tasksOpen -> selectedAgent?.let {
+                                onAdd(text, it.pane, null)
+                                prompt = ""
+                            }
+                        }
+                    },
+                )
+            }
             if (chatOpen) {
                 // ── MÀN CHAT: roster + việc + dải máy nhường chỗ, chat ăn hết (user chốt 16/9 "mở hoàn toàn") ──
                 // Dải chuyển agent NGAY TRONG CHAT (28/9): đang đọc một phiên vẫn nhảy sang
                 // phiên khác không cần back. Cùng đường với chạm hàng HỘI THOẠI: nhớ pane làm
                 // đích khi back ra + mở chat mới (ViewModel reset + poll lại).
                 val onSwitchAgent: (String) -> Unit = { p -> selectedPane = p; onOpenChat(p) }
-                if (wide) {
-                    // Rộng: dải dọc TRÁI full-height, nội dung chat sang phải.
+                // 2B (duyệt preview 16/10): rail chỉ khi có ≥2 phiên — 1 phiên thì cột
+                // 172dp (mở) / hàng tab (gập) chỉ lặp lại thông tin đã có ở band + meta.
+                val railVisible = agents.size > 1
+                // 3B: chip ◆ model dời từ ô gõ lên CUỐI HÀNG META — ô gõ màn gập hết bị
+                // bóp. BubbleShell tự giữ chip của nó (không đi qua slot này).
+                val modelChipSlot: (@Composable () -> Unit)? = if (chatAgent?.agent == "opencode") {
+                    { OcModelChip(picker = ocPicker, onClick = { ocSheet = true; onLoadOcModels() }) }
+                } else null
+                if (wide && railVisible) {
+                    // RỘNG + ≥2 phiên: rail dọc TRÁI chạy THẲNG XUỐNG ĐÁY (vạch hairline
+                    // mép phải), cột phải chứa chat + dải máy + ô gõ — machine/composer
+                    // KHÔNG cắt ngang rail nữa (2B duyệt preview 16/10). 172 → 148dp.
                     Row(Modifier.fillMaxWidth().weight(1f)) {
                         QueueAgentRail(
                             agents = agents,
@@ -417,24 +497,40 @@ fun QueueScreen(
                             chatSeen = chatSeen,
                             onSwitch = onSwitchAgent,
                             orientation = AgentRailOrientation.Vertical,
-                            modifier = Modifier.width(172.dp).fillMaxHeight(),
+                            modifier = Modifier
+                                .width(148.dp)
+                                .fillMaxHeight()
+                                .drawBehind {
+                                    val stroke = 1.dp.toPx()
+                                    drawLine(
+                                        colors.border.copy(alpha = CHU_HAIRLINE_ALPHA),
+                                        Offset(size.width - stroke / 2, 0f),
+                                        Offset(size.width - stroke / 2, size.height),
+                                        stroke,
+                                    )
+                                },
                         )
-                        ChatThreadView(
-                            chat = chat,
-                            chatAgent = chatAgent,
-                            chatMessages = chatMessages,
-                            chatFontSizeSp = chatFontSizeSp,
-                            chatListState = chatListState,
-                            onLoadOlder = onLoadOlderChat,
-                            onAnswerBlocked = onAnswerBlocked,
-                            onSubmitBlocked = onSubmitBlocked,
-                            composerFocus = composerFocus,
-                            keyboard = keyboard,
-                            modifier = Modifier.weight(1f).fillMaxHeight(),
-                        )
+                        Column(Modifier.weight(1f).fillMaxHeight()) {
+                            ChatThreadView(
+                                chat = chat,
+                                chatAgent = chatAgent,
+                                chatMessages = chatMessages,
+                                chatFontSizeSp = chatFontSizeSp,
+                                chatListState = chatListState,
+                                onLoadOlder = onLoadOlderChat,
+                                onAnswerBlocked = onAnswerBlocked,
+                                onSubmitBlocked = onSubmitBlocked,
+                                composerFocus = composerFocus,
+                                keyboard = keyboard,
+                                modelChip = modelChipSlot,
+                                modifier = Modifier.weight(1f).fillMaxWidth(),
+                            )
+                            queueBottomBar()
+                        }
                     }
                 } else {
-                    // Hẹp: chat ăn hết như cũ + dải tab ngang NGAY TRÊN dải machine.
+                    // HẸP (hoặc RỘNG nhưng chỉ 1 phiên): chat ăn hết; dải tab ngang
+                    // NGAY TRÊN dải machine chỉ khi ≥2 phiên.
                     ChatThreadView(
                         chat = chat,
                         chatAgent = chatAgent,
@@ -446,16 +542,19 @@ fun QueueScreen(
                         onSubmitBlocked = onSubmitBlocked,
                         composerFocus = composerFocus,
                         keyboard = keyboard,
+                        modelChip = modelChipSlot,
                         modifier = Modifier.fillMaxWidth().weight(1f),
                     )
-                    QueueAgentRail(
-                        agents = agents,
-                        currentPane = chat.pane,
-                        chatSeen = chatSeen,
-                        onSwitch = onSwitchAgent,
-                        orientation = AgentRailOrientation.Horizontal,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
+                    if (railVisible) {
+                        QueueAgentRail(
+                            agents = agents,
+                            currentPane = chat.pane,
+                            chatSeen = chatSeen,
+                            onSwitch = onSwitchAgent,
+                            orientation = AgentRailOrientation.Horizontal,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
                 }
             } else {
             // Paused da hien trong status cua command band -> khong lap lai
@@ -613,68 +712,10 @@ fun QueueScreen(
             // Ô gõ CHỈ hiện khi cần gõ (user 25/9: "ở conversation thì không hiện
             // thanh chat"): mở HỘI THOẠI (reply trong thread) hoặc bảng VIỆC (xếp
             // task). Ba tab CONVERSATIONS / FILES / MACHINE là bề mặt xem — không ô gõ.
-            if (chatOpen || tasksOpen) {
-                // Hàng liếc máy trở lại trên ô gõ (user 27/9: "sao bỏ cái dòng machine ở
-                // dưới thanh snippet lúc t chat rồi?"): bản 25/9 gỡ cả dải khi dời bảng
-                // usage/machine sang tab MACHINE. Chỉ trả HÀNG LIẾC read-only — bảng to
-                // vẫn ở tab MACHINE; gõ việc mới là lúc cần biết máy còn tải nổi không.
-                MachineStrip(machine, preview = true, cells = stripCells)
-                QueueComposer(
-                    modifier = Modifier.onSizeChanged { composerHeightPx = it.height },
-                    value = prompt,
-                    onValueChange = { prompt = it },
-                    agent = if (chatOpen) chatAgent else selectedAgent,
-                    sending = if (chatOpen) chat.sending else isAdding,
-                    focusRequester = composerFocus,
-                    placeholder = when {
-                        chatOpen -> "Reply to ${chat.name}…"
-                        selectedAgent != null -> "Queue / reply to ${selectedAgent.name}…"
-                        else -> "Pick a session first…"
-                    },
-                    sendLabel = if (chatOpen) "[SEND ↵]" else "[SEND]",
-                    // ⊕ giữa ô gõ và [GỬI], cùng màu với nút gửi lúc rảnh (user 16/9: "màu đồng nhất").
-                    // Chip ◆ model (15/10) đứng trước ⊕ — chỉ pane agent=opencode mới có.
-                    trailing = if (!chatOpen) null else {
-                        {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(2.dp),
-                            ) {
-                                if (chatAgent?.agent == "opencode") {
-                                    OcModelChip(picker = ocPicker, onClick = { ocSheet = true; onLoadOcModels() })
-                                }
-                                ChuButton(
-                                    onClick = { if (!chat.uploading) attachLauncher.launch("*/*") },
-                                    enabled = !chat.uploading,
-                                    variant = ChuButtonVariant.Ghost,
-                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 5.dp),
-                                    minHeight = 34.dp,
-                                ) {
-                                    ChuText(
-                                        if (chat.uploading) "…" else "⊕",
-                                        style = ChuTypography.current.label.copy(fontWeight = FontWeight.Bold),
-                                        color = if (chat.uploading) colors.disabledText else colors.textMuted,
-                                    )
-                                }
-                            }
-                        }
-                    },
-                    onSend = {
-                        val text = prompt.trim()
-                        if (text.isEmpty()) return@QueueComposer
-                        when {
-                            chatOpen -> {
-                                onSendChat(text)
-                                prompt = ""
-                            }
-                            // Bảng VIỆC: xếp task như cũ, nhắm agent đang chọn.
-                            tasksOpen -> selectedAgent?.let {
-                                onAdd(text, it.pane, null)
-                                prompt = ""
-                            }
-                        }
-                    },
-                )
+            // Nhánh wide-rail (2B) đã gọi queueBottomBar trong CỘT PHẢI — bỏ ở đây
+            // khỏi nhân đôi dải máy + ô gõ.
+            if ((chatOpen || tasksOpen) && !(chatOpen && wide && agents.size > 1)) {
+                queueBottomBar()
             }
         }
 
@@ -695,7 +736,7 @@ fun QueueScreen(
             com.jossephus.chuchu.ui.components.KohiBottomSheet(onDismiss = { ocSheet = false }) {
                 OcModelSheet(
                     state = ocPicker,
-                    agentName = chatAgent?.name ?: chat.name,
+                    agentName = cleanSessionName(chatAgent?.name ?: chat.name),
                     onReload = onLoadOcModels,
                     onPick = { p, id, v -> onSwitchOcModel(p, id, v) },
                 )
@@ -787,27 +828,38 @@ internal fun ChatThreadView(
     onSubmitBlocked: (List<Int>) -> Unit,
     composerFocus: FocusRequester,
     keyboard: SoftwareKeyboardController?,
+    /** 3B (duyệt preview 16/10): chip ◆ model đứng CUỐI hàng meta (bên phải) thay vì
+     *  trong ô gõ — màn gập hết bị bóp. null = không chip (agent không phải opencode). */
+    modelChip: (@Composable () -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {    val colors = ChuColors.current
     Column(modifier = modifier) {
-        val dotColor = chatAgent?.tone?.color() ?: colors.textMuted
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            ChuText("● ", style = ChuTypography.current.labelSmall, color = dotColor)
+            // 4B (duyệt preview 16/10): chấm ĐỒNG BỘ với rail (runtimeDot: ○ done/idle,
+            // ● working/blocked) thay vì "●" đậm cứng; bỏ "N tin" — đó là số tin ĐÃ TẢI
+            // (đặt cạnh nút "N earlier" gây hiểu nhầm); gọn "1m ago · ~/chuchu" (bỏ
+            // "updated "/"cwd ") để màn gập không mất cwd.
+            ChuText(
+                chatAgent?.let { "${runtimeDot(it)} " } ?: "… ",
+                style = ChuTypography.current.labelSmall,
+                color = chatAgent?.let { sessionStatusColor(it) } ?: colors.textMuted,
+            )
             ChuText(
                 buildString {
                     append(chatAgent?.label?.lowercase() ?: "…")
-                    append(" · ${chatMessages.size} tin")
                     chatAge(chat.updatedAt).takeIf { it.isNotEmpty() }?.let { append(" · $it") }
-                    if (chat.cwd.isNotBlank()) append(" · cwd ${chat.cwd.replace("/home/a", "~")}")
+                    if (chat.cwd.isNotBlank()) append(" · ${chat.cwd.replace("/home/a", "~")}")
                 },
                 style = ChuTypography.current.labelSmall,
                 color = colors.textMuted,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
             )
+            modelChip?.invoke()
         }
         QueueChatView(
             chat = chat,
