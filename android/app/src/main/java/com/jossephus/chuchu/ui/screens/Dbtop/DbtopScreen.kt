@@ -283,7 +283,8 @@ fun DbtopScreen(
                                     modifier = Modifier
                                         .weight(1f)
                                         .fillMaxHeight()
-                                        .background(colors.surface)
+                                        // 1A sụp nền (17/10): pane mô tả = nền trang + viền.
+                                        .background(colors.background)
                                         .border(1.dp, colors.border),
                                 ) {
                                     if (selectedRow != null) {

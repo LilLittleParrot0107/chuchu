@@ -31,6 +31,7 @@ import com.jossephus.chuchu.ui.components.chart.CashflowKpiSummary
 import com.jossephus.chuchu.ui.theme.CHU_HAIRLINE_ALPHA
 import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTypography
+import com.jossephus.chuchu.ui.theme.mix
 import java.util.Locale
 
 @Composable
@@ -85,10 +86,13 @@ internal fun DashboardSummary(
     val colors = ChuColors.current
 
     // 27/9 user: bỏ dòng "OVERVIEW · LIVE YIELD" — card tự nói đủ, đỡ một dải chữ.
+    // 1A "sụp nền" (17/10, preview dbtop-colors.html): nền card = nền trang, chỉ còn
+    // viền hairline — chữ/viền là nơi duy nhất mang màu, đúng ngữ pháp terminal.
     ChuCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 10.dp, vertical = 4.dp),
+        background = colors.background,
     ) {
         Column(
             modifier = Modifier
@@ -201,9 +205,15 @@ internal fun DashboardViewBand(
     ) {
         DbtopGroup.entries.forEach { view ->
             val active = selected == view
+            // 2B (17/10, preview dbtop-colors.html): tab chọn = tint accent 14% trên
+            // nền trang + chữ accent + viền accent nhạt — cùng ngữ pháp chọn của mọi
+            // hàng trong app; hết khối xám trắng đặc (26/8: không fill đặc vào nút to).
+            // Ghost + override màu (Filled ưu tiên buttonFill nên override không ăn).
             ChuButton(
                 onClick = { onSelect(view) },
-                variant = if (active) ChuButtonVariant.Filled else ChuButtonVariant.Ghost,
+                variant = ChuButtonVariant.Ghost,
+                backgroundColor = if (active) colors.background.mix(colors.accent, 0.14f) else null,
+                borderColor = if (active) colors.accent.mix(colors.background, 0.6f) else null,
                 contentPadding = PaddingValues(horizontal = 2.dp, vertical = 3.dp),
                 minHeight = 24.dp,
                 modifier = Modifier.weight(1f),
@@ -212,7 +222,7 @@ internal fun DashboardViewBand(
                     view.tab,
                     // Tab dashboard to hơn (user chốt 17/9: "tiêu đề + tab").
                     style = type.label.copy(fontWeight = FontWeight.Bold),
-                    color = if (active) colors.onAccent else colors.textSecondary,
+                    color = if (active) colors.accent else colors.textSecondary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
