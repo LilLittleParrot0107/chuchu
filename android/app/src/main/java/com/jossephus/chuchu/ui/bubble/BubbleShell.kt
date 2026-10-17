@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.ui.text.style.TextOverflow
@@ -276,6 +277,19 @@ private fun BubbleChatPane(
                     onSubmitBlocked = vm::answerBlockedMulti,
                     composerFocus = composerFocus,
                     keyboard = keyboard,
+                    // 18/10: chip model dời khỏi ô gõ, lên cuối hàng meta như màn CHAT
+                    // đầy đủ (3B) — bubble ~267dp mà chip nằm trong composer thì ô gõ
+                    // bị bóp còn vài dp. Cap 120dp để hàng meta còn chỗ, label dài
+                    // ellipsis; model đầy đủ vẫn xem trong OcModelSheet.
+                    modelChip = if (chatAgent?.agent == "opencode") {
+                        {
+                            OcModelChip(
+                                picker = ocPicker,
+                                onClick = { ocSheet = true; vm.loadOcModels() },
+                                modifier = Modifier.widthIn(max = 120.dp),
+                            )
+                        }
+                    } else null,
                     modifier = Modifier.fillMaxWidth().weight(1f),
                 )
                 QueueAgentRail(
@@ -300,10 +314,6 @@ private fun BubbleChatPane(
                     },
                     placeholder = "Reply to ${chatAgent?.name?.let { cleanSessionName(it) } ?: "agent"}…",
                     focusRequester = composerFocus,
-                    // Chip ◆ model opencode (15/10) — bubble là surface chat chính.
-                    trailing = if (chatAgent?.agent == "opencode") {
-                        { OcModelChip(picker = ocPicker, onClick = { ocSheet = true; vm.loadOcModels() }) }
-                    } else null,
                 )
             } else {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

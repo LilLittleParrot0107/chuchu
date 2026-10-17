@@ -488,7 +488,8 @@ fun QueueScreen(
                 // 172dp (mở) / hàng tab (gập) chỉ lặp lại thông tin đã có ở band + meta.
                 val railVisible = agents.size > 1
                 // 3B: chip ◆ model dời từ ô gõ lên CUỐI HÀNG META — ô gõ màn gập hết bị
-                // bóp. BubbleShell tự giữ chip của nó (không đi qua slot này).
+                // bóp. BubbleShell cũng truyền chip qua slot này (18/10) — trước đó nó
+                // còn nhét chip vào composer, đúng lỗi ô gõ bị bóp.
                 val modelChipSlot: (@Composable () -> Unit)? = if (chatAgent?.agent == "opencode") {
                     { OcModelChip(picker = ocPicker, onClick = { ocSheet = true; onLoadOcModels() }) }
                 } else null
@@ -909,6 +910,7 @@ internal fun queueBackAction(chatOpen: Boolean, tasksOpen: Boolean, mode: QueueM
 internal fun OcModelChip(
     picker: QueueViewModel.OcPickerState?,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val colors = ChuColors.current
     val cur = picker?.session?.model
@@ -921,11 +923,18 @@ internal fun OcModelChip(
     }
     ChuButton(
         onClick = onClick,
+        modifier = modifier,
         variant = ChuButtonVariant.Ghost,
         contentPadding = PaddingValues(horizontal = 6.dp, vertical = 5.dp),
         minHeight = 34.dp,
     ) {
-        ChuText(label, style = ChuTypography.current.labelSmall, color = colors.textMuted, maxLines = 1)
+        ChuText(
+            label,
+            style = ChuTypography.current.labelSmall,
+            color = colors.textMuted,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
