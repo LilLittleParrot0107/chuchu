@@ -6,9 +6,16 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.util.Log
 import androidx.core.app.NotificationManagerCompat
 import com.jossephus.chuchu.data.repository.SettingsRepository
 import com.jossephus.chuchu.ui.screens.Queue.QueueClient
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -22,14 +29,30 @@ import org.json.JSONObject
  * ngủ sâu thì Android bóp alarm xuống ~9' một nhịp (luật doze) — chấp nhận đánh
  * đổi, còn hơn notification thường trú.
  *
+ * MẠCH HAI (17/10, tái hiện E2E: AOSP cũng defer alarm theo app_standby ~100s,
+ * ~100s, máy OEM còn hơn — user báo "không nhận được thông báo nào"): vòng trực
+ * TRONG TIẾN TRÌNH. Tiến trình app sau ON_STOP vẫn sống hàng chục phút (queue
+ * long-poll tiếp tục thấy được từ log mock 17/10), nên thêm một coroutine
+ * long-poll /state (wait 25s) đánh giá chuyển trạng thái ngay khi server trả —
+ * KHÔNG cần alarm. Tiến trình bị hệ thống dọn thì alarm còn lại là lưới dưới.
+ * Hai mạch dùng chung tracker trong "agent_watch" prefs (khoá [evalLock] để
+ * restore→so→save không xen nhau) nên không post trùng.
+ *
  * Trạng thái trực (nhãn từng pane + rev) lưu SharedPreferences: process bị dọn giữa
  * phiên thì nhịp sau ĐỌC LẠI và so tiếp — không seed lại (seed lại = nuốt mất chuyển
  * trạng thái đã xảy ra lúc vắng mặt). ON_STOP xoá state = mở phiên mới sạch.
  */
 object AgentWatch {
+    private const val TAG = "AgentWatch"
     private const val PREFS = "agent_watch"
     private const val KEY_REV = "rev"
     private const val KEY_SNAP = "snap"
+
+    private val guardScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var guardJob: Job? = null
+
+    /** Khoá một lượt restore→so→save tracker giữa mạch alarm và mạch trong tiến trình. */
+    private val evalLock = Any()
 
     fun start(context: Context) {
         val app = context.applicationContext
@@ -42,10 +65,13 @@ object AgentWatch {
         // Dọn channel "agent_watch" cũ (thời FGS) ngay khi vào phiên — khỏi đợi alert đầu.
         AgentNotifier.ensureChannels(app)
         schedule(app, 0)
+        startGuard(app)
     }
 
     fun stop(context: Context) {
         val app = context.applicationContext
+        guardJob?.cancel()
+        guardJob = null
         runCatching { alarmManager(app)?.cancel(pollIntent(app)) }
         app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()
     }
@@ -53,50 +79,114 @@ object AgentWatch {
     /** Một nhịp: poll → báo → hẹn nhịp kế. Chạy trên thread nền của receiver. */
     fun poll(context: Context) {
         val app = context.applicationContext
-        val settings = SettingsRepository.getInstance(app)
         val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         // Hẹn nhịp KẾ trước khi poll: goAsync chỉ cho ~10s, poll bị hệ thống cắt giữa
         // đường (mạng chậm) cũng không làm đứt chuỗi alarm. Nhịp lấy từ snapshot LƯU
         // (17/10): có agent đang chạy/bị chặn → 15s thay vì 60s — hết cảnh "trễ
         // thông báo nửa phút".
         schedule(app, watchIntervalMs(parseSnaps(prefs.getString(KEY_SNAP, null) ?: "[]")))
-        if (settings.queueUrl.value.isBlank() || !settings.agentAlertsEnabled.value ||
-            !NotificationManagerCompat.from(app).areNotificationsEnabled()
-        ) {
-            stop(app)
-            return
-        }
-        val tracker = AgentTransitionTracker()
-        prefs.getString(KEY_SNAP, null)?.let { saved ->
-            runCatching { tracker.restore(parseSnaps(saved)) }
-        }
-        val client = QueueClient(settings.queueUrl.value, settings.queueToken.value)
-        when (val fetch = client.fetch(prefs.getString(KEY_REV, null), waitSec = 0)) {
-            is QueueClient.Fetch.Fresh -> {
-                if (client.recoveredWithoutToken && settings.queueToken.value.isNotBlank()) {
-                    settings.setQueueToken("")
-                }
-                val snaps = fetch.state.agents.map {
-                    AgentSnap(pane = it.pane, name = it.name, label = it.label, preview = it.preview)
-                }
-                for (action in tracker.onState(snaps)) {
-                    when (action) {
-                        is AgentAlertAction.Post -> AgentNotifier.postAlert(
-                            app, action.kind, action.pane, action.agentName, action.text,
-                        )
-                        is AgentAlertAction.Cancel -> AgentNotifier.cancel(app, action.pane)
-                    }
-                }
-                prefs.edit()
-                    .putString(KEY_REV, fetch.state.rev)
-                    .putString(KEY_SNAP, snapsJson(snaps))
-                    .apply()
+        when (tick(app, waitSec = 0)) {
+            is Tick.Fresh -> {
                 // Đổi alarm đang treo theo trạng thái MỚI (FLAG_UPDATE_CURRENT thay
                 // thế — không đứt chuỗi): vừa thấy agent chạy → 15s; về rảnh → 60s.
+                val snaps = parseSnaps(prefs.getString(KEY_SNAP, null) ?: "[]")
                 schedule(app, watchIntervalMs(snaps))
+                if (snaps.isNotEmpty()) {
+                    Log.d(TAG, "poll ok: " + snaps.joinToString { it.pane + "=" + it.label })
+                }
             }
-            QueueClient.Fetch.Unchanged -> Unit
-            is QueueClient.Fetch.Failed -> Unit
+            Tick.Unchanged -> Log.d(TAG, "poll: 304 không đổi")
+            Tick.Failed -> Log.d(TAG, "poll: fetch lỗi (chuỗi alarm vẫn giữ)")
+        }
+    }
+
+    private sealed interface Tick {
+        /** Có trạng thái mới: đã so + đã lưu vào prefs. */
+        data class Fresh(val actions: Int) : Tick
+        data object Unchanged : Tick
+        data object Failed : Tick
+    }
+
+    /**
+     * Một lượt fetch + so chuyển trạng thái + lưu. Dùng chung cho mạch alarm
+     * ([poll]) và mạch trong tiến trình ([guardLoop]) — [evalLock] chống xen.
+     */
+    private fun tick(context: Context, waitSec: Int): Tick {
+        val settings = SettingsRepository.getInstance(context)
+        if (settings.queueUrl.value.isBlank() || !settings.agentAlertsEnabled.value ||
+            !NotificationManagerCompat.from(context).areNotificationsEnabled()
+        ) {
+            stop(context)
+            return Tick.Failed
+        }
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val client = QueueClient(settings.queueUrl.value, settings.queueToken.value)
+        return synchronized(evalLock) {
+            val since = prefs.getString(KEY_REV, null)
+            when (val fetch = client.fetch(since, waitSec)) {
+                is QueueClient.Fetch.Fresh -> {
+                    if (client.recoveredWithoutToken && settings.queueToken.value.isNotBlank()) {
+                        settings.setQueueToken("")
+                    }
+                    val snaps = fetch.state.agents.map {
+                        AgentSnap(pane = it.pane, name = it.name, label = it.label, preview = it.preview)
+                    }
+                    val tracker = AgentTransitionTracker()
+                    prefs.getString(KEY_SNAP, null)?.let { saved ->
+                        runCatching { tracker.restore(parseSnaps(saved)) }
+                    }
+                    val actions = tracker.onState(snaps)
+                    for (action in actions) {
+                        when (action) {
+                            is AgentAlertAction.Post -> {
+                                Log.d(TAG, "post " + action.kind + " pane=" + action.pane)
+                                AgentNotifier.postAlert(
+                                    context, action.kind, action.pane, action.agentName, action.text,
+                                )
+                            }
+                            is AgentAlertAction.Cancel -> {
+                                Log.d(TAG, "cancel pane=" + action.pane)
+                                AgentNotifier.cancel(context, action.pane)
+                            }
+                        }
+                    }
+                    prefs.edit()
+                        .putString(KEY_REV, fetch.state.rev)
+                        .putString(KEY_SNAP, snapsJson(snaps))
+                        .apply()
+                    Tick.Fresh(actions.size)
+                }
+                QueueClient.Fetch.Unchanged -> Tick.Unchanged
+                is QueueClient.Fetch.Failed -> Tick.Failed
+            }
+        }
+    }
+
+    /** Bật vòng trực trong tiến trình (mạch hai). Đang chạy thì bỏ qua. */
+    private fun startGuard(app: Context) {
+        if (guardJob?.isActive == true) return
+        guardJob = guardScope.launch { guardLoop(app) }
+    }
+
+    /**
+     * Long-poll /state liên tục (wait 25s) trong khi tiến trình sống. Server trả
+     * state mới thì tick() so + post ngay; 304 thì lấp nhịp ngắn rồi lần lại;
+     * lỗi mạng thì nghỉ 30s. Tiến trình chết = vòng chết — alarm còn lại gánh.
+     */
+    private suspend fun guardLoop(app: Context) {
+        Log.d(TAG, "guard bật (mạch trong tiến trình)")
+        while (true) {
+            when (val t = tick(app, waitSec = 25)) {
+                is Tick.Fresh -> {
+                    if (t.actions > 0) Log.d(TAG, "guard: " + t.actions + " hành động")
+                    // State mới về liền long-poll tiếp — transition tới đâu báo tới đó.
+                }
+                Tick.Unchanged -> delay(1_500)
+                Tick.Failed -> {
+                    if (guardJob?.isActive != true) return
+                    delay(30_000)
+                }
+            }
         }
     }
 
