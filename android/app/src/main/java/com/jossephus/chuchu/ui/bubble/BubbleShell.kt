@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.safeDrawing
@@ -116,7 +118,10 @@ fun BubbleShell(
             .background(colors.background)
             // Bubble thật thường không có system bar (insets = 0); split-screen thì có —
             // thiếu cái này là band chui dưới status bar / composer dưới thanh gesture.
-            .windowInsetsPadding(WindowInsets.safeDrawing),
+            // 18/10: hợp safeDrawing với IME (max mỗi phía) để bàn phím lên/xuống là
+            // layout trượt theo animation ngay trong cửa sổ, không nhường cho
+            // adjustResize (xem manifest AgentBubbleActivity) — hết nhịp nền xám.
+            .windowInsetsPadding(WindowInsets.safeDrawing.union(WindowInsets.ime)),
     ) {
         BubbleBand(
             title = title,

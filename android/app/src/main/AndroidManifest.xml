@@ -85,7 +85,10 @@
 
         <!-- Bubble gắn thông báo agent (NEEDS YOU / XONG): cửa sổ nổi chỉ dựng
              BubbleShell. documentLaunchMode=always + taskAffinity rỗng = mỗi pane
-             một bubble task riêng, không kéo theo task chính. -->
+             một bubble task riêng, không kéo theo task chính.
+             18/10: bubble tự xử IME bằng Compose (safeDrawing ∪ ime). Để adjustResize
+             thì cửa sổ bubble bị resize theo bàn phím, lúc hạ keyboard có một nhịp
+             nền xám trước khi nội dung giãn lại; adjustNothing giữ cửa sổ cố định. -->
         <activity
             android:name="com.jossephus.chuchu.ui.bubble.AgentBubbleActivity"
             android:enabled="true"
@@ -94,7 +97,7 @@
             android:documentLaunchMode="always"
             android:taskAffinity=""
             android:excludeFromRecents="true"
-            android:windowSoftInputMode="adjustResize"
+            android:windowSoftInputMode="adjustNothing"
             android:theme="@style/Theme.Chuchu" />
 
         <service
