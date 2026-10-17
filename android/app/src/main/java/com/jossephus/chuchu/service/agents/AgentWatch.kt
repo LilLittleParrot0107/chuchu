@@ -24,10 +24,9 @@ import org.json.JSONObject
  * "bỏ cái thông báo watching alert đi"). FGS bắt buộc phải có notification thường trú
  * theo luật Android, nên đổi sang alarm: KHÔNG thông báo thường trú; mỗi nhịp —
  * poll /state một phát (không long-poll), chấm chuyển trạng thái, nổ NEEDS YOU /
- * XONG, hẹn mốc kế. Nhịp thích ứng (17/10): có agent đang chạy/bị chặn = 15s,
- * rảnh = 60s (xem [watchIntervalMs]) — hết cảnh NEEDS YOU về trễ nửa phút. Máy
- * ngủ sâu thì Android bóp alarm xuống ~9' một nhịp (luật doze) — chấp nhận đánh
- * đổi, còn hơn notification thường trú.
+ * XONG, hẹn mốc kế. Từ 18/10 alarm chỉ là LƯỚI: guard long-poll sống thì 5 phút/lần,
+ * process bị dọn thì 2 phút (bận) / 5 phút (rảnh) — xem [alarmIntervalMs]. Trước đó
+ * 15s/60s chạy song song long-poll, tốn pin mà vẫn trễ khi OEM bóp alarm.
  *
  * MẠCH HAI (17/10, tái hiện E2E: AOSP cũng defer alarm theo app_standby ~100s,
  * ~100s, máy OEM còn hơn — user báo "không nhận được thông báo nào"): vòng trực
@@ -64,7 +63,8 @@ object AgentWatch {
         app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()
         // Dọn channel "agent_watch" cũ (thời FGS) ngay khi vào phiên — khỏi đợi alert đầu.
         AgentNotifier.ensureChannels(app)
-        schedule(app, 0)
+        // Guard long-poll bắt đầu ngay; alarm đầu chỉ để bắt trường hợp process chết yểu.
+        schedule(app, WATCH_FIRST_ALARM_MS)
         startGuard(app)
     }
 
@@ -80,24 +80,37 @@ object AgentWatch {
     fun poll(context: Context) {
         val app = context.applicationContext
         val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        // Hẹn nhịp KẾ trước khi poll: goAsync chỉ cho ~10s, poll bị hệ thống cắt giữa
-        // đường (mạng chậm) cũng không làm đứt chuỗi alarm. Nhịp lấy từ snapshot LƯU
-        // (17/10): có agent đang chạy/bị chặn → 15s thay vì 60s — hết cảnh "trễ
-        // thông báo nửa phút".
-        schedule(app, watchIntervalMs(parseSnaps(prefs.getString(KEY_SNAP, null) ?: "[]")))
+        // Giữ chuỗi alarm kể cả khi tick bị hệ thống cắt giữa đường (mạng chậm).
+        // 5 phút là lưới an toàn tối đa; sau tick sẽ hẹn lại theo trạng thái thật.
+        schedule(app, WATCH_ALARM_MS)
         when (tick(app, waitSec = 0)) {
             is Tick.Fresh -> {
-                // Đổi alarm đang treo theo trạng thái MỚI (FLAG_UPDATE_CURRENT thay
-                // thế — không đứt chuỗi): vừa thấy agent chạy → 15s; về rảnh → 60s.
                 val snaps = parseSnaps(prefs.getString(KEY_SNAP, null) ?: "[]")
-                schedule(app, watchIntervalMs(snaps))
+                scheduleNext(app, snaps)
                 if (snaps.isNotEmpty()) {
                     Log.d(TAG, "poll ok: " + snaps.joinToString { it.pane + "=" + it.label })
                 }
             }
-            Tick.Unchanged -> Log.d(TAG, "poll: 304 không đổi")
+            Tick.Unchanged -> {
+                val snaps = parseSnaps(prefs.getString(KEY_SNAP, null) ?: "[]")
+                scheduleNext(app, snaps)
+                Log.d(TAG, "poll: 304 không đổi")
+            }
+            // Lỗi mạng / vừa tắt alert: giữ lưới 5 phút, không đánh thức dày.
             Tick.Failed -> Log.d(TAG, "poll: fetch lỗi (chuỗi alarm vẫn giữ)")
         }
+    }
+
+    /**
+     * Hẹn nhịp kế sau khi đã có snapshot mới. Guard long-poll còn sống thì alarm chỉ
+     * là lưới; guard đã chết (process bị dọn) + có agent bận thì rút còn 2 phút để
+     * NEEDS YOU không trễ quá lâu. Không hẹn nếu user vừa tắt alert (tick gọi stop).
+     */
+    private fun scheduleNext(app: Context, snaps: List<AgentSnap>) {
+        val settings = SettingsRepository.getInstance(app)
+        if (settings.queueUrl.value.isBlank() || !settings.agentAlertsEnabled.value) return
+        if (!NotificationManagerCompat.from(app).areNotificationsEnabled()) return
+        schedule(app, alarmIntervalMs(snaps, guardAlive = guardJob?.isActive == true))
     }
 
     private sealed interface Tick {

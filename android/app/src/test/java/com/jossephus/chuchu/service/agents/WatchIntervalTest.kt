@@ -4,8 +4,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /**
- * Nhịp trực thích ứng (17/10 — user: "chủ yếu là trễ thông báo"): có phiên đang
- * chạy/bị chặn thì 15s, mọi phiên rảnh thì 60s. Nhãn lạ/"" xem như rảnh.
+ * Nhịp alarm từ 18/10 ("tiết kiệm pin như Collie"): alarm chỉ là lưới dự phòng.
+ * Guard long-poll còn sống → 5 phút/lần, bất kể trạng thái (long-poll đã lo tức thì).
+ * Guard chết (process bị dọn) → 2 phút nếu có agent bận, 5 phút nếu rảnh.
  */
 class WatchIntervalTest {
 
@@ -13,42 +14,55 @@ class WatchIntervalTest {
         AgentSnap(pane = pane, name = "agent-$pane", label = label, preview = "")
 
     @Test
-    fun `dang working thi 15s`() {
-        assertEquals(WATCH_INTERVAL_ACTIVE_MS, watchIntervalMs(listOf(snap("w1:p1", "working"))))
-    }
-
-    @Test
-    fun `blocked busy sent unsure deu tinh la nhip ngan`() {
-        for (label in listOf("blocked", "busy", "sent", "unsure")) {
-            assertEquals(WATCH_INTERVAL_ACTIVE_MS, watchIntervalMs(listOf(snap("w1:p1", label))))
-        }
-    }
-
-    @Test
-    fun `cai nhap hoa khac nhau van nhan ra`() {
-        assertEquals(WATCH_INTERVAL_ACTIVE_MS, watchIntervalMs(listOf(snap("w1:p1", "Working"))))
-    }
-
-    @Test
-    fun `moi phien ranh thi 60s`() {
+    fun `guard con song thi alarm 5 phut ke ca khi ban`() {
         assertEquals(
-            WATCH_INTERVAL_IDLE_MS,
-            watchIntervalMs(listOf(snap("w1:p1", "idle"), snap("w1:p2", "done"))),
+            WATCH_ALARM_MS,
+            alarmIntervalMs(listOf(snap("w1:p1", "working")), guardAlive = true),
+        )
+        assertEquals(
+            WATCH_ALARM_MS,
+            alarmIntervalMs(listOf(snap("w1:p1", "blocked")), guardAlive = true),
         )
     }
 
     @Test
-    fun `trong hoac nhan la thi 60s`() {
-        assertEquals(WATCH_INTERVAL_IDLE_MS, watchIntervalMs(emptyList()))
-        assertEquals(WATCH_INTERVAL_IDLE_MS, watchIntervalMs(listOf(snap("w1:p1", "unknown"))))
-        assertEquals(WATCH_INTERVAL_IDLE_MS, watchIntervalMs(listOf(snap("w1:p1", ""))))
+    fun `guard chet va co agent ban thi 2 phut`() {
+        for (label in listOf("working", "blocked", "busy", "sent", "unsure")) {
+            assertEquals(
+                WATCH_ALARM_ACTIVE_MS,
+                alarmIntervalMs(listOf(snap("w1:p1", label)), guardAlive = false),
+            )
+        }
     }
 
     @Test
-    fun `mot phien risk la du de rut ngan ca chuoi`() {
+    fun `guard chet nhung ranh thi 5 phut`() {
         assertEquals(
-            WATCH_INTERVAL_ACTIVE_MS,
-            watchIntervalMs(listOf(snap("w1:p1", "idle"), snap("w1:p2", "working"))),
+            WATCH_ALARM_MS,
+            alarmIntervalMs(listOf(snap("w1:p1", "idle"), snap("w1:p2", "done")), guardAlive = false),
+        )
+    }
+
+    @Test
+    fun `nhan nhap hoa khac nhau van nhan ra`() {
+        assertEquals(
+            WATCH_ALARM_ACTIVE_MS,
+            alarmIntervalMs(listOf(snap("w1:p1", "Working")), guardAlive = false),
+        )
+    }
+
+    @Test
+    fun `trong hoac nhan la thi 5 phut`() {
+        assertEquals(WATCH_ALARM_MS, alarmIntervalMs(emptyList(), guardAlive = false))
+        assertEquals(WATCH_ALARM_MS, alarmIntervalMs(listOf(snap("w1:p1", "unknown")), guardAlive = false))
+        assertEquals(WATCH_ALARM_MS, alarmIntervalMs(listOf(snap("w1:p1", "")), guardAlive = false))
+    }
+
+    @Test
+    fun `mot phien ban la du de rut ngan chuoi khi guard chet`() {
+        assertEquals(
+            WATCH_ALARM_ACTIVE_MS,
+            alarmIntervalMs(listOf(snap("w1:p1", "idle"), snap("w1:p2", "working")), guardAlive = false),
         )
     }
 }

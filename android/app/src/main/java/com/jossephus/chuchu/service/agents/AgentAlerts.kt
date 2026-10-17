@@ -16,21 +16,22 @@ import com.jossephus.chuchu.ui.screens.Queue.AgentState
  */
 enum class AgentAlertKind { NeedsYou, Done }
 
-// Nhịp trực (17/10 — user: "chủ yếu là trễ thông báo"): 60s cố định là thứ làm
-// NEEDS YOU về trễ tới một phút. Có phiên đang chạy/bị chặn thì rút còn 15s
-// (mỗi nhịp chỉ 1 fetch ngắn — không long-poll vì goAsync chỉ có ~10s); mọi phiên
-// rảnh thì giãn 60s đỡ đánh thức máy. Nhãn lạ/"" xem như rảnh (chưa phân loại
-// được = chưa phải việc cần báo gấp).
-internal const val WATCH_INTERVAL_ACTIVE_MS = 15_000L
-internal const val WATCH_INTERVAL_IDLE_MS = 60_000L
+// Nhịp alarm (18/10 — user: "muốn tiết kiệm pin như Collie"): alarm KHÔNG còn là
+// kênh chính. Mạch long-poll trong tiến trình đã cho thông báo tức thì; alarm chỉ
+// là lưới dự phòng, nên không được chạy dày:
+//  · guard còn sống  → 5 phút/lần (cứu guard chết âm thầm, không đua với long-poll);
+//  · process bị dọn  → 2 phút/lần khi có agent bận, 5 phút/lần khi rảnh.
+// Trước đây 15s/60s chạy song song long-poll: ~200–380 lần thức mạng/giờ, mà khi
+// OEM bóp alarm thì vẫn trễ. Push (FCM/UnifiedPush) sẽ thay hẳn phần này.
+internal const val WATCH_ALARM_MS = 5 * 60_000L
+internal const val WATCH_ALARM_ACTIVE_MS = 2 * 60_000L
+internal const val WATCH_FIRST_ALARM_MS = 2 * 60_000L
 
-internal fun watchIntervalMs(snaps: List<AgentSnap>): Long {
+/** Nhịp alarm kế: guard sống thì chậm; guard chết mà có việc thì nhanh hơn. */
+internal fun alarmIntervalMs(snaps: List<AgentSnap>, guardAlive: Boolean): Long {
     val active = setOf("working", "busy", "blocked", "unsure", "sent")
-    return if (snaps.any { it.label.lowercase().trim() in active }) {
-        WATCH_INTERVAL_ACTIVE_MS
-    } else {
-        WATCH_INTERVAL_IDLE_MS
-    }
+    val busy = snaps.any { it.label.lowercase().trim() in active }
+    return if (busy && !guardAlive) WATCH_ALARM_ACTIVE_MS else WATCH_ALARM_MS
 }
 
 data class AgentSnap(
