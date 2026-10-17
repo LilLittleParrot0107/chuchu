@@ -358,9 +358,17 @@ fun QueueScreen(
                 // Toi mau nen theme: status bar + band + content + rail (man
                 // rong) la MOT ton, khong con khoi surface sac bep o tren.
                 containerColor = colors.background,
-                // 1B: chữ tên phiên nhỏ xuống 15sp cho tên dài còn đọc được; chữ
-                // QUEUE giữ 18sp (user chốt 17/9 "tăng kích thước chữ Queue").
-                titleSize = if (chatOpen) 15.sp else 18.sp,
+                // 17/10 (user: "tăng kích thước font của tên session ở trên cùng,
+                // scale theo font chữ"): tiêu đề phiên bám cỡ chữ terminal (mặc định
+                // 14sp): 14 → ~19sp, font to thì tiêu đề to theo (linear) — trần 26sp
+                // cho band không vỡ, sàn 16sp. QUEUE (không phải tên phiên) giữ 18sp
+                // (user chốt 17/9 "tăng kích thước chữ Queue").
+                titleSize = if (chatOpen) {
+                    val baseFont = chatFontSizeSp.takeIf { it > 0f } ?: 14f
+                    (baseFont * 1.35f).coerceIn(16f, 26f).sp
+                } else {
+                    18.sp
+                },
                 modifier = Modifier.onSizeChanged { commandBandHeightPx = it.height },
             ) {
                 if (chatOpen && chatListState.canScrollForward) {
