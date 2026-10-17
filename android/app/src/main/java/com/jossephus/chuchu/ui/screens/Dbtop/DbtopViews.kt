@@ -179,12 +179,10 @@ internal fun NetRateSection(
         accent = if (perDay >= 0) colors.success else colors.error,
     )
     // 3/10: 30d-only, bỏ nút khung nhìn (user chốt) — chart luôn 30 ngày gần nhất.
-    // 1A sụp nền (17/10): card = nền trang + viền hairline.
     ChuCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 10.dp, vertical = 4.dp),
-        background = colors.background,
     ) {
         Column(modifier = Modifier.fillMaxWidth().padding(10.dp)) {
             if (ratePoints.isEmpty()) {
@@ -297,12 +295,10 @@ internal fun SpendingView(
         contentPadding = PaddingValues(bottom = 8.dp),
     ) {
         item(key = "summary") {
-            // 1A sụp nền (17/10): card = nền trang + viền hairline.
             ChuCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 10.dp, vertical = 4.dp),
-                background = colors.background,
             ) {
                 Row(
                     modifier = Modifier

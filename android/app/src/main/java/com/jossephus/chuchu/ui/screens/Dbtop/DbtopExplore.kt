@@ -941,8 +941,7 @@ private fun SheetGrid(cells: List<Pair<String, String>>) {
     val colors = ChuColors.current
     val type = ChuTypography.current
     if (cells.isEmpty()) return
-    // 1A sụp nền (17/10): card = nền trang + viền hairline.
-    ChuCard(modifier = Modifier.fillMaxWidth(), background = colors.background) {
+    ChuCard(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.fillMaxWidth().padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             cells.chunked(3).forEach { rowCells ->
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {

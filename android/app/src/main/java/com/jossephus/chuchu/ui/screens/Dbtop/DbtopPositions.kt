@@ -440,8 +440,7 @@ internal fun PositionDetailPane(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(max = maxHeight)
-            // 1A sụp nền (17/10): dải chi tiết row cũng nằm trên nền trang.
-            .background(colors.background)
+            .background(colors.surface)
             .padding(horizontal = 10.dp, vertical = 6.dp)
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(5.dp),
@@ -811,10 +810,8 @@ internal fun YieldInsightPane(
         // Card 1: 4 Chỉ số Lợi suất Cốt lõi (Grid 2x2 trong ChuCard)
         // 17/10: nội dung 12dp — chân chữ = pane 10 + border 1 + 12 = 23dp, thẳng
         // cột với card summary trên và hàng POS (cùng lưới số liệu dashboard).
-        // 1A sụp nền (17/10): card = nền trang + viền hairline.
         ChuCard(
             modifier = Modifier.fillMaxWidth(),
-            background = colors.background,
         ) {
             Column(
                 modifier = Modifier
@@ -896,10 +893,8 @@ internal fun YieldInsightPane(
         }
 
         if (topYieldRows.isNotEmpty()) {
-            // 1A sụp nền (17/10): card = nền trang + viền hairline.
             ChuCard(
                 modifier = Modifier.fillMaxWidth(),
-                background = colors.background,
             ) {
                 Column(
                     modifier = Modifier
@@ -966,10 +961,8 @@ internal fun YieldInsightPane(
         val realized = state.realized
 
         if (optionRows.isNotEmpty() || prem != null || realized != null) {
-            // 1A sụp nền (17/10): card = nền trang + viền hairline.
             ChuCard(
                 modifier = Modifier.fillMaxWidth(),
-                background = colors.background,
             ) {
                 Column(
                     modifier = Modifier
