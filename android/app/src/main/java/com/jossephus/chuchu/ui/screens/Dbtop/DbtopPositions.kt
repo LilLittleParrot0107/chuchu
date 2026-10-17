@@ -83,7 +83,13 @@ internal fun PositionsView(
             if (n == 0) k else "$k#$n"
         }
     }
-    LazyColumn(modifier = Modifier.fillMaxSize()) {
+    // 17/10 (user: "các box khớp lề, đừng lởm chởm"): list inset 10dp NGANG = cùng
+    // lưới với card summary (trên) và card insights (cột phải) — các mép hộp thẳng
+    // hàng, hết kiểu hàng full-bleed chạm cạnh màn trong khi card bên phải lơ lửng.
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = 10.dp),
+    ) {
         items(ordered.size, key = { itemKeys[it] }) { index ->
             val row = ordered[index]
             DappPositionRow(
@@ -116,6 +122,8 @@ private fun WalletIdleRow(wallet: Double) {
         selected = false,
         tone = colors.accent,
         onClick = null,
+        // 17/10: 13dp = rail 3 + chân chữ 10 — thẳng cột với card summary (10+1+12).
+        contentPadding = PaddingValues(horizontal = 13.dp, vertical = 6.dp),
     ) {
         ChuText("◆", style = type.labelSmall, color = colors.accent)
         Spacer(Modifier.width(6.dp))
@@ -207,7 +215,9 @@ private fun DappPositionRow(
         selected = selected,
         tone = tone,
         onClick = onClick,
-        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+        // 17/10: 13dp = rail 3 + chân chữ 10 — thẳng cột với card summary trên
+        // (10 outer + 1 border + 12 inner = 23dp của mọi dòng dữ liệu dashboard).
+        contentPadding = PaddingValues(horizontal = 13.dp, vertical = 6.dp),
         fillFraction = rowFill?.first,
         fillColor = rowFill?.second,
     ) {
@@ -798,13 +808,15 @@ internal fun YieldInsightPane(
         }
 
         // Card 1: 4 Chỉ số Lợi suất Cốt lõi (Grid 2x2 trong ChuCard)
+        // 17/10: nội dung 12dp — chân chữ = pane 10 + border 1 + 12 = 23dp, thẳng
+        // cột với card summary trên và hàng POS (cùng lưới số liệu dashboard).
         ChuCard(
             modifier = Modifier.fillMaxWidth(),
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(10.dp),
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Row(
@@ -887,7 +899,8 @@ internal fun YieldInsightPane(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(10.dp),
+                        // 17/10: 12dp nội dung — chân chữ 23dp thẳng cột với card trên.
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     ChuText(

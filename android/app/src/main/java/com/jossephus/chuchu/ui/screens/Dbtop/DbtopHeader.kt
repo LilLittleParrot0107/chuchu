@@ -190,11 +190,13 @@ internal fun DashboardViewBand(
     // 26/9: băng tab 5 ô weight(1f) — ngoặc [ ] + đệm 6/khe 6 ăn ~50% bề rộng ô, chữ 5 ký tự
     // ("WATCH"/"SPEND") bị "…" trên máy 360px (user chọn phương án A, mock proto-subtabs.html).
     // Bỏ ngoặc (tab đang chọn đã có nền Filled làm dấu), đệm 6→2, khe 6→4.
+    // 17/10 (user: "các box căn kích thước khớp lề, đừng lởm chởm"): đệm ngang 6 → 10dp
+    // = đúng lưới lề của card summary/insights + band trên, các mép hộp thẳng hàng.
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .background(colors.background)
-            .padding(horizontal = 6.dp, vertical = 5.dp),
+            .padding(horizontal = 10.dp, vertical = 5.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         DbtopGroup.entries.forEach { view ->
