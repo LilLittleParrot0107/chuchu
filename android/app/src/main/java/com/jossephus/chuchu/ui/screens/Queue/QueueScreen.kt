@@ -882,43 +882,7 @@ internal fun ChatThreadView(
     // Tuổi chat phải nhích theo đồng hồ, không đóng băng ở lúc compose.
     val now by rememberTicking(30_000L)
     Column(modifier = modifier) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            // 4B (duyệt preview 16/10): chấm ĐỒNG BỘ với rail (runtimeDot: ○ done/idle,
-            // ● working/blocked) thay vì "●" đậm cứng; bỏ "N tin" — đó là số tin ĐÃ TẢI
-            // (đặt cạnh nút "N earlier" gây hiểu nhầm); gọn "1m ago · ~/chuchu" (bỏ
-            // "updated "/"cwd ") để màn gập không mất cwd.
-            ChuText(
-                chatAgent?.let { "${runtimeDot(it)} " } ?: "… ",
-                style = ChuTypography.current.labelSmall,
-                color = chatAgent?.let { sessionStatusColor(it) } ?: colors.textMuted,
-            )
-            ChuText(
-                buildString {
-                    append(chatAgent?.label?.lowercase() ?: "…")
-                    chatAge(chat.updatedAt, now).takeIf { it.isNotEmpty() }?.let { append(" · $it") }
-                    // Dùng home server trả về, không hardcode /home/a: path
-                    // /home/agent/... từng bị biến thành "~gent/...".
-                    if (chat.cwd.isNotBlank()) {
-                        val home = chat.home.trimEnd('/')
-                        val shortCwd = if (home.isNotBlank() && chat.cwd.startsWith(home)) {
-                            "~" + chat.cwd.removePrefix(home)
-                        } else {
-                            chat.cwd
-                        }
-                        append(" · $shortCwd")
-                    }
-                },
-                style = ChuTypography.current.labelSmall,
-                color = colors.textMuted,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-            modelChip?.invoke()
-        }
+        ChatMetaRow(chat, chatAgent, now, modelChip)
         QueueChatView(
             chat = chat,
             onLoadOlder = onLoadOlder,
@@ -937,6 +901,79 @@ internal fun ChatThreadView(
             onRetry = onRetry,
             modifier = Modifier.fillMaxWidth().weight(1f),
         )
+    }
+}
+
+/**
+ * Hàng meta của chat. Cửa sổ hẹp (<380dp, bubble/fold) đẩy chip model xuống
+ * dòng riêng để nhãn trạng thái · tuổi · cwd không bị chip nuốt.
+ */
+@Composable
+private fun ChatMetaRow(
+    chat: ChatUiState,
+    chatAgent: QueueAgent?,
+    now: Long,
+    modelChip: (@Composable () -> Unit)?,
+) {
+    val colors = ChuColors.current
+    val type = ChuTypography.current
+    val meta = buildString {
+        append(chatAgent?.label?.lowercase() ?: "…")
+        chatAge(chat.updatedAt, now).takeIf { it.isNotEmpty() }?.let { append(" · $it") }
+        if (chat.cwd.isNotBlank()) {
+            val home = chat.home.trimEnd('/')
+            val shortCwd = if (home.isNotBlank() && chat.cwd.startsWith(home)) {
+                "~" + chat.cwd.removePrefix(home)
+            } else {
+                chat.cwd
+            }
+            append(" · $shortCwd")
+        }
+    }
+    BoxWithConstraints(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+    ) {
+        val narrow = maxWidth < 380.dp
+        if (narrow && modelChip != null) {
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    ChuText(
+                        chatAgent?.let { "${runtimeDot(it)} " } ?: "… ",
+                        style = type.labelSmall,
+                        color = chatAgent?.let { sessionStatusColor(it) } ?: colors.textMuted,
+                    )
+                    ChuText(
+                        meta,
+                        style = type.labelSmall,
+                        color = colors.textMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
+                    horizontalArrangement = Arrangement.End,
+                ) { modelChip() }
+            }
+        } else {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                ChuText(
+                    chatAgent?.let { "${runtimeDot(it)} " } ?: "… ",
+                    style = type.labelSmall,
+                    color = chatAgent?.let { sessionStatusColor(it) } ?: colors.textMuted,
+                )
+                ChuText(
+                    meta,
+                    style = type.labelSmall,
+                    color = colors.textMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                modelChip?.invoke()
+            }
+        }
     }
 }
 
