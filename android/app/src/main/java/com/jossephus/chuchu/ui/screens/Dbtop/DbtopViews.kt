@@ -40,8 +40,8 @@ import com.jossephus.chuchu.data.model.dbtop.DeFiFormatter
 import com.jossephus.chuchu.data.model.dbtop.DayTx
 import com.jossephus.chuchu.data.model.dbtop.FlowDay
 import com.jossephus.chuchu.data.model.dbtop.flowDayRows
-import com.jossephus.chuchu.data.model.dbtop.flowMonthTotals
-import com.jossephus.chuchu.data.model.dbtop.isValidFlowMonth
+import com.jossephus.chuchu.data.model.dbtop.buildSpendOverview
+import com.jossephus.chuchu.data.model.dbtop.currentMonthKey
 import com.jossephus.chuchu.data.model.dbtop.FlowState
 import com.jossephus.chuchu.data.model.dbtop.SpendingState
 import com.jossephus.chuchu.data.model.explorer.ExplorerState
@@ -242,50 +242,21 @@ internal fun SpendingView(
         DashboardEmpty("NO SPENDING DATA (SCAN PENDING)")
         return
     }
-    val monthValid = isValidFlowMonth(spending.month)
-    if (!monthValid) {
-        // month rỗng/hỏng từng tạo "FLOW · JAN" + bảng all-time; đừng đoán.
+    // Data join nằm trong SpendOverview (thuần, có test); composable chỉ vẽ.
+    val nowMonth = currentMonthKey()
+    val overview = remember(spending, flow, nowMonth) {
+        buildSpendOverview(spending, flow, nowMonth)
+    } ?: run {
         DashboardEmpty("NO SPENDING DATA (SCAN PENDING)")
         return
     }
-    val year = if (monthValid) spending.month.take(4) else ""
-    val spendingMonths = remember(spending, monthValid) {
-        if (!monthValid) emptyMap()
-        else spending.byMonth.filterKeys { it.startsWith(year) && isValidFlowMonth(it) }
-    }
-    // 2/10 (user): ô tháng nào cũng có dòng flow ròng. Tháng không flow thì không hiện.
-    // 18/10: by_month (flow-scan cộng ĐỦ THÁNG từ sổ) là nguồn chính — trước đây
-    // cộng days 45 ngày, tháng cũ thiếu ngày đầu tháng và tự "nhảy số" khi cửa sổ
-    // trượt (Sep 3 rơi đúng hôm nay, lệch $779.97). flow.json cũ → fallback days
-    // CHỈ khi cửa sổ phủ từ mùng 1 (xem flowMonthTotals).
-    val flowMonths = remember(flow, year) {
-        if (year.isBlank()) emptyMap() else flowMonthTotals(flow, year)
-    }
-    // Hợp của spending + flow: tháng chỉ có flow (May/Jun) vẫn phải hiện, không bị lọc mất.
-    val monthRows = remember(spendingMonths, flowMonths) {
-        (spendingMonths.keys + flowMonths.keys)
-            .distinct()
-            .sortedDescending()
-            .chunked(4)
-    }
-    val yearTotal = remember(spendingMonths) { spendingMonths.values.sum() }
-    val dayRows = remember(spending, monthValid) {
-        if (!monthValid) emptyList()
-        else spending.byDay.entries
-            .filter { it.key.startsWith(spending.month) }
-            .sortedByDescending { it.key }
-            .chunked(4)
-    }
-    // Flow lấy theo tháng của spending, không đòi top-level flow.month khớp:
-    // hai scanner chạy lệch phút ở đầu tháng từng làm cả vùng FLOW biến mất.
-    val flowMonth = if (monthValid) flowMonths[spending.month] else null
-    val flowDays = remember(flow, spending.month, monthValid) {
-        if (!monthValid) emptyList()
-        else flow?.byDay?.entries.orEmpty()
-            .filter { it.key.startsWith(spending.month) }
-            .sortedByDescending { it.key }
-            .map { it.key to it.value }
-    }
+    val monthRows = overview.months.chunked(4)
+    val dayRows = overview.days.chunked(4)
+    val flowMonth = overview.currentFlow
+    val flowDays = overview.flowDays
+    val year = overview.year
+    val yearTotal = overview.yearSpendUsd
+    val currentMonth = overview.isCurrentMonth
     var flowOpen by rememberSaveable { mutableStateOf(false) }
     // UI toan tieng Anh (nguyen tac app) — thang hien dang JAN..DEC.
     fun monthAbbr(m: String): String =
@@ -294,15 +265,9 @@ internal fun SpendingView(
     val hidden = moneyDisplay == MoneyDisplay.HIDDEN
     val neg = if (hidden) "" else "-"
     val pos = if (hidden) "" else "+"
-    // Server gom tháng theo +07; so bằng cùng múi giờ để máy đặt UTC không
-    // báo "THIS MONTH" cho dữ liệu tháng trước.
-    val nowMonth = SimpleDateFormat("yyyy-MM", Locale.US)
-        .apply { timeZone = TimeZone.getTimeZone("Asia/Ho_Chi_Minh") }
-        .format(Date())
-    val currentMonth = monthValid && spending.month == nowMonth
     fun money(v: Double, compact: Boolean = false, decimals: Int = 2) = formatMoney(v, moneyDisplay, rate, compact, decimals)
     var openDay by rememberSaveable { mutableStateOf<String?>(null) }
-    LaunchedEffect(spending.month) { openDay = null }
+    LaunchedEffect(overview.month) { openDay = null }
     openDay?.let { day ->
         FlowDaySheet(
             day = day,
@@ -330,14 +295,14 @@ internal fun SpendingView(
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
                     MetricCell(
-                        label = if (currentMonth) "THIS MONTH" else "AS OF ${monthAbbr(spending.month)}",
-                        value = neg + money(spending.monthUsd),
+                        label = if (currentMonth) "THIS MONTH" else "AS OF ${monthAbbr(overview.month)}",
+                        value = neg + money(overview.monthUsd),
                         color = colors.warning,
                     )
                     if (flowMonth != null) {
                         Column(horizontalAlignment = Alignment.End) {
                             MetricCell(
-                                label = "FLOW · ${monthAbbr(spending.month)}",
+                                label = "FLOW · ${monthAbbr(overview.month)}",
                                 value = if (!hidden && flowMonth.net > 0) "+" + money(flowMonth.net) else money(flowMonth.net),
                                 color = if (flowMonth.net >= 0) colors.accent else colors.warning,
                                 alignEnd = true,
@@ -363,21 +328,21 @@ internal fun SpendingView(
             item(key = "days_band") {
                 KohiSectionBand(
                     label = "BY DAY",
-                    meta = monthAbbr(spending.month),
+                    meta = monthAbbr(overview.month),
                     containerColor = colors.background,
                 )
             }
-            items(dayRows, key = { row -> "d-" + row.joinToString("|") { it.key } }) { rowDays ->
+            items(dayRows, key = { row -> "d-" + row.joinToString("|") { it.day } }) { rowDays ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 10.dp, vertical = 3.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    rowDays.forEach { (day, usd) ->
+                    rowDays.forEach { cell ->
                         SpendCell(
-                            label = day.shortDay(),
-                            value = neg + money(usd, compact = true),
+                            label = cell.day.shortDay(),
+                            value = neg + money(cell.usd, compact = true),
                             highlight = false,
                             modifier = Modifier.weight(1f),
                         )
@@ -392,23 +357,22 @@ internal fun SpendingView(
             item(key = "year_band") {
                 KohiSectionBand(year, meta = neg + money(yearTotal), containerColor = colors.background)
             }
-            items(monthRows, key = { row -> "m-" + row.joinToString("|") }) { rowMonths ->
+            items(monthRows, key = { row -> "m-" + row.joinToString("|") { it.month } }) { rowMonths ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 10.dp, vertical = 3.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    rowMonths.forEach { month ->
-                        val usd = spendingMonths[month]
-                        val fnet = flowMonths[month]?.net
+                    rowMonths.forEach { cell ->
+                        val fnet = cell.flow?.net
                         SpendCell(
-                            label = monthAbbr(month),
-                            value = if (usd == null) "—" else neg + money(usd, compact = true),
-                            highlight = month == nowMonth,
+                            label = monthAbbr(cell.month),
+                            value = cell.spendUsd?.let { neg + money(it, compact = true) } ?: "—",
+                            highlight = cell.month == nowMonth,
                             modifier = Modifier.weight(1f),
                             flow = fnet?.let { (if (it >= 0 && !hidden) "+" else "") + money(it, compact = true) },
-                            flowHighlight = month == nowMonth,
+                            flowHighlight = cell.month == nowMonth,
                             flowPositive = (fnet ?: 0.0) >= 0,
                         )
                     }
@@ -441,7 +405,7 @@ internal fun SpendingView(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     ChuText(
-                        (if (flowOpen) "▾ " else "▸ ") + "FLOW · ${monthAbbr(spending.month)}",
+                        (if (flowOpen) "▾ " else "▸ ") + "FLOW · ${monthAbbr(overview.month)}",
                         style = type.labelSmall.copy(fontWeight = FontWeight.Bold),
                         color = colors.accent,
                     )
