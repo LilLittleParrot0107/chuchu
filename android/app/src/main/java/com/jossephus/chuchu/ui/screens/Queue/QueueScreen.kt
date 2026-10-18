@@ -66,6 +66,7 @@ import androidx.compose.ui.platform.SoftwareKeyboardController
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.offset
@@ -512,7 +513,14 @@ fun QueueScreen(
                 // bóp. BubbleShell cũng truyền chip qua slot này (18/10) — trước đó nó
                 // còn nhét chip vào composer, đúng lỗi ô gõ bị bóp.
                 val modelChipSlot: (@Composable () -> Unit)? = if (AgentKind.of(chatAgent?.agent) == AgentKind.OPENCODE) {
-                    { OcModelChip(picker = ocPicker, onClick = { ocSheet = true; onLoadOcModels() }) }
+                    {
+                        OcModelChip(
+                            picker = ocPicker,
+                            onClick = { ocSheet = true; onLoadOcModels() },
+                            // Đừng để tên model dài bóp hàng meta (working · age · cwd).
+                            modifier = Modifier.widthIn(max = 180.dp),
+                        )
+                    }
                 } else null
                 if (wide && railVisible) {
                     // RỘNG + ≥2 phiên: rail dọc TRÁI chạy THẲNG XUỐNG ĐÁY (vạch hairline
