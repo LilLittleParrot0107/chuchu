@@ -679,6 +679,7 @@ private fun QueueDestination(
         onOpenChat = sharedQueueVm::openChat,
         onCloseChat = sharedQueueVm::closeChat,
         onLoadOlderChat = sharedQueueVm::loadOlderChat,
+        onRefreshChat = sharedQueueVm::refreshChatNow,
         onSendChat = sharedQueueVm::sendChat,
         onAnswerBlocked = sharedQueueVm::answerBlocked,
         onSubmitBlocked = sharedQueueVm::answerBlockedMulti,

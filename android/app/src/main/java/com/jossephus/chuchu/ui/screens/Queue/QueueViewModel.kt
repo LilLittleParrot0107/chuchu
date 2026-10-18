@@ -961,6 +961,12 @@ class QueueViewModel(
         viewModelScope.launch { refreshOnce(forceFull = true) }
     }
 
+    /** RETRY trên màn chat / bubble: đá một vòng /chat ngay, không đợi long-poll. */
+    fun refreshChatNow() {
+        val pane = _chat.value.pane ?: return
+        viewModelScope.launch { chatRefreshOnce(pane, waitSec = 0) }
+    }
+
 
     /** One operation key can own only one request, including blocking HTTP. */
     fun runAction(action: QueueAction, taskId: Int?) {

@@ -335,6 +335,7 @@ private fun BubbleChatPane(
                     onLoadOlder = vm::loadOlderChat,
                     onAnswerBlocked = vm::answerBlocked,
                     onSubmitBlocked = vm::answerBlockedMulti,
+                    onRetry = vm::refreshChatNow,
                     composerFocus = composerFocus,
                     keyboard = keyboard,
                     // 18/10: chip model dời khỏi ô gõ, lên cuối hàng meta như màn CHAT

@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -46,6 +47,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.jossephus.chuchu.ui.components.ChuText
+import com.jossephus.chuchu.ui.components.KohiCompactAction
 import com.jossephus.chuchu.ui.components.noRippleClickable
 import com.jossephus.chuchu.ui.components.MiniMarkdownText
 import com.jossephus.chuchu.ui.components.LinkifiedText
@@ -87,6 +89,7 @@ internal fun QueueChatView(
     /** Thẻ NEEDS YOU (21/9): chạm một lựa chọn của prompt đang chặn pane. */
     onAnswerBlocked: (BlockedOption) -> Unit = {},
     onSubmitBlocked: (List<Int>) -> Unit = {},
+    onRetry: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val colors = ChuColors.current
@@ -146,7 +149,15 @@ internal fun QueueChatView(
             // NEEDS YOU độc lập với transcript: /blocked có thể về trước /chat,
             // hoặc /chat lỗi. Trước đây thẻ câu hỏi bị loading/error che mất.
             blocked == null && chat.loading && messages.isEmpty() -> Center("LOADING CHAT…")
-            blocked == null && chat.error != null && messages.isEmpty() -> Center("▌ ${chat.error}")
+            blocked == null && chat.error != null && messages.isEmpty() -> Column(
+                modifier = Modifier.fillMaxSize().padding(24.dp),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                ChuText("▌ ${chat.error}", style = type.bodySmall, color = colors.error)
+                Spacer(Modifier.height(10.dp))
+                KohiCompactAction(label = "RETRY", onClick = onRetry)
+            }
             messages.isEmpty() && blocked == null -> Center("no messages yet")
             else -> SelectionContainer {
                 LazyColumn(
@@ -166,6 +177,19 @@ internal fun QueueChatView(
                                 modifier = Modifier.noRippleClickable(onClick = onLoadOlder).padding(6.dp),
                             )
                             else -> ChuText("start of chat", style = type.labelSmall, color = colors.textMuted)
+                        }
+                    }
+                }
+                if (chat.error != null) {
+                    item(key = "chat_error") {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            ChuText("▌ sync failed", style = type.labelSmall, color = colors.error)
+                            Spacer(Modifier.width(8.dp))
+                            KohiCompactAction(label = "RETRY", onClick = onRetry)
                         }
                     }
                 }

@@ -37,6 +37,8 @@ import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -71,6 +73,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.offset
+import com.jossephus.chuchu.ui.components.ChuTextField
 import com.jossephus.chuchu.ui.components.KohiCommandBand
 import com.jossephus.chuchu.ui.components.KohiCompactAction
 import com.jossephus.chuchu.ui.components.KohiFeedbackBand
@@ -118,6 +121,7 @@ fun QueueScreen(
     onOpenChat: (String) -> Unit = {},
     onCloseChat: () -> Unit = {},
     onLoadOlderChat: () -> Unit = {},
+    onRefreshChat: () -> Unit = {},
     onSendChat: (String) -> Unit = {},
     /** Thẻ NEEDS YOU trong chat (21/9): chạm lựa chọn n → qsrv gõ số đó vào pane. */
     onAnswerBlocked: (Int) -> Unit = {},
@@ -558,6 +562,7 @@ fun QueueScreen(
                                 onLoadOlder = onLoadOlderChat,
                                 onAnswerBlocked = onAnswerBlocked,
                                 onSubmitBlocked = onSubmitBlocked,
+                                onRetry = onRefreshChat,
                                 composerFocus = composerFocus,
                                 keyboard = keyboard,
                                 modelChip = modelChipSlot,
@@ -578,6 +583,7 @@ fun QueueScreen(
                         onLoadOlder = onLoadOlderChat,
                         onAnswerBlocked = onAnswerBlocked,
                         onSubmitBlocked = onSubmitBlocked,
+                        onRetry = onRefreshChat,
                         composerFocus = composerFocus,
                         keyboard = keyboard,
                         modelChip = modelChipSlot,
@@ -864,6 +870,7 @@ internal fun ChatThreadView(
     onLoadOlder: () -> Unit,
     onAnswerBlocked: (Int) -> Unit,
     onSubmitBlocked: (List<Int>) -> Unit,
+    onRetry: () -> Unit = {},
     composerFocus: FocusRequester,
     keyboard: SoftwareKeyboardController?,
     /** 3B (duyệt preview 16/10): chip ◆ model đứng CUỐI hàng meta (bên phải) thay vì
@@ -927,6 +934,7 @@ internal fun ChatThreadView(
                 }
             },
             onSubmitBlocked = onSubmitBlocked,
+            onRetry = onRetry,
             modifier = Modifier.fillMaxWidth().weight(1f),
         )
     }
@@ -1007,8 +1015,11 @@ internal fun OcModelSheet(
     val colors = ChuColors.current
     val type = ChuTypography.current
     val cur = state?.session?.model
+    var query by rememberSaveable { mutableStateOf("") }
     Column(
-        modifier = Modifier.fillMaxWidth().heightIn(max = 480.dp),
+        // 88% chiều cao cửa sổ: trước đây max 480dp làm tấm cao hơn màn hình
+        // split/freeform thấp, header + model đầu bị đẩy ra ngoài.
+        modifier = Modifier.fillMaxWidth().fillMaxHeight(0.88f),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         // Header dùng nguyên ngữ pháp section của app (▌ LABEL · meta + token hành
@@ -1020,6 +1031,16 @@ internal fun OcModelSheet(
                 KohiCompactAction(label = "SYNC", onClick = onReload)
             },
         )
+        ChuTextField(
+            value = query,
+            onValueChange = { query = it },
+            label = "SEARCH",
+            placeholder = "filter model / provider…",
+            singleLine = true,
+            showLabel = false,
+            autoFocus = false,
+            modifier = Modifier.fillMaxWidth(),
+        )
         when {
             state?.error != null ->
                 ChuText(state.error, style = type.bodySmall, color = colors.error)
@@ -1028,22 +1049,33 @@ internal fun OcModelSheet(
             state?.models.isNullOrEmpty() ->
                 ChuText("no models", style = type.bodySmall, color = colors.textMuted)
             else -> {
+                val models = remember(state.models, query) {
+                    val q = query.trim()
+                    if (q.isBlank()) state.models
+                    else state.models.filter {
+                        it.name.contains(q, true) || it.id.contains(q, true) ||
+                            it.providerID.contains(q, true)
+                    }
+                }
+                if (models.isEmpty()) {
+                    ChuText("no matching models", style = type.bodySmall, color = colors.textMuted)
+                } else {
                 // 16/10 (user: "list model sao toàn của b.ai vậy"): catalog ~95 model
                 // từ ~3 provider xếp dọc 95 hàng như nhau thì không đọc ra cấu trúc —
                 // header nhóm khi ĐỔI provider (qsrv xếp provider đang dùng lên đầu).
-                val headerFlags = remember(state.models) {
+                val headerFlags = remember(models) {
                     val seen = HashSet<String>()
-                    BooleanArray(state.models.size).also { flags ->
-                        state.models.forEachIndexed { i, m -> flags[i] = seen.add(m.providerID) }
+                    BooleanArray(models.size).also { flags ->
+                        models.forEachIndexed { i, m -> flags[i] = seen.add(m.providerID) }
                     }
                 }
-                val providerCount = remember(state.models) {
+                val providerCount = remember(models) {
                     HashMap<String, Int>().also { c ->
-                        state.models.forEach { c[it.providerID] = (c[it.providerID] ?: 0) + 1 }
+                        models.forEach { c[it.providerID] = (c[it.providerID] ?: 0) + 1 }
                     }
                 }
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    itemsIndexed(state.models, key = { _, m -> m.providerID + "/" + m.id }) { i, m ->
+                    itemsIndexed(models, key = { _, m -> m.providerID + "/" + m.id }) { i, m ->
                         if (headerFlags[i]) {
                             ChuText(
                                 "${m.providerID.uppercase()} · ${providerCount[m.providerID]}",
@@ -1074,7 +1106,9 @@ internal fun OcModelSheet(
                                 )
                                 if (m.variants.isNotEmpty()) {
                                     Row(
-                                        modifier = Modifier.padding(top = 2.dp),
+                                        modifier = Modifier
+                                            .padding(top = 2.dp)
+                                            .horizontalScroll(rememberScrollState()),
                                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                                     ) {
                                         m.variants.forEach { v ->
@@ -1087,7 +1121,7 @@ internal fun OcModelSheet(
                                                 color = if (vCur) colors.accent else colors.textSecondary,
                                                 modifier = Modifier
                                                     .clickable { onPick(m.providerID, m.id, v) }
-                                                    .padding(vertical = 3.dp),
+                                                    .padding(vertical = 6.dp, horizontal = 2.dp),
                                             )
                                         }
                                     }
@@ -1095,6 +1129,7 @@ internal fun OcModelSheet(
                             }
                         }
                     }
+                }
                 }
             }
         }
