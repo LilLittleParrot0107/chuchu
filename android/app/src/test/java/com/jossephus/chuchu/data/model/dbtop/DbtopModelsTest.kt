@@ -104,6 +104,16 @@ class DbtopModelsTest {
 
 
     @Test
+    fun healthRiskUsesOneThresholdSource() {
+        assertEquals(HealthRisk.Critical, healthRisk(1.14))
+        assertEquals(HealthRisk.Warning, healthRisk(1.15))
+        assertEquals(HealthRisk.Warning, healthRisk(1.24))
+        assertEquals(HealthRisk.Safe, healthRisk(1.25))
+        assertEquals(null, healthRisk(null))
+        assertEquals(null, healthRisk(0.0))
+    }
+
+    @Test
     fun testDeFiFormatter() {
         assertEquals("$83,266.16", DeFiFormatter.formatUsd(83266.1615))
         assertEquals("$83.3k", DeFiFormatter.formatUsdCompact(83266.16))

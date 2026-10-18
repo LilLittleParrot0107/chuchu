@@ -116,7 +116,12 @@ internal fun DashboardSummary(
                 MetricCell(
                     label = "YIELD / DAY",
                     value = perDay?.let { (if (it >= 0 && moneyDisplay != MoneyDisplay.HIDDEN) "+" else "") + formatMoney(it, moneyDisplay, vndRate) } ?: "—",
-                    color = if (perDay != null) colors.success else colors.textMuted,
+                    // âm phải đỏ; trước đây mọi perDay non-null đều xanh.
+                    color = when {
+                        perDay == null -> colors.textMuted
+                        perDay < 0 -> colors.error
+                        else -> colors.success
+                    },
                     alignEnd = true,
                 )
             }

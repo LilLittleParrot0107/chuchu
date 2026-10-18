@@ -34,7 +34,9 @@ import com.jossephus.chuchu.data.model.dbtop.DappRow
 import com.jossephus.chuchu.data.model.dbtop.DbtopState
 import com.jossephus.chuchu.data.model.dbtop.DeFiFormatter
 import com.jossephus.chuchu.data.model.dbtop.OptionDetail
+import com.jossephus.chuchu.data.model.dbtop.HealthRisk
 import com.jossephus.chuchu.data.model.dbtop.RiskEvaluator
+import com.jossephus.chuchu.data.model.dbtop.healthRisk
 import com.jossephus.chuchu.data.model.dbtop.TokenPosition
 import com.jossephus.chuchu.ui.components.ChuCard
 import com.jossephus.chuchu.ui.components.BlockBarLine
@@ -172,11 +174,16 @@ private fun DappPositionRow(
         row.proto.contains("balancer", true) -> "⟡"
         else -> "◆"
     }
-    val tone = when {
-        row.health != null && row.health < DBTOP_HIGH_RISK_HEALTH_FACTOR -> colors.error
-        option -> colors.warning
-        lending -> colors.accentSecondary
-        else -> colors.accent
+    val risk = healthRisk(row.health)
+    val tone = when (risk) {
+        HealthRisk.Critical -> colors.error
+        HealthRisk.Warning -> colors.warning
+        HealthRisk.Safe -> colors.success
+        null -> when {
+            option -> colors.warning
+            lending -> colors.accentSecondary
+            else -> colors.accent
+        }
     }
     // So cu the nam O DAY vi thanh do gio la fill nen row (am hieu, khong
     // phai do thi chinh xac) — user chot 27/8.
@@ -198,13 +205,15 @@ private fun DappPositionRow(
     // Fill nen row: health uu tien (rui ro truoc), khong thi tien trinh option.
     val health = row.health
     val rowFill: Pair<Float, Color>? = when {
+        // Health là trạng thái, không phải progress: tô cả hàng khi warning/critical
+        // thay cho mẩu fill rộng (HF-1) trông như lỗi render. Safe không tô.
         health != null && health > 0 -> {
             val tier = when {
                 health < RiskEvaluator.HP_BAD -> colors.error
                 health < RiskEvaluator.HP_WARN -> colors.warning
-                else -> colors.success
+                else -> null
             }
-            ((health - 1.0).toFloat().coerceIn(0f, 1f)) to tier
+            tier?.let { 1f to it }
         }
         row.detail?.option != null ->
             optionElapsedFraction(row.detail.option, nowSec) to colors.warning
@@ -234,7 +243,10 @@ private fun DappPositionRow(
             ChuText(
                 metrics,
                 style = type.labelSmall,
-                color = if (row.health != null && row.health < RiskEvaluator.HP_BAD) colors.error else colors.textMuted,
+                color = when (risk) {
+                    HealthRisk.Critical, HealthRisk.Warning -> tone
+                    else -> colors.textMuted
+                },
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -370,9 +382,9 @@ internal fun LendingHealthBar(
     val colors = ChuColors.current
 
     val fillPct = ((health - 1.0).toFloat()).coerceIn(0f, 1f)
-    val tone = when {
-        health < RiskEvaluator.HP_BAD -> colors.error
-        health < RiskEvaluator.HP_WARN -> colors.warning
+    val tone = when (healthRisk(health)) {
+        HealthRisk.Critical -> colors.error
+        HealthRisk.Warning -> colors.warning
         else -> colors.success
     }
 
@@ -479,7 +491,11 @@ internal fun PositionDetailPane(
                 SpecRow(
                     label = "LIQ",
                     value = "${DeFiFormatter.formatTokenPrice(row.liqAt)} (${row.liqBase ?: "ASSET"})",
-                    valueColor = if ((row.health ?: 9.0) < RiskEvaluator.HP_BAD) colors.error else colors.warning,
+                    valueColor = when (healthRisk(row.health)) {
+                        HealthRisk.Critical -> colors.error
+                        HealthRisk.Warning -> colors.warning
+                        else -> colors.textPrimary
+                    },
                 )
             }
             row.debt?.takeIf { it > 0 }?.let { SpecRow("DEBT", DeFiFormatter.formatUsd(it), colors.error) }

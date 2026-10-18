@@ -359,6 +359,16 @@ object RiskEvaluator {
     const val HP_WARN = 1.25
 }
 
+/** Một nguồn duy nhất cho ngưỡng HF; UI không tự so 1.15/1.25 rải rác. */
+enum class HealthRisk { Critical, Warning, Safe }
+
+fun healthRisk(hf: Double?): HealthRisk? = when {
+    hf == null || hf <= 0.0 -> null
+    hf < RiskEvaluator.HP_BAD -> HealthRisk.Critical
+    hf < RiskEvaluator.HP_WARN -> HealthRisk.Warning
+    else -> HealthRisk.Safe
+}
+
 // ============================================================================
 // 4. FORMATTING HELPERS
 // ============================================================================

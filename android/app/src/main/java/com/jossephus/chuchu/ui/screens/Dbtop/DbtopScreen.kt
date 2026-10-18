@@ -37,6 +37,8 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.jossephus.chuchu.data.model.dbtop.DataFreshness
+import com.jossephus.chuchu.data.model.dbtop.HealthRisk
+import com.jossephus.chuchu.data.model.dbtop.healthRisk
 import com.jossephus.chuchu.ui.components.DAYS_PER_MONTH
 import com.jossephus.chuchu.ui.components.chart.CashflowEngine
 import com.jossephus.chuchu.ui.components.KohiNoticeBand
@@ -196,9 +198,11 @@ fun DbtopScreen(
                 )
             }
             ui.criticalLendingRow?.let { critical ->
+                val criticalRisk = healthRisk(critical.health) == HealthRisk.Critical
                 KohiNoticeBand(
-                    text = "⚠ HIGH RISK · ${critical.name} · HF ${String.format(Locale.US, "%.2fx", critical.health ?: 0.0)} · TAP TO VIEW",
-                    color = colors.warning,
+                    text = (if (criticalRisk) "⚠ CRITICAL" else "⚠ HIGH RISK") +
+                        " · ${critical.name} · HF ${String.format(Locale.US, "%.2fx", critical.health ?: 0.0)} · TAP TO VIEW",
+                    color = if (criticalRisk) colors.error else colors.warning,
                     modifier = Modifier.clickable {
                         haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                         viewModel.selectPage(0)

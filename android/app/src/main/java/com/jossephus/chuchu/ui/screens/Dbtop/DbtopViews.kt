@@ -304,7 +304,7 @@ internal fun SpendingView(
                             MetricCell(
                                 label = "FLOW · ${monthAbbr(overview.month)}",
                                 value = if (!hidden && flowMonth.net > 0) "+" + money(flowMonth.net) else money(flowMonth.net),
-                                color = if (flowMonth.net >= 0) colors.accent else colors.warning,
+                                color = if (flowMonth.net >= 0) colors.success else colors.error,
                                 alignEnd = true,
                             )
                             Row {
@@ -372,7 +372,6 @@ internal fun SpendingView(
                             highlight = cell.month == nowMonth,
                             modifier = Modifier.weight(1f),
                             flow = fnet?.let { (if (it >= 0 && !hidden) "+" else "") + money(it, compact = true) },
-                            flowHighlight = cell.month == nowMonth,
                             flowPositive = (fnet ?: 0.0) >= 0,
                         )
                     }
@@ -626,7 +625,6 @@ private fun SpendCell(
     modifier: Modifier = Modifier,
     // 2/10 (user): dòng flow ròng tháng — null thì ô gọn như cũ.
     flow: String? = null,
-    flowHighlight: Boolean = false,
     flowPositive: Boolean = true,
 ) {
     val colors = ChuColors.current
@@ -657,11 +655,7 @@ private fun SpendCell(
             ChuText(
                 flow,
                 style = type.labelSmall,
-                color = when {
-                    flowHighlight -> colors.warning
-                    flowPositive -> colors.success
-                    else -> colors.warning
-                },
+                color = if (flowPositive) colors.success else colors.error,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
