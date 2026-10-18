@@ -205,15 +205,16 @@ private fun DappPositionRow(
     // Fill nen row: health uu tien (rui ro truoc), khong thi tien trinh option.
     val health = row.health
     val rowFill: Pair<Float, Color>? = when {
-        // Health là trạng thái, không phải progress: tô cả hàng khi warning/critical
-        // thay cho mẩu fill rộng (HF-1) trông như lỗi render. Safe không tô.
+        // Độ RỘNG fill = health headroom (HF - 1.0), không phải full-row status:
+        // HF 1.09 chỉ một mẩu đỏ, 1.20 nửa hàng cam, >=2 phủ xanh. Giữ nguyên
+        // ngôn ngữ thị giác này — user chốt 27/8.
         health != null && health > 0 -> {
             val tier = when {
                 health < RiskEvaluator.HP_BAD -> colors.error
                 health < RiskEvaluator.HP_WARN -> colors.warning
-                else -> null
+                else -> colors.success
             }
-            tier?.let { 1f to it }
+            ((health - 1.0).toFloat().coerceIn(0f, 1f)) to tier
         }
         row.detail?.option != null ->
             optionElapsedFraction(row.detail.option, nowSec) to colors.warning
