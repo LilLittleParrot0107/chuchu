@@ -9,6 +9,7 @@ import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationManagerCompat
 import com.jossephus.chuchu.data.repository.SettingsRepository
+import com.jossephus.chuchu.service.push.KohiPush
 import com.jossephus.chuchu.ui.screens.Queue.QueueClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -74,6 +75,9 @@ object AgentWatch {
         if (!NotificationManagerCompat.from(app).areNotificationsEnabled()) return
         // Dọn channel "agent_watch" cũ (thời FGS) ngay khi vào phiên — khỏi đợi alert đầu.
         AgentNotifier.ensureChannels(app)
+        // Đăng ký lại UnifiedPush mỗi lần watch bật; no-op nếu chưa cài ntfy.
+        runCatching { KohiPush.ensureRegistered(app) }
+            .onFailure { Log.w(TAG, "push register failed", it) }
         // Guard long-poll bắt đầu ngay; alarm đầu chỉ để bắt trường hợp process chết yểu.
         schedule(app, WATCH_FIRST_ALARM_MS)
         startGuard(app)
@@ -86,6 +90,16 @@ object AgentWatch {
         guardFailures = 0
         runCatching { alarmManager(app)?.cancel(pollIntent(app)) }
         app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().commit()
+    }
+
+    /**
+     * Wakeup từ UnifiedPush. Process có thể vừa được dựng lại: resume chuỗi
+     * alarm/guard rồi chạy đúng một nhịp poll để tracker so trạng thái và post.
+     */
+    fun onPush(context: Context) {
+        val app = context.applicationContext
+        resume(app)
+        poll(app)
     }
 
     /** Một nhịp: poll → báo → hẹn nhịp kế. Chạy trên thread nền của receiver. */

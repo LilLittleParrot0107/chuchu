@@ -120,6 +120,14 @@
             android:enabled="true"
             android:exported="false" />
 
+        <service
+            android:name="com.jossephus.chuchu.service.push.KohiPushService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="org.unifiedpush.android.connector.PUSH_EVENT" />
+            </intent-filter>
+        </service>
+
         <receiver
             android:name="com.jossephus.chuchu.service.agents.AgentBootReceiver"
             android:enabled="true"
