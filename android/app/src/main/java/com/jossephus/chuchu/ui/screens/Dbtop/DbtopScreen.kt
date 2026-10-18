@@ -27,6 +27,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.launch
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
@@ -165,6 +166,7 @@ fun DbtopScreen(
             DbtopTopBar(
                 freshness = ui.state.freshness(nowSec),
                 isRefreshing = ui.isRefreshing,
+                isLoading = !ui.everLoaded,
                 onRefresh = {
                     haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                     viewModel.refreshNow()
@@ -172,6 +174,20 @@ fun DbtopScreen(
                 onClose = onClose,
             )
 
+            // Lỗi từng bị nuốt: chỉ dùng để tắt banner offline, không hiện ở đâu.
+            // Giờ hiện thành dải bấm được để retry; dữ liệu cũ (nếu có) vẫn giữ.
+            ui.error?.let { err ->
+                KohiNoticeBand(
+                    text = (if (ui.everLoaded) "REFRESH FAILED — LAST DATA KEPT" else "SCAN FAILED") +
+                        " · " + err.take(120) + " · TAP TO RETRY",
+                    color = colors.error,
+                    urgent = !ui.everLoaded,
+                    modifier = Modifier.clickable {
+                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        viewModel.refreshNow()
+                    },
+                )
+            }
             if (ui.error == null && ui.everLoaded && ui.state.freshness(nowSec) is DataFreshness.Dead) {
                 KohiNoticeBand(
                     text = "SCAN OFFLINE — YIELD AND APR ARE HIDDEN · RESTART DEBANK/RUN.SH",
@@ -197,6 +213,7 @@ fun DbtopScreen(
                 kpis = kpiSummary,
                 moneyDisplay = ui.moneyDisplay,
                 vndRate = ui.spending?.usdVnd ?: 0.0,
+                loaded = ui.everLoaded,
                 onCycleMoney = {
                     haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                     viewModel.cycleMoneyDisplay()
@@ -248,6 +265,20 @@ fun DbtopScreen(
             // HorizontalPager: vuốt trái/phải đi lần lượt 6 trang — POS · SPEND ·
             // WATCH (tokens + gainers gộp) · BUZZ · FOLLOW · PROJECTS (5/10 gộp WATCH,
             // trước là 7 trang với TOKENS/GAINERS riêng).
+            if (!ui.everLoaded) {
+                // Chưa có snapshot (cold start / scan đầu lỗi): đừng render
+                // "NO POSITIONS" + $0.00 như thể ví thật sự rỗng.
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    DashboardEmpty(
+                        if (ui.error != null) "NO SNAPSHOT YET — RETRY ABOVE" else "SCANNING…",
+                    )
+                }
+            } else {
             HorizontalPager(
                 state = pagerState,
                 key = { it },
@@ -340,6 +371,7 @@ fun DbtopScreen(
                         onUnhideAllFollows = viewModel::unhideAllFollows,
                     )
                 }
+            }
             }
 
             // Màn hẹp: detail là BOTTOM SHEET (user đòi 27/8 từ popup giữa màn)

@@ -305,7 +305,9 @@ class DbtopViewModel(
      */
     private fun loadCachedSnapshot() {
         val cachedState = cacheManager.loadSnapshot()
-        if (cachedState != null && cachedState.netWorth > 0) {
+        // ts>0 = đã từng có snapshot. netWorth=0 là ví rỗng thật, vẫn phải hiện
+        // (trước đây điều kiện >0 làm snapshot 0 bị coi như chưa có cache).
+        if (cachedState != null && cachedState.ts > 0) {
             val freshness = cachedState.freshness()
             _ui.update {
                 it.copy(

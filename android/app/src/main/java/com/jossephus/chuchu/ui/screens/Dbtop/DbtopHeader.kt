@@ -37,18 +37,21 @@ import java.util.Locale
 internal fun DbtopTopBar(
     freshness: DataFreshness,
     isRefreshing: Boolean,
+    isLoading: Boolean,
     onRefresh: () -> Unit,
     onClose: () -> Unit,
 ) {
     val colors = ChuColors.current
-    val ageText = when (freshness) {
+    // ts=0 (chưa có snapshot) từng bị coi là OFFLINE 2.5e15 giờ. Chưa tải xong
+    // thì nói SCANNING, không đoán tuổi của một file chưa tồn tại.
+    val ageText = if (isLoading) "SCANNING…" else when (freshness) {
         is DataFreshness.Fresh ->
             if (freshness.ageSeconds < 60) "JUST NOW"
             else "UPDATED ${freshness.ageSeconds / 60}M AGO"
         is DataFreshness.Warning -> "STALE ${freshness.ageSeconds / 60}M AGO"
         is DataFreshness.Dead -> "OFFLINE ${freshness.ageSeconds / 3600}H"
     }
-    val tone = when (freshness) {
+    val tone = if (isLoading) colors.textMuted else when (freshness) {
         is DataFreshness.Fresh -> colors.success
         is DataFreshness.Warning -> colors.warning
         is DataFreshness.Dead -> colors.error
@@ -80,6 +83,7 @@ internal fun DashboardSummary(
     kpis: CashflowKpiSummary,
     moneyDisplay: MoneyDisplay,
     vndRate: Double,
+    loaded: Boolean,
     onCycleMoney: () -> Unit,
 ) {
     val colors = ChuColors.current
@@ -103,7 +107,7 @@ internal fun DashboardSummary(
             ) {
                 MetricCell(
                     label = "NET WORTH",
-                    value = formatMoney(netWorth, moneyDisplay, vndRate),
+                    value = if (loaded) formatMoney(netWorth, moneyDisplay, vndRate) else "—",
                     color = colors.accent,
                     // Tap = xoay vong USD -> VND -> AN (user chot 27/8) —
                     // ap cho ca Overview + tab Spending.
@@ -128,7 +132,7 @@ internal fun DashboardSummary(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                val netApr = kpis.netRunRateApr
+                val netApr = if (loaded) kpis.netRunRateApr else null
                 MetricCell(
                     label = "NET RUN-RATE APR",
                     value = netApr?.let { String.format(Locale.US, "%s%.1f%%", if (it >= 0) "+" else "", it) } ?: "--",
@@ -141,7 +145,7 @@ internal fun DashboardSummary(
                 )
                 MetricCell(
                     label = "GROSS APR",
-                    value = kpis.grossApr?.let { String.format(Locale.US, "%.1f%%", it) } ?: "--",
+                    value = if (loaded) kpis.grossApr?.let { String.format(Locale.US, "%.1f%%", it) } ?: "--" else "--",
                     color = colors.accent,
                     alignEnd = true,
                     modifier = Modifier.weight(1f),
