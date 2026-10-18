@@ -35,7 +35,6 @@ import com.jossephus.chuchu.data.model.dbtop.DbtopState
 import com.jossephus.chuchu.data.model.dbtop.DeFiFormatter
 import com.jossephus.chuchu.data.model.dbtop.OptionDetail
 import com.jossephus.chuchu.data.model.dbtop.HealthRisk
-import com.jossephus.chuchu.data.model.dbtop.RiskEvaluator
 import com.jossephus.chuchu.data.model.dbtop.healthRisk
 import com.jossephus.chuchu.data.model.dbtop.TokenPosition
 import com.jossephus.chuchu.ui.components.ChuCard
@@ -209,9 +208,9 @@ private fun DappPositionRow(
         // HF 1.09 chỉ một mẩu đỏ, 1.20 nửa hàng cam, >=2 phủ xanh. Giữ nguyên
         // ngôn ngữ thị giác này — user chốt 27/8.
         health != null && health > 0 -> {
-            val tier = when {
-                health < RiskEvaluator.HP_BAD -> colors.error
-                health < RiskEvaluator.HP_WARN -> colors.warning
+            val tier = when (risk) {
+                HealthRisk.Critical -> colors.error
+                HealthRisk.Warning -> colors.warning
                 else -> colors.success
             }
             ((health - 1.0).toFloat().coerceIn(0f, 1f)) to tier

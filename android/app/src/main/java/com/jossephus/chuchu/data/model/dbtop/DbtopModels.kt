@@ -364,9 +364,16 @@ enum class HealthRisk { Critical, Warning, Safe }
 
 fun healthRisk(hf: Double?): HealthRisk? = when {
     hf == null || hf <= 0.0 -> null
-    hf < RiskEvaluator.HP_BAD -> HealthRisk.Critical
-    hf < RiskEvaluator.HP_WARN -> HealthRisk.Warning
-    else -> HealthRisk.Safe
+    else -> {
+        // So trên giá trị ĐÃ LÀM TRÒN 2 chữ số như UI hiển thị. HF thật 1.149
+        // từng hiện "1.15x" nhưng bị xếp Critical; 1.1496 phải là Warning.
+        val shown = kotlin.math.round(hf * 100.0) / 100.0
+        when {
+            shown < RiskEvaluator.HP_BAD -> HealthRisk.Critical
+            shown < RiskEvaluator.HP_WARN -> HealthRisk.Warning
+            else -> HealthRisk.Safe
+        }
+    }
 }
 
 // ============================================================================

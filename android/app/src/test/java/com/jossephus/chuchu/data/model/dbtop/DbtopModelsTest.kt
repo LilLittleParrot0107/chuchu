@@ -107,6 +107,8 @@ class DbtopModelsTest {
     fun healthRiskUsesOneThresholdSource() {
         assertEquals(HealthRisk.Critical, healthRisk(1.14))
         assertEquals(HealthRisk.Warning, healthRisk(1.15))
+        assertEquals(HealthRisk.Warning, healthRisk(1.1496)) // hiển thị 1.15x
+        assertEquals(HealthRisk.Critical, healthRisk(1.144))
         assertEquals(HealthRisk.Warning, healthRisk(1.24))
         assertEquals(HealthRisk.Safe, healthRisk(1.25))
         assertEquals(null, healthRisk(null))
