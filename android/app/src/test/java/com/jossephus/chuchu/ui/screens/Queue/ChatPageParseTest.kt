@@ -41,6 +41,17 @@ class ChatPageParseTest {
     }
 
     @Test
+    fun missingOffsetsStillGetUniqueKeys() {
+        val p = ChatPage.parse(
+            """{"ok":true,"pane":"wH:p1","rev":"1.1","messages":[
+                {"role":"user","uuid":"u1","ts":"2026-09-16T05:04:31.123Z","text":"a"},
+                {"role":"assistant","uuid":"u2","ts":"2026-09-16T05:04:32.123Z","text":"b"}
+            ]}""",
+        )
+        assertEquals(2, p.messages.map { it.key }.distinct().size)
+    }
+
+    @Test
     fun endOfFileHasNoCursor() {
         val p = ChatPage.parse("""{"ok":true,"pane":"wH:p1","rev":"1.1","cursor":null,"has_more":false,"messages":[]}""")
         assertNull(p.cursor)

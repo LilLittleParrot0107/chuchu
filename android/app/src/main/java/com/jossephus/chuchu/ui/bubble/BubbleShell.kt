@@ -38,6 +38,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontFamily
+import com.jossephus.chuchu.ui.components.KohiFeedbackBand
+import com.jossephus.chuchu.ui.screens.Queue.QueueFeedback
+import com.jossephus.chuchu.ui.screens.Queue.QueueFeedbackTone
+import com.jossephus.chuchu.ui.screens.Queue.color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -94,10 +98,12 @@ fun BubbleShell(
     var segment by rememberSaveable { mutableStateOf(SEG_CHAT) }
 
     val chatAgent = ui.state.agents.firstOrNull { it.pane == chat.pane }
+    val feedback = ui.feedback
     // Badge trên tab CHAT: số phiên có tin mới (cùng luật chấm "tin mới" của rail/roster).
     val needsYou = ui.state.agents.count { it.chatRev != null && it.chatRev != chatSeen[it.pane] }
     // 1B (duyệt preview 16/10): tên phiên sạch — hết tiền tố "OC |" lặp.
-    val title = chatAgent?.name?.let { cleanSessionName(it) }?.uppercase(Locale.US)?.take(16) ?: "KOHI"
+    val title = chatAgent?.name?.let { cleanSessionName(it) }?.uppercase(Locale.US)
+        ?.takeIf { it.isNotBlank() } ?: "KOHI"
     val titleColor = chatAgent
         ?.let { AgentKind.of(it.agent).sessionColor(it.name) }
         ?: colors.textPrimary
@@ -133,14 +139,17 @@ fun BubbleShell(
         )
         when (segment) {
             SEG_MONEY -> BubbleMoneyPane(Modifier.fillMaxWidth().weight(1f))
-            else -> BubbleChatPane(queueVm, chatSeen, Modifier.fillMaxWidth().weight(1f))
+            else -> BubbleChatPane(queueVm, chatSeen, feedback, Modifier.fillMaxWidth().weight(1f))
         }
     }
 }
 
 /** Cửa sổ có được vào chế độ bubble không. Tách khỏi Compose để unit-test được. */
 internal fun bubbleWindowEligible(screenHeightDp: Int, inMultiWindow: Boolean): Boolean =
-    (inMultiWindow && screenHeightDp in 1..639) || screenHeightDp in 1..479
+    // Chỉ cửa sổ đa nhiệm/freeform mới là bubble. Trước đây "rất thấp" (<=479dp)
+    // cũng đủ, nên xoay điện thoại ngang (cao ~360–450dp, full-screen) biến cả
+    // app thành CHAT+MONEY và giấu HOSTS/DASHBOARD/terminal.
+    inMultiWindow && screenHeightDp in 1..639
 
 private const val SEG_CHAT = "chat"
 private const val SEG_MONEY = "money"
@@ -244,6 +253,7 @@ private fun SegmentCell(label: String, active: Boolean, badge: Int?, onClick: ()
 private fun BubbleChatPane(
     vm: QueueViewModel,
     chatSeen: Map<String, String>,
+    feedback: QueueFeedback?,
     modifier: Modifier = Modifier,
 ) {
     val colors = ChuColors.current
@@ -256,7 +266,16 @@ private fun BubbleChatPane(
     val chatMessages = remember(chat.messages) { collapseAssistantTurns(chat.messages) }
     val listState = rememberLazyListState()
     var prompt by rememberSaveable { mutableStateOf("") }
+    var pendingSend by rememberSaveable { mutableStateOf<String?>(null) }
     var ocSheet by rememberSaveable { mutableStateOf(false) }
+    // Bubble từng nuốt lỗi gửi: prompt bị xoá ngay, feedback chỉ render ở màn
+    // Queue đầy đủ. Giữ text đang gửi và trả lại ô soạn nếu POST lỗi.
+    LaunchedEffect(feedback?.id) {
+        val f = feedback ?: return@LaunchedEffect
+        val pending = pendingSend ?: return@LaunchedEffect
+        if (f.tone == QueueFeedbackTone.Error && prompt.isBlank()) prompt = pending
+        pendingSend = null
+    }
     // Đổi phiên chat (A→B): đóng tấm model + bỏ draft phiên A (tránh gửi nhầm).
     // Đóng chat (pane → null) không xoá — giữ draft cho ô gõ dùng chung.
     var lastChatPane by rememberSaveable { mutableStateOf<String?>(null) }
@@ -302,7 +321,7 @@ private fun BubbleChatPane(
                     // đầy đủ (3B) — bubble ~267dp mà chip nằm trong composer thì ô gõ
                     // bị bóp còn vài dp. Cap 120dp để hàng meta còn chỗ, label dài
                     // ellipsis; model đầy đủ vẫn xem trong OcModelSheet.
-                    modelChip = if (chatAgent?.agent == "opencode") {
+                    modelChip = if (AgentKind.of(chatAgent?.agent) == AgentKind.OPENCODE) {
                         {
                             OcModelChip(
                                 picker = ocPicker,
@@ -321,6 +340,13 @@ private fun BubbleChatPane(
                     orientation = AgentRailOrientation.Horizontal,
                     modifier = Modifier.fillMaxWidth(),
                 )
+                feedback?.let {
+                    KohiFeedbackBand(
+                        text = it.text,
+                        color = it.tone.color(),
+                        onDismiss = { vm.consumeFeedback(it.id) },
+                    )
+                }
                 QueueComposer(
                     value = prompt,
                     onValueChange = { prompt = it },
@@ -329,6 +355,7 @@ private fun BubbleChatPane(
                     onSend = {
                         val text = prompt.trim()
                         if (text.isNotEmpty()) {
+                            pendingSend = text
                             vm.sendChat(text)
                             prompt = ""
                         }

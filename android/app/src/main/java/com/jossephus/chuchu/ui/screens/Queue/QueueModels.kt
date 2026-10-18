@@ -121,7 +121,7 @@ enum class AgentState {
             "working", "busy" -> Working
             "done" -> Done
             "idle" -> Idle
-            "unknown" -> Unknown
+            "unknown", "unsure" -> Unknown
             else -> Other
         }
     }
@@ -200,6 +200,8 @@ data class QueueState(
     val globalActions: List<QueueAction>,
     val agents: List<QueueAgent>,
     val tasks: List<QueueTask>,
+    /** qsrv không đọc được herdr — [agents] rỗng KHÔNG có nghĩa là hết pane. */
+    val agentsError: String? = null,
 ) {
     companion object {
         val Empty = QueueState(
@@ -209,6 +211,7 @@ data class QueueState(
             globalActions = emptyList(),
             agents = emptyList(),
             tasks = emptyList(),
+            agentsError = null,
         )
 
         fun parse(json: String): QueueState = fromObject(JSONObject(json))
@@ -220,6 +223,7 @@ data class QueueState(
                 QueueBanner(QueueTone.from(it.optString("tone")), it.optString("text"))
             },
             globalActions = o.optJSONArray("global_actions").mapObjects(::parseAction),
+            agentsError = o.optStringOrNull("agents_error"),
             agents = o.optJSONArray("agents")
                 .mapObjects(::parseAgent)
                 .filter { it.pane.isNotBlank() }
@@ -320,7 +324,9 @@ data class ChatMessage(
      */
     val paras: List<String> = emptyList(),
 ) {
-    val key: String get() = "$offset:$sub"
+    // /chat cũ/khuyết `off` từng gán offset=-1 cho mọi tin → key trùng và
+    // LazyColumn ném "Key was already used". UUID là duy nhất trong file.
+    val key: String get() = if (offset >= 0) "$offset:$sub" else "u:$uuid:$sub"
     val isTool: Boolean get() = role == "tool"
 }
 

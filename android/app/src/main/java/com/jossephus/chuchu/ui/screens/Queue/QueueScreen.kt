@@ -76,6 +76,7 @@ import com.jossephus.chuchu.ui.components.KohiNoticeBand
 import com.jossephus.chuchu.ui.components.KohiSectionBand
 import com.jossephus.chuchu.ui.components.KohiSelectableRow
 import com.jossephus.chuchu.ui.components.ChuText
+import com.jossephus.chuchu.ui.components.rememberTicking
 import com.jossephus.chuchu.ui.screens.Files.MachineUiState
 import com.jossephus.chuchu.ui.theme.AgentKind
 import com.jossephus.chuchu.ui.theme.CHU_HAIRLINE_ALPHA
@@ -243,9 +244,17 @@ fun QueueScreen(
             }
         }
         val safeName = name.replace(Regex("[/\\\\\u0000]"), "_")
+        // Pane tại lúc chọn file: upload xong sau khi user đổi phiên thì không
+        // được dán path của phiên A vào ô soạn của phiên B.
+        val targetPane = chat.pane
         chatScope.launch {
             val path = onUploadToInbox(safeName, size) { context.contentResolver.openInputStream(uri) }
-            if (path != null) prompt = if (prompt.isBlank()) path else prompt.trimEnd() + " " + path
+            if (path == null) return@launch
+            if (chat.pane == targetPane) {
+                prompt = if (prompt.isBlank()) path else prompt.trimEnd() + " " + path
+            } else {
+                onShowFeedback("Uploaded for another session — path not inserted", QueueFeedbackTone.Warning)
+            }
         }
     }
 
@@ -502,7 +511,7 @@ fun QueueScreen(
                 // 3B: chip ◆ model dời từ ô gõ lên CUỐI HÀNG META — ô gõ màn gập hết bị
                 // bóp. BubbleShell cũng truyền chip qua slot này (18/10) — trước đó nó
                 // còn nhét chip vào composer, đúng lỗi ô gõ bị bóp.
-                val modelChipSlot: (@Composable () -> Unit)? = if (chatAgent?.agent == "opencode") {
+                val modelChipSlot: (@Composable () -> Unit)? = if (AgentKind.of(chatAgent?.agent) == AgentKind.OPENCODE) {
                     { OcModelChip(picker = ocPicker, onClick = { ocSheet = true; onLoadOcModels() }) }
                 } else null
                 if (wide && railVisible) {
@@ -850,7 +859,10 @@ internal fun ChatThreadView(
      *  trong ô gõ — màn gập hết bị bóp. null = không chip (agent không phải opencode). */
     modelChip: (@Composable () -> Unit)? = null,
     modifier: Modifier = Modifier,
-) {    val colors = ChuColors.current
+) {
+    val colors = ChuColors.current
+    // Tuổi chat phải nhích theo đồng hồ, không đóng băng ở lúc compose.
+    val now by rememberTicking(30_000L)
     Column(modifier = modifier) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
@@ -868,8 +880,18 @@ internal fun ChatThreadView(
             ChuText(
                 buildString {
                     append(chatAgent?.label?.lowercase() ?: "…")
-                    chatAge(chat.updatedAt).takeIf { it.isNotEmpty() }?.let { append(" · $it") }
-                    if (chat.cwd.isNotBlank()) append(" · ${chat.cwd.replace("/home/a", "~")}")
+                    chatAge(chat.updatedAt, now).takeIf { it.isNotEmpty() }?.let { append(" · $it") }
+                    // Dùng home server trả về, không hardcode /home/a: path
+                    // /home/agent/... từng bị biến thành "~gent/...".
+                    if (chat.cwd.isNotBlank()) {
+                        val home = chat.home.trimEnd('/')
+                        val shortCwd = if (home.isNotBlank() && chat.cwd.startsWith(home)) {
+                            "~" + chat.cwd.removePrefix(home)
+                        } else {
+                            chat.cwd
+                        }
+                        append(" · $shortCwd")
+                    }
                 },
                 style = ChuTypography.current.labelSmall,
                 color = colors.textMuted,
@@ -927,9 +949,18 @@ internal fun OcModelChip(
     val colors = ChuColors.current
     val cur = picker?.session?.model
     val label = when {
-        cur != null ->
-            "◆ " + cur.id.take(14) +
-                (cur.variant?.takeIf { it.isNotBlank() }?.let { "#" + it.take(5) } ?: "")
+        cur != null -> {
+            // Tên hiển thị từ catalog thay vì cắt 14 ký tự id (mọi model
+            // claude-sonnet… đều thành "claude-sonnet-"). Variant đứng trước
+            // để chip hẹp không nuốt mất #max.
+            val display = picker?.models
+                ?.firstOrNull { it.id == cur.id && it.providerID == cur.providerID }
+                ?.name
+                ?.takeIf { it.isNotBlank() }
+                ?: cur.id
+            val variant = cur.variant?.takeIf { it.isNotBlank() }?.let { "#$it " } ?: ""
+            "◆ $variant$display"
+        }
         picker?.loading == true -> "◆ …"
         else -> "◆ model"
     }

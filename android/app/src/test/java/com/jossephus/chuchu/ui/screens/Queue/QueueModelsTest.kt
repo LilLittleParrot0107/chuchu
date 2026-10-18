@@ -311,6 +311,15 @@ class QueueModelsTest {
     }
 
     @Test
+    fun `agents_error duoc giu lai de khong huy alert khi herdr loi`() {
+        val s = QueueState.parse(
+            """{"rev":"1","agents":[],"agents_error":"herdr khong tra loi trong 3 giay"}"""
+        )
+        assertEquals("herdr khong tra loi trong 3 giay", s.agentsError)
+        assertTrue(s.agents.isEmpty())
+    }
+
+    @Test
     fun `chat send key khoa theo pane`() {
         assertEquals("chat-send:w1:p1", QueueOperationKey.chatSend("w1:p1"))
     }

@@ -5,8 +5,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Luật cửa sổ vào BubbleShell (12/10): đa nhiệm + thấp = bubble; cửa sổ rất thấp
- * luôn bubble dù không đa nhiệm. Tách khỏi Compose để kiểm được bằng JVM thuần.
+ * Luật cửa sổ vào BubbleShell: chỉ đa nhiệm/freeform + thấp mới là bubble.
+ * Full-screen thấp (điện thoại xoay ngang) vẫn phải giữ UI đầy đủ.
  */
 class BubbleShellTest {
 
@@ -21,8 +21,9 @@ class BubbleShellTest {
     }
 
     @Test
-    fun `cua so rat thap luon la bubble`() {
-        assertTrue(bubbleWindowEligible(screenHeightDp = 460, inMultiWindow = false))
+    fun `dien thoai xoay ngang full-screen khong phai bubble`() {
+        assertFalse(bubbleWindowEligible(screenHeightDp = 460, inMultiWindow = false))
+        assertFalse(bubbleWindowEligible(screenHeightDp = 360, inMultiWindow = false))
     }
 
     @Test

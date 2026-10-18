@@ -10,6 +10,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import com.jossephus.chuchu.ui.screens.Files.MachineUiState
+import com.jossephus.chuchu.ui.theme.AgentKind
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -374,7 +375,7 @@ class QueueViewModel(
         syncChatPolling()
         syncBlockedPolling()
         // Pane opencode: nạp model hiện tại cho chip ◆ (nền, im lặng — lỗi để picker lo).
-        if (_ui.value.state.agents.firstOrNull { it.pane == pane }?.agent == "opencode") {
+        if (AgentKind.of(_ui.value.state.agents.firstOrNull { it.pane == pane }?.agent) == AgentKind.OPENCODE) {
             loadOcModels()
         }
     }
@@ -737,7 +738,15 @@ class QueueViewModel(
                 persistAuthRecovery(c)
                 val name = agent?.name?.takeIf { it.isNotBlank() } ?: pane
                 when (r) {
-                    is QueueClient.Act.Ok -> postFeedback("", "Sent to $name", QueueFeedbackTone.Success)
+                    is QueueClient.Act.Ok -> {
+                        postFeedback("", "Sent to $name", QueueFeedbackTone.Success)
+                        // Đừng đợi long-poll 25s mới thấy tin mình vừa gửi. Đá
+                        // một vòng chat ngay; long-poll cũ tự bỏ vì seq đã nhích.
+                        if (_chat.value.pane == pane) {
+                            chatRefreshSeq.incrementAndGet()
+                            launch { chatRefreshOnce(pane, waitSec = 0) }
+                        }
+                    }
                     is QueueClient.Act.Conflict -> postFeedback("", "Send again", QueueFeedbackTone.Warning)
                     is QueueClient.Act.Failed -> {
                         _ui.update { it.copy(needsSetup = r.needsAuth) }

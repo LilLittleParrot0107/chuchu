@@ -11,7 +11,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -35,6 +37,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -95,17 +98,25 @@ internal fun QueueChatView(
     val bodyStyle = type.body.copy(fontSize = textSize, lineHeight = TextUnit.Unspecified)
 
     // Tự trôi xuống đáy: lần tải đầu, và khi có tin mới mà người dùng đang ở đáy.
+    // canScrollForward=false là định nghĩa chính xác của "đang ở đáy"; trước đây
+    // chỉ so index nên đứng giữa tin cuối vẫn bị coi là pinned và bị kéo xuống
+    // mỗi khi agent stream thêm chữ.
     var pinnedToBottom by remember { mutableStateOf(true) }
     LaunchedEffect(listState) {
-        snapshotFlow { listState.layoutInfo }.collect { info ->
-            val last = info.visibleItemsInfo.lastOrNull()?.index ?: -1
-            pinnedToBottom = info.totalItemsCount == 0 || last >= info.totalItemsCount - 2
+        snapshotFlow { listState.canScrollForward }.collect { canScroll ->
+            pinnedToBottom = !canScroll
         }
     }
     // Bản gộp giữ key ĐẦU của lượt để không đổi chỗ, nên phải theo cả ts (đổi mỗi
     // đoạn mới về) thì tin mới của đúng lượt cuối vẫn kéo được đáy đang ghim.
     // Thẻ NEEDS YOU là item cuối (sau tin cuối) — hiện ra cũng kéo đáy như một tin mới.
     val lastIndex = messages.size + (if (blocked != null) 1 else 0)
+    // Bàn phím mở làm viewport co lại: nếu trước đó đang ở đáy thì giữ đáy,
+    // đừng để tin mới nhất trượt ra sau bàn phím.
+    val imeBottom = WindowInsets.ime.getBottom(LocalDensity.current)
+    LaunchedEffect(imeBottom) {
+        if (pinnedToBottom && lastIndex > 0) listState.scrollToItem(lastIndex)
+    }
     // Mở chat (25/9 user: "xuống đoạn chat cuối cùng t nhắn"): neo vào tin CỦA ANH gửi
     // cuối cùng thay vì đáy tuyệt đối — đáy là đuôi agent đang chạy, không phải chỗ cần
     // đọc. Nhớ pane: mở hội thoại khác thì neo lại từ đầu; đóng mở lại cũng neo lại vì
@@ -115,9 +126,15 @@ internal fun QueueChatView(
         if (lastIndex <= 0) return@LaunchedEffect
         if (anchoredPane != chat.pane) {
             anchoredPane = chat.pane
-            val idx = lastUserMessageIndex(messages)
-            // +1 vì LazyColumn chèn item 0 là nút "load older"; không có tin của anh thì giữ đáy.
-            listState.scrollToItem(if (idx >= 0) idx + 1 else lastIndex)
+            if (blocked != null) {
+                // Có câu hỏi đang chờ: mở thẳng tới thẻ NEEDS YOU, không neo
+                // vào tin cuối của anh rồi để câu hỏi nằm dưới đáy.
+                listState.scrollToItem(lastIndex)
+            } else {
+                val idx = lastUserMessageIndex(messages)
+                // +1 vì LazyColumn chèn item 0 là nút "load older"; không có tin của anh thì giữ đáy.
+                listState.scrollToItem(if (idx >= 0) idx + 1 else lastIndex)
+            }
             return@LaunchedEffect
         }
         if (pinnedToBottom) listState.scrollToItem(lastIndex)
@@ -125,8 +142,10 @@ internal fun QueueChatView(
 
     Box(modifier = modifier.fillMaxSize()) {
         when {
-            chat.loading && messages.isEmpty() -> Center("LOADING CHAT…")
-            chat.error != null && messages.isEmpty() -> Center("▌ ${chat.error}")
+            // NEEDS YOU độc lập với transcript: /blocked có thể về trước /chat,
+            // hoặc /chat lỗi. Trước đây thẻ câu hỏi bị loading/error che mất.
+            blocked == null && chat.loading && messages.isEmpty() -> Center("LOADING CHAT…")
+            blocked == null && chat.error != null && messages.isEmpty() -> Center("▌ ${chat.error}")
             messages.isEmpty() && blocked == null -> Center("no messages yet")
             else -> LazyColumn(
                 state = listState,

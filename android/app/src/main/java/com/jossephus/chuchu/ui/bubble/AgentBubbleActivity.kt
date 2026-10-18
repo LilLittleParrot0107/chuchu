@@ -1,7 +1,9 @@
 package com.jossephus.chuchu.ui.bubble
 
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -14,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.jossephus.chuchu.MainActivity
@@ -24,6 +27,7 @@ import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTheme
 import com.jossephus.chuchu.ui.theme.GhosttyThemeRegistry
 import com.jossephus.chuchu.ui.theme.resolveActiveThemeName
+import kotlinx.coroutines.launch
 
 /**
  * Cửa sổ bubble gắn thông báo (BubbleMetadata → activity này): chỉ dựng
@@ -37,10 +41,26 @@ class AgentBubbleActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Compose IME insets đáng tin từ API 30; Android 10 (minSdk 24) với
+        // adjustNothing sẽ để bàn phím che composer. Fallback resize cho máy cũ.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+        }
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.dark(0x00000000),
             navigationBarStyle = SystemBarStyle.dark(0x00000000),
         )
+        // Cùng privacy flag với MainActivity: bubble từng là lỗ hổng screenshot
+        // khi user bật "hide screen contents".
+        lifecycleScope.launch {
+            SettingsRepository.getInstance(this@AgentBubbleActivity).hideScreenContents.collect { hide ->
+                if (hide) {
+                    window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                } else {
+                    window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                }
+            }
+        }
         val pane = intent?.getStringExtra(AgentNotifier.EXTRA_PANE)?.trim()?.ifEmpty { null }
         val queueVm = ViewModelProvider(this, QueueViewModel.factory(application))
             .get(QueueViewModel::class.java)
