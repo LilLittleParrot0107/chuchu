@@ -12,6 +12,7 @@ class FlowModelsTest {
         "month_in":8719.42,"month_out":9434.55,"month_net":-715.13,"month_count":98,
         "by_day":{"2026-09-19":{"in":0.0,"out":2005.0},"2026-09-20":{"in":2875.18,"out":983.0}},
         "days":{"2026-09-20":[{"ts":1789916314,"token":"USDC","amount":359.0},{"ts":1789885000,"token":"USDC","amount":-240.0},{"ts":1789916213,"token":"USDG","amount":269.25}]},
+        "by_month":{"2026-09":{"in":8719.42,"out":9434.55,"net":-715.13,"count":98}},
         "not_counted_month":{"spending":800.04,"protocol":265525.2,"swap":0.0},"backfill":{"from_ts":1769176193,"done":false}}"""
 
     @Test
@@ -23,6 +24,10 @@ class FlowModelsTest {
         assertEquals(2875.18, f.byDay.getValue("2026-09-20").inUsd, 1e-9)
         assertEquals(2005.0, f.byDay.getValue("2026-09-19").out, 1e-9)
         assertEquals(3, f.days.getValue("2026-09-20").size)
+        // by_month (18/10) — tổng đủ tháng, không phụ thuộc cửa sổ days.
+        assertEquals(-715.13, f.byMonth.getValue("2026-09").net, 1e-9)
+        assertEquals(8719.42, f.byMonth.getValue("2026-09").inUsd, 1e-9)
+        assertEquals(98, f.byMonth.getValue("2026-09").count)
     }
 
     @Test

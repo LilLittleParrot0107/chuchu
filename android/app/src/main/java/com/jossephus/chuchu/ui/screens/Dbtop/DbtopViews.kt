@@ -246,13 +246,17 @@ internal fun SpendingView(
             .chunked(4)
     }
     val yearTotal = remember(monthRows) { monthRows.sumOf { row -> row.sumOf { it.value } } }
-    // 2/10 (user): ô tháng nào cũng có dòng flow ròng — gộp từ transfers (days) theo
-    // tiền tố tháng, không cần pipeline. Tháng không flow thì không hiện dòng.
+    // 2/10 (user): ô tháng nào cũng có dòng flow ròng. Tháng không flow thì không hiện.
+    // 18/10: by_month (flow-scan cộng ĐỦ THÁNG từ sổ) là nguồn chính — trước đây
+    // cộng days 45 ngày, tháng cũ thiếu ngày đầu tháng và tự "nhảy số" khi cửa sổ
+    // trượt (Sep 3 rơi đúng hôm nay, lệch $779.97). qsrv cũ → fallback days.
     val flowByMonth = remember(flow) {
         val acc = mutableMapOf<String, Double>()
+        flow?.byMonth?.forEach { (month, m) -> acc[month] = m.net }
         for ((day, txs) in flow?.days ?: emptyMap()) {
             if (day.length < 7) continue
-            acc[day.substring(0, 7)] = (acc[day.substring(0, 7)] ?: 0.0) + txs.sumOf { it.amount }
+            val month = day.substring(0, 7)
+            if (month !in acc) acc[month] = txs.sumOf { it.amount }
         }
         acc
     }
