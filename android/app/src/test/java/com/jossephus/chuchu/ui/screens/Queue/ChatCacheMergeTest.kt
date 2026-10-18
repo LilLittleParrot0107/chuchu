@@ -10,14 +10,15 @@ class ChatCacheMergeTest {
         offset = offset, sub = sub,
     )
 
-    private fun page(rev: String, offsets: List<Long>, hasMore: Boolean = false, cursor: Long? = null) =
+    private fun page(rev: String, offsets: List<Long>, hasMore: Boolean = false, cursor: Long? = null,
+                     file: String = "", name: String = "a") =
         ChatPage(
-            pane = "w1:p1", name = "a", cwd = "", home = "", file = "", size = 0L,
+            pane = "w1:p1", name = name, cwd = "", home = "", file = file, size = 0L,
             rev = rev, messages = offsets.map { msg(it) }, cursor = cursor, hasMore = hasMore,
         )
 
-    private fun state(rev: String, offsets: List<Long>) = ChatUiState(
-        pane = "w1:p1", name = "a", rev = rev, messages = offsets.map { msg(it) },
+    private fun state(rev: String, offsets: List<Long>, file: String = "") = ChatUiState(
+        pane = "w1:p1", name = "a", rev = rev, file = file, messages = offsets.map { msg(it) },
     )
 
     @Test fun `withFreshPage gop tiep khong trung giu thu tu`() {
@@ -39,6 +40,25 @@ class ChatCacheMergeTest {
         val out = state("200.20", listOf(10, 11, 12)).withFreshPage(page("100.10", listOf(9)))
         assertEquals(listOf(10L, 11L, 12L), out.messages.map { it.offset })
         assertEquals("200.20", out.rev)
+    }
+
+    @Test fun `doi nguon transcript thi thay toan bo du rev nho hon`() {
+        // /clear sang session moi: rev = so tin.max time nen phien moi it tin hon
+        // van phai duoc nhan, khong duoc so nhu rev cu.
+        val out = state("148.100", listOf(10, 11), file = "opencode:ses_a")
+            .withFreshPage(page("3.200", listOf(1, 2), hasMore = true, cursor = 1L, file = "opencode:ses_b"))
+        assertEquals(listOf(1L, 2L), out.messages.map { it.offset })
+        assertEquals("3.200", out.rev)
+        assertEquals("opencode:ses_b", out.file)
+        assertTrue(out.hasMore)
+        assertEquals(1L, out.cursor)
+    }
+
+    @Test fun `cung nguon van ghep binh thuong`() {
+        val out = state("100.10", listOf(10, 11), file = "opencode:ses_a")
+            .withFreshPage(page("200.20", listOf(11, 12), file = "opencode:ses_a"))
+        assertEquals(listOf(10L, 11L, 12L), out.messages.map { it.offset })
+        assertEquals("opencode:ses_a", out.file)
     }
 
     @Test fun `rev bang nhau thi bo`() {

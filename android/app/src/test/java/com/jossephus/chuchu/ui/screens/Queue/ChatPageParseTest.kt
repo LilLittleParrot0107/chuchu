@@ -24,6 +24,7 @@ class ChatPageParseTest {
     fun parsesRolesResultsAndPaging() {
         val p = ChatPage.parse(body)
         assertEquals("director", p.name)
+        assertEquals("abc.jsonl", p.file)
         assertEquals("1789.12345", p.rev)
         assertEquals(9000L, p.cursor)
         assertTrue(p.hasMore)

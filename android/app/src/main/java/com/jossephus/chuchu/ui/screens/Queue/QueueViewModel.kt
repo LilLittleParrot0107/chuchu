@@ -35,6 +35,13 @@ data class ChatUiState(
     val pane: String? = null,
     val name: String = "",
     val cwd: String = "",
+    /**
+     * Danh tinh NGUON transcript do qsrv tra (`file`): `opencode:<sessionID>`,
+     * đường dẫn .jsonl của Claude/Codex, `agy:<conversationID>`. Dùng để phát hiện
+     * pane đã đổi phiên (/clear, chọn session khác) — rev của hai phiên khác nhau
+     * không so sánh được, và offset/seq cũng không được ghép qua nguồn.
+     */
+    val file: String = "",
     val home: String = "",
     val size: Long = 0L,
     val rev: String = "",
@@ -348,6 +355,10 @@ class QueueViewModel(
             blockedJob?.cancel(); blockedJob = null
             // Vô hiệu trả lời đang bay của pane cũ (singleflight).
             chatRefreshSeq.incrementAndGet()
+            // Model picker thuộc pane cũ — bỏ đi kẻo chip/sheet hiện model của
+            // phiên trước trong lúc nạp pane mới (và chặn response cũ ghi đè).
+            _ocPicker.value = null
+            ocModelsSeq.incrementAndGet()
             val cached = chatSnapshots.forPane(pane)
             val agent = _ui.value.state.agents.firstOrNull { it.pane == pane }
             val name = agent?.name?.takeIf { it.isNotBlank() }
@@ -390,23 +401,34 @@ class QueueViewModel(
     private val _ocPicker = MutableStateFlow<OcPickerState?>(null)
     val ocPicker: StateFlow<OcPickerState?> = _ocPicker.asStateFlow()
 
+    /**
+     * Generation cho request model: đổi pane / gọi lại là tăng, response cũ
+     * không được ghi đè state của pane mới (trước đây chỉ cần mạng chậm là
+     * sheet của phiên B hiện model phiên A).
+     */
+    private val ocModelsSeq = java.util.concurrent.atomic.AtomicInteger()
+
     /** Nạp/refresh danh sách model cho pane đang chat (mở picker hoặc mới vào chat). */
     fun loadOcModels() {
         val pane = _chat.value.pane ?: return
+        val seq = ocModelsSeq.incrementAndGet()
         _ocPicker.value = (_ocPicker.value ?: OcPickerState()).copy(loading = true, error = null)
         viewModelScope.launch(Dispatchers.IO) {
             val c = client()
             if (c == null) {
-                _ocPicker.value = OcPickerState(error = "No Queue URL in Settings")
+                if (ocModelsSeq.get() == seq && _chat.value.pane == pane) {
+                    _ocPicker.value = OcPickerState(error = "No Queue URL in Settings")
+                }
                 return@launch
             }
-            when (val r = c.ocModels(pane)) {
-                is QueueClient.OcModelsFetch.Ok ->
-                    _ocPicker.value = OcPickerState(session = r.session, models = r.models)
-                is QueueClient.OcModelsFetch.Failed ->
-                    _ocPicker.value = OcPickerState(error = r.message)
-            }
+            val r = c.ocModels(pane)
             persistAuthRecovery(c)
+            // Pane đã đổi (hoặc có lần nạp mới hơn) — bỏ response này.
+            if (ocModelsSeq.get() != seq || _chat.value.pane != pane) return@launch
+            _ocPicker.value = when (r) {
+                is QueueClient.OcModelsFetch.Ok -> OcPickerState(session = r.session, models = r.models)
+                is QueueClient.OcModelsFetch.Failed -> OcPickerState(error = r.message)
+            }
         }
     }
 
@@ -421,8 +443,12 @@ class QueueViewModel(
             when (val r = c.ocSwitchModel(pane, providerID, id, variant)) {
                 is QueueClient.Act.Ok -> {
                     // Cập nhật tại chỗ để chip đổi ngay, khỏi chờ vòng poll kế.
-                    _ocPicker.update { st ->
-                        st?.copy(session = st.session?.copy(model = QueueClient.OcModelRef(providerID, id, variant)))
+                    // Chỉ khi vẫn đang mở đúng pane — đổi pane trong lúc chờ thì
+                    // state picker đã thuộc phiên khác, không được ghi model cũ vào.
+                    if (_chat.value.pane == pane) {
+                        _ocPicker.update { st ->
+                            st?.copy(session = st.session?.copy(model = QueueClient.OcModelRef(providerID, id, variant)))
+                        }
                     }
                     postFeedback(
                         "model → $id${variant?.takeIf { it.isNotBlank() }?.let { "#$it" } ?: ""}",
@@ -588,16 +614,19 @@ class QueueViewModel(
         if (_chat.value.pane != pane) return false
         // Rev đã nhích trong lúc bay (lần refresh khác vào trước): trang này tính
         // trên since cũ — chỉ ghép khi rev của nó vẫn mới hơn khung đang xem,
-        // nếu không là lùi lịch sử (mất tin).
-        val curRev = _chat.value.rev
+        // nếu không là lùi lịch sử (mất tin). Ngoại lệ: pane đổi NGUỒN transcript
+        // (/clear, chọn session khác) — rev hai phiên không so sánh được, phải nhận.
+        val cur = _chat.value
         return when (val r = result) {
             is QueueClient.ChatFetch.Fresh -> {
                 val page = r.page
-                if (!isChatRevNewer(curRev, page.rev)) {
+                val sourceChanged = cur.file.isNotBlank() && page.file.isNotBlank()
+                    && page.file != cur.file
+                if (!sourceChanged && !isChatRevNewer(cur.rev, page.rev)) {
                     _chat.update { it.copy(loading = false, error = null) }
                     return false
                 }
-                _chat.update { cur -> cur.withFreshPage(page) }
+                _chat.update { c -> c.withFreshPage(page) }
                 // Trang mới về là cất snapshot ngay — lần mở sau hiện liền, rớt mạng vẫn còn.
                 // Nhánh Failed/Unchanged bên dưới cố tình KHÔNG đụng snapshot.
                 chatSnapshots.store(pane, _chat.value)
@@ -627,8 +656,21 @@ class QueueViewModel(
             _chat.update { st ->
                 when (result) {
                     is QueueClient.ChatFetch.Fresh -> {
-                        val older = result.page.messages.filter { m -> st.messages.none { it.key == m.key } }
-                        st.copy(messages = older + st.messages, cursor = result.page.cursor, hasMore = result.page.hasMore, loadingOlder = false)
+                        val page = result.page
+                        // Pane đổi nguồn trong lúc xin trang cũ -> trang này của
+                        // session khác, bỏ (lần refresh kế sẽ nạp nguồn mới).
+                        if (st.file.isNotBlank() && page.file.isNotBlank() && page.file != st.file) {
+                            st.copy(loadingOlder = false)
+                        } else {
+                            val older = page.messages.filter { m -> st.messages.none { it.key == m.key } }
+                            st.copy(
+                                messages = older + st.messages,
+                                file = page.file.ifBlank { st.file },
+                                cursor = page.cursor,
+                                hasMore = page.hasMore,
+                                loadingOlder = false,
+                            )
+                        }
                     }
                     else -> st.copy(loadingOlder = false, error = (result as? QueueClient.ChatFetch.Failed)?.message ?: st.error)
                 }
@@ -1065,6 +1107,8 @@ class QueueViewModel(
         blockedJob?.cancel(); blockedJob = null
         chatSnapshots.clear()
         _chat.value = ChatUiState()
+        _ocPicker.value = null
+        ocModelsSeq.incrementAndGet()
         _chatSeen.value = emptyMap()
         settings.clearChatSeenRevs()
         // Summary ambient phải reset cùng state: nếu không, pill/FAB vẫn hiển thị

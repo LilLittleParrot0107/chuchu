@@ -218,7 +218,19 @@ fun QueueScreen(
             },
         )
     }
-    var prompt by remember { mutableStateOf("") }
+    var prompt by rememberSaveable { mutableStateOf("") }
+    // Đổi phiên chat (A→B): đóng tấm model và bỏ draft của phiên A — trước đây
+    // chữ đang gõ dở theo sang phiên B và bấm SEND là gửi nhầm người nhận. Đóng
+    // chat (pane → null) KHÔNG xoá để draft dùng chung với ô gõ bảng VIỆC.
+    var lastChatPane by rememberSaveable { mutableStateOf<String?>(null) }
+    LaunchedEffect(chat.pane) {
+        val next = chat.pane
+        if (lastChatPane != null && next != null && lastChatPane != next) {
+            ocSheet = false
+            prompt = ""
+        }
+        lastChatPane = next
+    }
     // ⊕ trong chat: chọn file → tải lên ~/inbox qua dufs → dán đường dẫn vào ô gõ (user 16/9).
     val attachLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult

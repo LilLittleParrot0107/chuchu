@@ -70,6 +70,28 @@ fun isChatRevNewer(currentRev: String, freshRev: String): Boolean {
  * (cursor là mốc "trang cũ hơn", trang fresh long-poll không mang mốc đó).
  */
 fun ChatUiState.withFreshPage(page: ChatPage): ChatUiState {
+    val now = System.currentTimeMillis()
+    // Pane đổi nguồn (/clear sang session khác, chọn session khác trong TUI): rev
+    // của hai phiên không so sánh được với nhau (opencode rev = số tin.max time —
+    // phiên mới ít tin hơn sẽ bị isChatRevNewer coi là cũ), và offset/seq cũng
+    // thuộc nguồn khác. Thay TOÀN BỘ, không ghép.
+    val sourceChanged = file.isNotBlank() && page.file.isNotBlank() && page.file != file
+    if (sourceChanged) {
+        return copy(
+            name = page.name.ifBlank { name },
+            cwd = page.cwd,
+            home = page.home.ifBlank { home },
+            size = page.size,
+            file = page.file,
+            rev = page.rev,
+            messages = page.messages,
+            hasMore = page.hasMore,
+            cursor = page.cursor,
+            loading = false,
+            error = null,
+            updatedAt = now,
+        )
+    }
     // Trả lời về trễ (long-poll cũ xả sau khi trang mới đã vào) mà đè rev cũ lên
     // là mất tin — rev không mới hơn thì giữ nguyên khung đang xem.
     if (!isChatRevNewer(rev, page.rev)) return copy(loading = false, error = null)
@@ -82,13 +104,14 @@ fun ChatUiState.withFreshPage(page: ChatPage): ChatUiState {
         cwd = page.cwd,
         home = page.home.ifBlank { home },
         size = page.size,
+        file = page.file.ifBlank { file },
         rev = page.rev,
         messages = kept + page.messages,
         hasMore = hasMore,
         cursor = cursor,
         loading = false,
         error = null,
-        updatedAt = System.currentTimeMillis(),
+        updatedAt = now,
     )
 }
 

@@ -257,14 +257,30 @@ private fun BubbleChatPane(
     val listState = rememberLazyListState()
     var prompt by rememberSaveable { mutableStateOf("") }
     var ocSheet by rememberSaveable { mutableStateOf(false) }
+    // Đổi phiên chat (A→B): đóng tấm model + bỏ draft phiên A (tránh gửi nhầm).
+    // Đóng chat (pane → null) không xoá — giữ draft cho ô gõ dùng chung.
+    var lastChatPane by rememberSaveable { mutableStateOf<String?>(null) }
+    LaunchedEffect(chat.pane) {
+        val next = chat.pane
+        if (lastChatPane != null && next != null && lastChatPane != next) {
+            ocSheet = false
+            prompt = ""
+        }
+        lastChatPane = next
+    }
     val composerFocus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
 
-    // Bubble mở vào thẳng một phiên: ưu tiên phiên CÓ tin mới, không thì phiên đầu.
+    // Bubble mở vào thẳng một phiên: ưu tiên phiên CÓ tin mới, rồi phiên CÓ
+    // transcript, cuối cùng mới tới phiên đầu (pane không có transcript thì
+    // mở ra cũng chỉ thấy lỗi).
     LaunchedEffect(chat.pane, agents.size) {
         if (chat.pane == null && agents.isNotEmpty()) {
-            val busy = agents.firstOrNull { it.chatRev != null && it.chatRev != chatSeen[it.pane] }
-            vm.openChat((busy ?: agents.first()).pane)
+            val withTranscript = agents.filter { it.chatRev != null }
+            val target = withTranscript.firstOrNull { it.chatRev != chatSeen[it.pane] }
+                ?: withTranscript.firstOrNull()
+                ?: agents.first()
+            vm.openChat(target.pane)
         }
     }
 
