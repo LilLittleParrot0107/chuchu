@@ -1,10 +1,17 @@
 package com.jossephus.chuchu.ui.screens.Settings
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings as AndroidSettings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import com.jossephus.chuchu.ui.components.KohiBackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -296,6 +303,21 @@ private fun GeneralSettings(
     var batteryExempt by remember { mutableStateOf(isIgnoringBatteryOptimizations(context)) }
     var alarmsOk by remember { mutableStateOf(canScheduleExactAlarms(context)) }
     var bubblesOn by remember { mutableStateOf(AgentNotifier.bubblesAllowed(context)) }
+    // Android 13+: bật watch mà chưa cấp POST_NOTIFICATIONS thì AgentWatch.start()
+    // return im lặng. Xin quyền ngay tại công tắc, và chỉ bật khi được cấp.
+    val notifPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted -> onAgentAlertsEnabledChanged(granted) }
+    val toggleAlerts: (Boolean) -> Unit = { enabled ->
+        val needsPermission = Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        if (enabled && needsPermission) {
+            notifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            onAgentAlertsEnabledChanged(enabled)
+        }
+    }
     LifecycleResumeEffect(Unit) {
         batteryExempt = isIgnoringBatteryOptimizations(context)
         alarmsOk = canScheduleExactAlarms(context)
@@ -388,7 +410,7 @@ private fun GeneralSettings(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         ChuText("watch in background", style = typography.label)
-        ChuSwitch(checked = agentAlertsEnabled, onCheckedChange = onAgentAlertsEnabledChanged)
+        ChuSwitch(checked = agentAlertsEnabled, onCheckedChange = toggleAlerts)
     }
     Spacer(modifier = Modifier.height(4.dp))
     ChuText(
@@ -396,6 +418,15 @@ private fun GeneralSettings(
         style = typography.bodySmall,
         color = colors.textMuted,
     )
+    if (agentAlertsEnabled && !NotificationManagerCompat.from(context).areNotificationsEnabled()) {
+        Spacer(modifier = Modifier.height(6.dp))
+        ChuText(
+            "notifications are blocked — tap to open system settings",
+            style = typography.bodySmall,
+            color = colors.warning,
+            modifier = Modifier.clickable { openNotificationSettings(context) },
+        )
+    }
     // 13/10 (user: "thông báo đã xong chỉ đến khi vào app"): OriginOS/doze bóp mạng nền khi
     // ngủ sâu → vòng trực 25s treo, alert nổ trễ lúc mở app. Miễn tối ưu pin = app được dùng
     // mạng trong doze → thông báo nổ đúng lúc agent xong, không phải lúc cầm máy lên.
@@ -532,6 +563,13 @@ private fun StartTabPills(
 private fun isIgnoringBatteryOptimizations(context: Context): Boolean {
     val pm = context.getSystemService(PowerManager::class.java) ?: return true
     return pm.isIgnoringBatteryOptimizations(context.packageName)
+}
+
+/** Mở màn notification settings của app khi user chặn quyền/thông báo. */
+private fun openNotificationSettings(context: Context) {
+    val intent = Intent(AndroidSettings.ACTION_APP_NOTIFICATION_SETTINGS)
+        .putExtra(AndroidSettings.EXTRA_APP_PACKAGE, context.packageName)
+    runCatching { context.startActivity(intent) }
 }
 
 /** Mở dialog hệ thống xin miễn tối ưu pin cho kohi (app sideload, không qua Play). */

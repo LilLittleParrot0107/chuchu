@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -147,12 +148,13 @@ internal fun QueueChatView(
             blocked == null && chat.loading && messages.isEmpty() -> Center("LOADING CHAT…")
             blocked == null && chat.error != null && messages.isEmpty() -> Center("▌ ${chat.error}")
             messages.isEmpty() && blocked == null -> Center("no messages yet")
-            else -> LazyColumn(
-                state = listState,
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
-            ) {
+            else -> SelectionContainer {
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
                 item(key = "older") {
                     Box(Modifier.fillMaxWidth().padding(vertical = 2.dp), contentAlignment = Alignment.Center) {
                         when {
@@ -185,6 +187,7 @@ internal fun QueueChatView(
                         onAnswer = onAnswerBlocked,
                         onSubmit = onSubmitBlocked,
                     )
+                }
                 }
             }
         }

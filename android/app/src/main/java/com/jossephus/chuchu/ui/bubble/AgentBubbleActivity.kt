@@ -23,6 +23,8 @@ import com.jossephus.chuchu.MainActivity
 import com.jossephus.chuchu.data.repository.SettingsRepository
 import com.jossephus.chuchu.service.agents.AgentNotifier
 import com.jossephus.chuchu.ui.screens.Queue.QueueViewModel
+import com.jossephus.chuchu.ui.security.VerificationResult
+import com.jossephus.chuchu.ui.security.requireUserVerification
 import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTheme
 import com.jossephus.chuchu.ui.theme.GhosttyThemeRegistry
@@ -62,6 +64,26 @@ class AgentBubbleActivity : FragmentActivity() {
             }
         }
         val pane = intent?.getStringExtra(AgentNotifier.EXTRA_PANE)?.trim()?.ifEmpty { null }
+        val appLock = SettingsRepository.getInstance(this).appLockEnabled.value
+        if (appLock) {
+            // Bubble là surface đọc/trả lời đầy đủ; không được bypass app lock.
+            requireUserVerification(
+                context = this,
+                title = "Unlock kohi",
+                subtitle = "Authenticate to open this conversation",
+            ) { result ->
+                if (result == VerificationResult.Success && !isFinishing && !isDestroyed) {
+                    showBubble(pane)
+                } else {
+                    finish()
+                }
+            }
+        } else {
+            showBubble(pane)
+        }
+    }
+
+    private fun showBubble(pane: String?) {
         val queueVm = ViewModelProvider(this, QueueViewModel.factory(application))
             .get(QueueViewModel::class.java)
         if (pane != null) {

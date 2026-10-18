@@ -67,6 +67,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.offset
@@ -441,6 +442,7 @@ fun QueueScreen(
             // Dải máy (hàng liếc) + ô gõ — dùng chung cho chat lẫn bảng VIỆC; trong
             // nhánh wide-rail (2B) nó nằm trong CỘT PHẢI nên tách lambda khỏi chỗ gọi.
             val queueBottomBar: @Composable () -> Unit = {
+                Column(Modifier.navigationBarsPadding()) {
                 MachineStrip(machine, preview = true, cells = stripCells)
                 QueueComposer(
                     modifier = Modifier.onSizeChanged { composerHeightPx = it.height },
@@ -499,6 +501,7 @@ fun QueueScreen(
                         }
                     },
                 )
+                }
             }
             if (chatOpen) {
                 // ── MÀN CHAT: roster + việc + dải máy nhường chỗ, chat ăn hết (user chốt 16/9 "mở hoàn toàn") ──

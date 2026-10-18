@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -41,6 +42,7 @@ import androidx.compose.ui.text.font.FontFamily
 import com.jossephus.chuchu.ui.components.KohiFeedbackBand
 import com.jossephus.chuchu.ui.screens.Queue.QueueFeedback
 import com.jossephus.chuchu.ui.screens.Queue.QueueFeedbackTone
+import com.jossephus.chuchu.ui.screens.Queue.ObserveQueueConnectivity
 import com.jossephus.chuchu.ui.screens.Queue.color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -96,9 +98,31 @@ fun BubbleShell(
     val chat by queueVm.chat.collectAsStateWithLifecycle()
     val chatSeen by queueVm.chatSeen.collectAsStateWithLifecycle()
     var segment by rememberSaveable { mutableStateOf(SEG_CHAT) }
+    // Draft/scroll thuộc về shell, không thuộc pane: đổi CHAT↔MONEY không được
+    // xoá chữ đang gõ hoặc nhảy về tin cũ.
+    var prompt by rememberSaveable { mutableStateOf("") }
+    var pendingSend by rememberSaveable { mutableStateOf<String?>(null) }
+    val listState = rememberLazyListState()
+    var lastChatPane by rememberSaveable { mutableStateOf<String?>(null) }
 
     val chatAgent = ui.state.agents.firstOrNull { it.pane == chat.pane }
     val feedback = ui.feedback
+    LaunchedEffect(chat.pane) {
+        val next = chat.pane
+        if (lastChatPane != null && next != null && lastChatPane != next) {
+            prompt = ""
+            pendingSend = null
+        }
+        lastChatPane = next
+    }
+    // Bubble từng nuốt lỗi gửi: prompt bị xoá ngay, feedback chỉ render ở màn
+    // Queue đầy đủ. Giữ text đang gửi và trả lại ô soạn nếu POST lỗi.
+    LaunchedEffect(feedback?.id) {
+        val f = feedback ?: return@LaunchedEffect
+        val pending = pendingSend ?: return@LaunchedEffect
+        if (f.tone == QueueFeedbackTone.Error && prompt.isBlank()) prompt = pending
+        pendingSend = null
+    }
     // Badge trên tab CHAT: số phiên có tin mới (cùng luật chấm "tin mới" của rail/roster).
     val needsYou = ui.state.agents.count { it.chatRev != null && it.chatRev != chatSeen[it.pane] }
     // 1B (duyệt preview 16/10): tên phiên sạch — hết tiền tố "OC |" lặp.
@@ -113,10 +137,7 @@ fun BubbleShell(
         queueVm.setQueueVisible(true)
         onPauseOrDispose { queueVm.setQueueVisible(false) }
     }
-    DisposableEffect(queueVm) {
-        queueVm.setOnline(true)
-        onDispose {}
-    }
+    ObserveQueueConnectivity(queueVm)
 
     Column(
         Modifier
@@ -139,7 +160,23 @@ fun BubbleShell(
         )
         when (segment) {
             SEG_MONEY -> BubbleMoneyPane(Modifier.fillMaxWidth().weight(1f))
-            else -> BubbleChatPane(queueVm, chatSeen, feedback, Modifier.fillMaxWidth().weight(1f))
+            else -> BubbleChatPane(
+                vm = queueVm,
+                chatSeen = chatSeen,
+                feedback = feedback,
+                prompt = prompt,
+                onPromptChange = { prompt = it },
+                listState = listState,
+                onSend = {
+                    val text = prompt.trim()
+                    if (text.isNotEmpty()) {
+                        pendingSend = text
+                        queueVm.sendChat(text)
+                        prompt = ""
+                    }
+                },
+                modifier = Modifier.fillMaxWidth().weight(1f),
+            )
         }
     }
 }
@@ -254,6 +291,10 @@ private fun BubbleChatPane(
     vm: QueueViewModel,
     chatSeen: Map<String, String>,
     feedback: QueueFeedback?,
+    prompt: String,
+    onPromptChange: (String) -> Unit,
+    listState: LazyListState,
+    onSend: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = ChuColors.current
@@ -264,29 +305,8 @@ private fun BubbleChatPane(
     val agents = ui.state.agents
     val chatAgent = agents.firstOrNull { it.pane == chat.pane }
     val chatMessages = remember(chat.messages) { collapseAssistantTurns(chat.messages) }
-    val listState = rememberLazyListState()
-    var prompt by rememberSaveable { mutableStateOf("") }
-    var pendingSend by rememberSaveable { mutableStateOf<String?>(null) }
     var ocSheet by rememberSaveable { mutableStateOf(false) }
-    // Bubble từng nuốt lỗi gửi: prompt bị xoá ngay, feedback chỉ render ở màn
-    // Queue đầy đủ. Giữ text đang gửi và trả lại ô soạn nếu POST lỗi.
-    LaunchedEffect(feedback?.id) {
-        val f = feedback ?: return@LaunchedEffect
-        val pending = pendingSend ?: return@LaunchedEffect
-        if (f.tone == QueueFeedbackTone.Error && prompt.isBlank()) prompt = pending
-        pendingSend = null
-    }
-    // Đổi phiên chat (A→B): đóng tấm model + bỏ draft phiên A (tránh gửi nhầm).
-    // Đóng chat (pane → null) không xoá — giữ draft cho ô gõ dùng chung.
-    var lastChatPane by rememberSaveable { mutableStateOf<String?>(null) }
-    LaunchedEffect(chat.pane) {
-        val next = chat.pane
-        if (lastChatPane != null && next != null && lastChatPane != next) {
-            ocSheet = false
-            prompt = ""
-        }
-        lastChatPane = next
-    }
+    LaunchedEffect(chat.pane) { ocSheet = false }
     val composerFocus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
 
@@ -349,17 +369,10 @@ private fun BubbleChatPane(
                 }
                 QueueComposer(
                     value = prompt,
-                    onValueChange = { prompt = it },
+                    onValueChange = onPromptChange,
                     agent = chatAgent,
                     sending = chat.sending,
-                    onSend = {
-                        val text = prompt.trim()
-                        if (text.isNotEmpty()) {
-                            pendingSend = text
-                            vm.sendChat(text)
-                            prompt = ""
-                        }
-                    },
+                    onSend = onSend,
                     placeholder = "Reply to ${chatAgent?.name?.let { cleanSessionName(it) } ?: "agent"}…",
                     focusRequester = composerFocus,
                 )
