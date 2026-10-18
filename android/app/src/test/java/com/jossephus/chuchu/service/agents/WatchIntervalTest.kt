@@ -27,8 +27,10 @@ class WatchIntervalTest {
 
     @Test
     fun `guard chet va co agent ban thi 2 phut`() {
-        for (label in listOf("working", "blocked", "busy", "sent", "unsure")) {
+        // Nhãn thật qsrv gửi: blocked → "needs approval", unsure → "unknown".
+        for (label in listOf("working", "blocked", "busy", "sent", "unsure", "needs approval", "unknown")) {
             assertEquals(
+                "label=$label",
                 WATCH_ALARM_ACTIVE_MS,
                 alarmIntervalMs(listOf(snap("w1:p1", label)), guardAlive = false),
             )
@@ -52,9 +54,9 @@ class WatchIntervalTest {
     }
 
     @Test
-    fun `trong hoac nhan la thi 5 phut`() {
+    fun `trong hoac nhan la that su thi 5 phut`() {
         assertEquals(WATCH_ALARM_MS, alarmIntervalMs(emptyList(), guardAlive = false))
-        assertEquals(WATCH_ALARM_MS, alarmIntervalMs(listOf(snap("w1:p1", "unknown")), guardAlive = false))
+        assertEquals(WATCH_ALARM_MS, alarmIntervalMs(listOf(snap("w1:p1", "idle")), guardAlive = false))
         assertEquals(WATCH_ALARM_MS, alarmIntervalMs(listOf(snap("w1:p1", "")), guardAlive = false))
     }
 

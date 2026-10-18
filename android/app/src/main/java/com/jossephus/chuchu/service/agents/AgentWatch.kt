@@ -48,19 +48,30 @@ object AgentWatch {
     private const val KEY_SNAP = "snap"
 
     private val guardScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private var guardJob: Job? = null
+    @Volatile private var guardJob: Job? = null
+    private var guardFailures = 0
 
     /** Khoá một lượt restore→so→save tracker giữa mạch alarm và mạch trong tiến trình. */
     private val evalLock = Any()
 
     fun start(context: Context) {
         val app = context.applicationContext
+        // Phiên mới: xoá state cũ để nhịp đầu seed im lặng (trạng thái lúc này user vừa nhìn).
+        app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().commit()
+        resume(context)
+    }
+
+    /**
+     * Khôi phục chuỗi alarm sau reboot / cập nhật APK mà KHÔNG xoá snapshot:
+     * trạng thái đã lưu là mốc để so tiếp, xoá đi sẽ nuốt mất chuyển trạng thái
+     * xảy ra trong lúc app không chạy. Settings đã persistence nên chỉ cần đọc.
+     */
+    fun resume(context: Context) {
+        val app = context.applicationContext
         val settings = SettingsRepository.getInstance(app)
         if (settings.queueUrl.value.isBlank()) return
         if (!settings.agentAlertsEnabled.value) return
         if (!NotificationManagerCompat.from(app).areNotificationsEnabled()) return
-        // Phiên mới: xoá state cũ để nhịp đầu seed im lặng (trạng thái lúc này user vừa nhìn).
-        app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()
         // Dọn channel "agent_watch" cũ (thời FGS) ngay khi vào phiên — khỏi đợi alert đầu.
         AgentNotifier.ensureChannels(app)
         // Guard long-poll bắt đầu ngay; alarm đầu chỉ để bắt trường hợp process chết yểu.
@@ -72,8 +83,9 @@ object AgentWatch {
         val app = context.applicationContext
         guardJob?.cancel()
         guardJob = null
+        guardFailures = 0
         runCatching { alarmManager(app)?.cancel(pollIntent(app)) }
-        app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()
+        app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().commit()
     }
 
     /** Một nhịp: poll → báo → hẹn nhịp kế. Chạy trên thread nền của receiver. */
@@ -138,6 +150,13 @@ object AgentWatch {
             val since = prefs.getString(KEY_REV, null)
             when (val fetch = client.fetch(since, waitSec)) {
                 is QueueClient.Fetch.Fresh -> {
+                    // herdr timeout/lỗi: /state vẫn 200 nhưng agents rỗng. Coi như
+                    // fetch lỗi, KHÔNG lưu rev/snap và KHÔNG cancel — nếu không
+                    // một lần host chậm 3s sẽ xoá sạch NEEDS YOU/XONG.
+                    if (!fetch.state.agentsError.isNullOrBlank()) {
+                        Log.w(TAG, "state: agents_error=" + fetch.state.agentsError)
+                        return@synchronized Tick.Failed
+                    }
                     if (client.recoveredWithoutToken && settings.queueToken.value.isNotBlank()) {
                         settings.setQueueToken("")
                     }
@@ -163,10 +182,13 @@ object AgentWatch {
                             }
                         }
                     }
+                    // commit() trước khi receiver finish: apply() bất đồng bộ có thể
+                    // mất snapshot nếu process bị kill ngay sau khi post notification,
+                    // lần sau sẽ post lại (rung lại) hoặc bỏ sót.
                     prefs.edit()
                         .putString(KEY_REV, fetch.state.rev)
                         .putString(KEY_SNAP, snapsJson(snaps))
-                        .apply()
+                        .commit()
                     Tick.Fresh(actions.size)
                 }
                 QueueClient.Fetch.Unchanged -> Tick.Unchanged
@@ -191,13 +213,22 @@ object AgentWatch {
         while (true) {
             when (val t = tick(app, waitSec = 25)) {
                 is Tick.Fresh -> {
+                    guardFailures = 0
                     if (t.actions > 0) Log.d(TAG, "guard: " + t.actions + " hành động")
                     // State mới về liền long-poll tiếp — transition tới đâu báo tới đó.
                 }
-                Tick.Unchanged -> delay(1_500)
+                Tick.Unchanged -> {
+                    guardFailures = 0
+                    delay(1_500)
+                }
                 Tick.Failed -> {
                     if (guardJob?.isActive != true) return
-                    delay(30_000)
+                    // Tailscale tắt / token sai / host ngủ: đừng 30s/lần mãi.
+                    // 30s → 1m → 2m → 4m → 5m (cap), reset khi có state.
+                    guardFailures = (guardFailures + 1).coerceAtMost(5)
+                    val backoff = minOf(30_000L * (1L shl (guardFailures - 1)), 300_000L)
+                    Log.d(TAG, "guard: lỗi, thử lại sau ${backoff / 1000}s")
+                    delay(backoff)
                 }
             }
         }
@@ -217,15 +248,19 @@ object AgentWatch {
         val am = alarmManager(context) ?: return
         val at = System.currentTimeMillis() + delayMs
         val pi = pollIntent(context)
+        // API 31+: chưa được cấp quyền exact-alarm thì lùi về inexact (máy idle có thể
+        // trễ vài phút); Settings có nút "allow alarms" để xin quyền. <31 exact luôn sẵn.
+        val exact = Build.VERSION.SDK_INT < 31 || am.canScheduleExactAlarms()
         runCatching {
-            // API 31+: chưa được cấp quyền exact-alarm thì lùi về inexact (máy idle có thể
-            // trễ vài phút); Settings có nút "allow alarms" để xin quyền. <31 exact luôn sẵn.
-            val exact = Build.VERSION.SDK_INT < 31 || am.canScheduleExactAlarms()
             if (exact) {
                 am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
             } else {
                 am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
             }
+        }.onFailure {
+            // OEM từ chối exact-alarm / quyền bị thu hồi: alarm trước vẫn còn, nhưng
+            // phải thấy trong log thay vì im lặng mất chuỗi.
+            Log.w(TAG, "schedule failed (exact=$exact, delay=${delayMs}ms)", it)
         }
     }
 
@@ -269,6 +304,8 @@ class AgentWatchReceiver : BroadcastReceiver() {
         Thread {
             try {
                 AgentWatch.poll(context.applicationContext)
+            } catch (e: Exception) {
+                Log.w("AgentWatch", "alarm poll failed", e)
             } finally {
                 pending.finish()
             }
@@ -277,5 +314,26 @@ class AgentWatchReceiver : BroadcastReceiver() {
 
     companion object {
         const val ACTION_POLL = "com.jossephus.chuchu.action.AGENT_WATCH_POLL"
+    }
+}
+
+/**
+ * AlarmManager mất sạch alarm sau reboot; cài APK mới cũng giết process và
+ * thường xoá alarm. Không có receiver này thì alert nền chết im lặng cho tới
+ * lần user mở app rồi xuống nền lại.
+ */
+class AgentBootReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action != Intent.ACTION_BOOT_COMPLETED &&
+            intent.action != Intent.ACTION_MY_PACKAGE_REPLACED
+        ) {
+            return
+        }
+        runCatching { AgentWatch.resume(context.applicationContext) }
+            .onFailure { Log.w(TAG, "resume after boot/update failed", it) }
+    }
+
+    private companion object {
+        const val TAG = "AgentBootReceiver"
     }
 }

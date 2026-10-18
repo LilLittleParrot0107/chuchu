@@ -5,6 +5,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -107,12 +108,16 @@ object AgentNotifier {
         // nhét activity options của cửa sổ bubble vào lúc nở (NMS từ chối thẳng:
         // "PendingIntents attached to bubbles must be mutable").
         val bubbleFlags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+        // Data URI tham gia PendingIntent identity (filterEquals). Chỉ dựa vào
+        // pane.hashCode() thì hai pane trùng hash sẽ mở nhầm cửa sổ.
         val bubbleIntent = Intent(context, AgentBubbleActivity::class.java)
             .setAction(Intent.ACTION_VIEW)
+            .setData(Uri.parse("kohi://agent/bubble/" + Uri.encode(pane)))
             .putExtra(EXTRA_PANE, pane)
         val bubblePending = PendingIntent.getActivity(context, pane.hashCode(), bubbleIntent, bubbleFlags)
         val contentIntent = Intent(context, MainActivity::class.java)
             .setAction(ACTION_OPEN_AGENT_CHAT)
+            .setData(Uri.parse("kohi://agent/open/" + Uri.encode(pane)))
             .putExtra(EXTRA_PANE, pane)
             .addFlags(
                 Intent.FLAG_ACTIVITY_NEW_TASK or
@@ -182,6 +187,17 @@ object AgentNotifier {
         for (pane in alertedPanes.toList()) {
             cancel(context, pane)
         }
+        // alertedPanes là bộ nhớ process. Process chết rồi mở lại thì set rỗng,
+        // các notification cũ vẫn nằm trong shade — quét active notifications
+        // để dọn, chỉ đụng channel agent_alerts.
+        runCatching {
+            val manager = context.getSystemService(NotificationManager::class.java) ?: return@runCatching
+            for (status in manager.activeNotifications) {
+                if (status.notification.channelId == CHANNEL_ALERTS) {
+                    manager.cancel(status.tag, status.id)
+                }
+            }
+        }.onFailure { Log.w("AgentNotifier", "cancelAll active scan failed", it) }
     }
 
     /** Dynamic shortcut id — chỉ [a-zA-Z0-9._] được phép. */

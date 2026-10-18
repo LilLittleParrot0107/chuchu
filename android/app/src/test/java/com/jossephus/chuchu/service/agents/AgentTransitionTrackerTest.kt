@@ -89,11 +89,37 @@ class AgentTransitionTrackerTest {
     }
 
     @Test
-    fun `pane moi xuat hien khong bao`() {
+    fun `pane moi xuat hien dang lam thi khong bao`() {
         val tracker = AgentTransitionTracker()
         tracker.onState(listOf(snap("w1:p1", "Working")))
-        val actions = tracker.onState(listOf(snap("w1:p1", "Working"), snap("w1:p9", "Needs approval")))
+        val actions = tracker.onState(listOf(snap("w1:p1", "Working"), snap("w1:p9", "Working")))
         assertTrue(actions.isEmpty())
+    }
+
+    @Test
+    fun `pane moi xuat hien da blocked thi bao needs you`() {
+        val tracker = AgentTransitionTracker()
+        tracker.onState(listOf(snap("w1:p1", "Working")))
+        val actions = tracker.onState(
+            listOf(snap("w1:p1", "Working"), snap("w1:p9", "Needs approval", preview = "Trust folder?")),
+        )
+        val post = actions.single() as AgentAlertAction.Post
+        assertEquals(AgentAlertKind.NeedsYou, post.kind)
+        assertEquals("w1:p9", post.pane)
+        assertEquals("Trust folder?", post.text)
+    }
+
+    @Test
+    fun `done sang blocked thi huy xong roi bao needs you`() {
+        val tracker = AgentTransitionTracker()
+        tracker.onState(listOf(snap("w1:p1", "Working")))
+        tracker.onState(listOf(snap("w1:p1", "Done")))
+        val actions = tracker.onState(listOf(snap("w1:p1", "Needs approval", preview = "Cho phep?")))
+        assertEquals(2, actions.size)
+        assertEquals(AgentAlertAction.Cancel("w1:p1"), actions[0])
+        val post = actions[1] as AgentAlertAction.Post
+        assertEquals(AgentAlertKind.NeedsYou, post.kind)
+        assertEquals("Cho phep?", post.text)
     }
 
     @Test

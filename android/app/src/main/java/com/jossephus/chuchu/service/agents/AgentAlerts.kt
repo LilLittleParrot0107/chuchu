@@ -29,8 +29,15 @@ internal const val WATCH_FIRST_ALARM_MS = 2 * 60_000L
 
 /** Nhịp alarm kế: guard sống thì chậm; guard chết mà có việc thì nhanh hơn. */
 internal fun alarmIntervalMs(snaps: List<AgentSnap>, guardAlive: Boolean): Long {
-    val active = setOf("working", "busy", "blocked", "unsure", "sent")
-    val busy = snaps.any { it.label.lowercase().trim() in active }
+    // qsrv gửi nhãn hiển thị ("needs approval", "unknown"), không phải mã thô
+    // ("blocked", "unsure"). So qua AgentState để 2 phút thật sự bật cho pane
+    // đang chờ duyệt — trước đây test dùng mã thô nên pass mà production thì không.
+    val busy = snaps.any {
+        when (AgentState.of(it.label)) {
+            AgentState.Blocked, AgentState.Working, AgentState.Unknown -> true
+            else -> it.label.trim().equals("sent", ignoreCase = true)
+        }
+    }
     return if (busy && !guardAlive) WATCH_ALARM_ACTIVE_MS else WATCH_ALARM_MS
 }
 
@@ -86,21 +93,33 @@ class AgentTransitionTracker {
         for (a in agents) {
             current += a.pane
             val prev = last[a.pane]
-            if (prev != null) {
-                val was = AgentState.of(prev.label)
-                val now = AgentState.of(a.label)
-                if (was != AgentState.Blocked && now == AgentState.Blocked) {
+            val now = AgentState.of(a.label)
+            if (prev == null) {
+                // Pane mới xuất hiện sau lần seed đầu. Nếu nó đã blocked (agent mở
+                // ra rồi hỏi quyền ngay), phải báo; trước đây seed im lặng làm mất
+                // NEEDS YOU của phiên mới.
+                if (now == AgentState.Blocked) {
                     out += AgentAlertAction.Post(a.pane, AgentAlertKind.NeedsYou, a.name, a.preview)
                 }
-                if (was == AgentState.Blocked && now != AgentState.Blocked) {
-                    out += AgentAlertAction.Cancel(a.pane)
+                last[a.pane] = a
+                continue
+            }
+            val was = AgentState.of(prev.label)
+            // Một pane chỉ có MỘT notification. Cancel phải đứng trước Post khi
+            // chuyển Done→Blocked hoặc Blocked→Done, nếu không cancel sẽ xoá
+            // đúng cái vừa post (Done→Blocked từng mất NEEDS YOU).
+            if (now == AgentState.Blocked) {
+                if (was == AgentState.Done) out += AgentAlertAction.Cancel(a.pane)
+                if (was != AgentState.Blocked) {
+                    out += AgentAlertAction.Post(a.pane, AgentAlertKind.NeedsYou, a.name, a.preview)
                 }
-                if (was != AgentState.Done && now == AgentState.Done) {
+            } else if (now == AgentState.Done) {
+                if (was == AgentState.Blocked) out += AgentAlertAction.Cancel(a.pane)
+                if (was != AgentState.Done) {
                     out += AgentAlertAction.Post(a.pane, AgentAlertKind.Done, a.name, a.preview)
                 }
-                if (was == AgentState.Done && now != AgentState.Done) {
-                    out += AgentAlertAction.Cancel(a.pane)
-                }
+            } else if (was == AgentState.Blocked || was == AgentState.Done) {
+                out += AgentAlertAction.Cancel(a.pane)
             }
             last[a.pane] = a
         }
