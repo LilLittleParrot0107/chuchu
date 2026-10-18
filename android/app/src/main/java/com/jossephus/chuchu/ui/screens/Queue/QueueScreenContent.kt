@@ -511,11 +511,9 @@ internal fun QueueComposer(
                 maxLines = 4,
                 textStyle = type.body.copy(color = colors.textPrimary),
                 cursorBrush = SolidColor(colors.accent),
-                // IME action Send: Enter tren ban phim mem gui luon (kieu qq)
-                // thay vi phai cham nut SEND; Enter vat ly van xuong dong vi
-                // singleLine = false.
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                keyboardActions = KeyboardActions(onSend = { if (canSend) onSend() }),
+                // Enter = xuống dòng. Gửi bằng nút SEND để soạn được nhiều dòng
+                // bằng bàn phím mềm (trước đây Enter gửi luôn, maxLines=4 vô dụng).
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default),
                 modifier = Modifier.weight(1f)
                     .padding(vertical = 10.dp)
                     .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)

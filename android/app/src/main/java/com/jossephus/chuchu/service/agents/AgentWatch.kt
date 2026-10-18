@@ -1,11 +1,8 @@
 package com.jossephus.chuchu.service.agents
 
-import android.app.AlarmManager
-import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationManagerCompat
 import com.jossephus.chuchu.data.repository.SettingsRepository
@@ -17,8 +14,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import org.json.JSONArray
-import org.json.JSONObject
 
 /**
  * Vòng trực agent bằng ALARM (13/10 — thay foreground service theo yêu cầu user:
@@ -44,21 +39,21 @@ import org.json.JSONObject
  */
 object AgentWatch {
     private const val TAG = "AgentWatch"
-    private const val PREFS = "agent_watch"
-    private const val KEY_REV = "rev"
-    private const val KEY_SNAP = "snap"
 
     private val guardScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     @Volatile private var guardJob: Job? = null
     private var guardFailures = 0
+    /** Tăng khi start/stop: kết quả fetch đang bay của phiên cũ phải bị bỏ. */
+    @Volatile private var generation = 0
 
     /** Khoá một lượt restore→so→save tracker giữa mạch alarm và mạch trong tiến trình. */
     private val evalLock = Any()
 
     fun start(context: Context) {
         val app = context.applicationContext
+        generation++
         // Phiên mới: xoá state cũ để nhịp đầu seed im lặng (trạng thái lúc này user vừa nhìn).
-        app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().commit()
+        AgentWatchStore(app).clear()
         resume(context)
     }
 
@@ -73,23 +68,25 @@ object AgentWatch {
         if (settings.queueUrl.value.isBlank()) return
         if (!settings.agentAlertsEnabled.value) return
         if (!NotificationManagerCompat.from(app).areNotificationsEnabled()) return
+        generation++
         // Dọn channel "agent_watch" cũ (thời FGS) ngay khi vào phiên — khỏi đợi alert đầu.
         AgentNotifier.ensureChannels(app)
         // Đăng ký lại UnifiedPush mỗi lần watch bật; no-op nếu chưa cài ntfy.
         runCatching { KohiPush.ensureRegistered(app) }
             .onFailure { Log.w(TAG, "push register failed", it) }
         // Guard long-poll bắt đầu ngay; alarm đầu chỉ để bắt trường hợp process chết yểu.
-        schedule(app, WATCH_FIRST_ALARM_MS)
+        AgentWatchScheduler.schedule(app, WATCH_FIRST_ALARM_MS)
         startGuard(app)
     }
 
     fun stop(context: Context) {
         val app = context.applicationContext
+        generation++
         guardJob?.cancel()
         guardJob = null
         guardFailures = 0
-        runCatching { alarmManager(app)?.cancel(pollIntent(app)) }
-        app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().commit()
+        AgentWatchScheduler.cancel(app)
+        AgentWatchStore(app).clear()
     }
 
     /**
@@ -105,20 +102,20 @@ object AgentWatch {
     /** Một nhịp: poll → báo → hẹn nhịp kế. Chạy trên thread nền của receiver. */
     fun poll(context: Context) {
         val app = context.applicationContext
-        val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val store = AgentWatchStore(app)
         // Giữ chuỗi alarm kể cả khi tick bị hệ thống cắt giữa đường (mạng chậm).
         // 5 phút là lưới an toàn tối đa; sau tick sẽ hẹn lại theo trạng thái thật.
-        schedule(app, WATCH_ALARM_MS)
+        AgentWatchScheduler.schedule(app, WATCH_ALARM_MS)
         when (tick(app, waitSec = 0)) {
             is Tick.Fresh -> {
-                val snaps = parseSnaps(prefs.getString(KEY_SNAP, null) ?: "[]")
+                val snaps = store.savedSnaps()
                 scheduleNext(app, snaps)
                 if (snaps.isNotEmpty()) {
                     Log.d(TAG, "poll ok: " + snaps.joinToString { it.pane + "=" + it.label })
                 }
             }
             Tick.Unchanged -> {
-                val snaps = parseSnaps(prefs.getString(KEY_SNAP, null) ?: "[]")
+                val snaps = store.savedSnaps()
                 scheduleNext(app, snaps)
                 Log.d(TAG, "poll: 304 không đổi")
             }
@@ -136,7 +133,7 @@ object AgentWatch {
         val settings = SettingsRepository.getInstance(app)
         if (settings.queueUrl.value.isBlank() || !settings.agentAlertsEnabled.value) return
         if (!NotificationManagerCompat.from(app).areNotificationsEnabled()) return
-        schedule(app, alarmIntervalMs(snaps, guardAlive = guardJob?.isActive == true))
+        AgentWatchScheduler.schedule(app, alarmIntervalMs(snaps, guardAlive = guardJob?.isActive == true))
     }
 
     private sealed interface Tick {
@@ -158,56 +155,52 @@ object AgentWatch {
             stop(context)
             return Tick.Failed
         }
-        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val store = AgentWatchStore(context)
         val client = QueueClient(settings.queueUrl.value, settings.queueToken.value)
+        // Fetch NGOÀI lock: long-poll 25s không được chặn alarm/guard khác.
+        val since = store.rev()
+        val myGeneration = generation
+        val fetch = client.fetch(since, waitSec)
+        if (fetch !is QueueClient.Fetch.Fresh) {
+            return if (fetch is QueueClient.Fetch.Failed) Tick.Failed else Tick.Unchanged
+        }
+        // herdr timeout/lỗi: /state vẫn 200 nhưng agents rỗng. Coi như fetch lỗi,
+        // KHÔNG lưu rev/snap và KHÔNG cancel — nếu không một lần host chậm 3s sẽ
+        // xoá sạch NEEDS YOU/XONG.
+        if (!fetch.state.agentsError.isNullOrBlank()) {
+            Log.w(TAG, "state: agents_error=" + fetch.state.agentsError)
+            return Tick.Failed
+        }
+        if (client.recoveredWithoutToken && settings.queueToken.value.isNotBlank()) {
+            settings.setQueueToken("")
+        }
+        val snaps = fetch.state.agents.map {
+            AgentSnap(pane = it.pane, name = it.name, label = it.label, preview = it.preview)
+        }
         return synchronized(evalLock) {
-            val since = prefs.getString(KEY_REV, null)
-            when (val fetch = client.fetch(since, waitSec)) {
-                is QueueClient.Fetch.Fresh -> {
-                    // herdr timeout/lỗi: /state vẫn 200 nhưng agents rỗng. Coi như
-                    // fetch lỗi, KHÔNG lưu rev/snap và KHÔNG cancel — nếu không
-                    // một lần host chậm 3s sẽ xoá sạch NEEDS YOU/XONG.
-                    if (!fetch.state.agentsError.isNullOrBlank()) {
-                        Log.w(TAG, "state: agents_error=" + fetch.state.agentsError)
-                        return@synchronized Tick.Failed
+            // start/stop/foreground đã đổi phiên trong lúc fetch: bỏ kết quả.
+            if (myGeneration != generation) return@synchronized Tick.Failed
+            // Tick khác đã lưu rev mới hơn; state này tính trên `since` cũ.
+            if (store.rev() != since) return@synchronized Tick.Unchanged
+            val tracker = AgentTransitionTracker()
+            tracker.restore(store.savedSnaps())
+            val actions = tracker.onState(snaps)
+            for (action in actions) {
+                when (action) {
+                    is AgentAlertAction.Post -> {
+                        Log.d(TAG, "post " + action.kind + " pane=" + action.pane)
+                        AgentNotifier.postAlert(
+                            context, action.kind, action.pane, action.agentName, action.text,
+                        )
                     }
-                    if (client.recoveredWithoutToken && settings.queueToken.value.isNotBlank()) {
-                        settings.setQueueToken("")
+                    is AgentAlertAction.Cancel -> {
+                        Log.d(TAG, "cancel pane=" + action.pane)
+                        AgentNotifier.cancel(context, action.pane)
                     }
-                    val snaps = fetch.state.agents.map {
-                        AgentSnap(pane = it.pane, name = it.name, label = it.label, preview = it.preview)
-                    }
-                    val tracker = AgentTransitionTracker()
-                    prefs.getString(KEY_SNAP, null)?.let { saved ->
-                        runCatching { tracker.restore(parseSnaps(saved)) }
-                    }
-                    val actions = tracker.onState(snaps)
-                    for (action in actions) {
-                        when (action) {
-                            is AgentAlertAction.Post -> {
-                                Log.d(TAG, "post " + action.kind + " pane=" + action.pane)
-                                AgentNotifier.postAlert(
-                                    context, action.kind, action.pane, action.agentName, action.text,
-                                )
-                            }
-                            is AgentAlertAction.Cancel -> {
-                                Log.d(TAG, "cancel pane=" + action.pane)
-                                AgentNotifier.cancel(context, action.pane)
-                            }
-                        }
-                    }
-                    // commit() trước khi receiver finish: apply() bất đồng bộ có thể
-                    // mất snapshot nếu process bị kill ngay sau khi post notification,
-                    // lần sau sẽ post lại (rung lại) hoặc bỏ sót.
-                    prefs.edit()
-                        .putString(KEY_REV, fetch.state.rev)
-                        .putString(KEY_SNAP, snapsJson(snaps))
-                        .commit()
-                    Tick.Fresh(actions.size)
                 }
-                QueueClient.Fetch.Unchanged -> Tick.Unchanged
-                is QueueClient.Fetch.Failed -> Tick.Failed
             }
+            store.save(fetch.state.rev, snaps)
+            Tick.Fresh(actions.size)
         }
     }
 
@@ -246,67 +239,6 @@ object AgentWatch {
                 }
             }
         }
-    }
-
-    private fun alarmManager(context: Context): AlarmManager? =
-        context.getSystemService(AlarmManager::class.java)
-
-    private fun pollIntent(context: Context): PendingIntent = PendingIntent.getBroadcast(
-        context,
-        7,
-        Intent(context, AgentWatchReceiver::class.java).setAction(AgentWatchReceiver.ACTION_POLL),
-        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-    )
-
-    private fun schedule(context: Context, delayMs: Long) {
-        val am = alarmManager(context) ?: return
-        val at = System.currentTimeMillis() + delayMs
-        val pi = pollIntent(context)
-        // API 31+: chưa được cấp quyền exact-alarm thì lùi về inexact (máy idle có thể
-        // trễ vài phút); Settings có nút "allow alarms" để xin quyền. <31 exact luôn sẵn.
-        val exact = Build.VERSION.SDK_INT < 31 || am.canScheduleExactAlarms()
-        runCatching {
-            if (exact) {
-                am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
-            } else {
-                am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
-            }
-        }.onFailure {
-            // OEM từ chối exact-alarm / quyền bị thu hồi: alarm trước vẫn còn, nhưng
-            // phải thấy trong log thay vì im lặng mất chuỗi.
-            Log.w(TAG, "schedule failed (exact=$exact, delay=${delayMs}ms)", it)
-        }
-    }
-
-    private fun snapsJson(snaps: List<AgentSnap>): String {
-        val arr = JSONArray()
-        for (s in snaps) {
-            arr.put(
-                JSONObject()
-                    .put("pane", s.pane)
-                    .put("name", s.name)
-                    .put("label", s.label)
-                    .put("preview", s.preview),
-            )
-        }
-        return arr.toString()
-    }
-
-    private fun parseSnaps(json: String): List<AgentSnap> {
-        val arr = JSONArray(json)
-        val out = ArrayList<AgentSnap>(arr.length())
-        for (i in 0 until arr.length()) {
-            val o = arr.optJSONObject(i) ?: continue
-            val pane = o.optString("pane")
-            if (pane.isBlank()) continue
-            out += AgentSnap(
-                pane = pane,
-                name = o.optString("name"),
-                label = o.optString("label"),
-                preview = o.optString("preview"),
-            )
-        }
-        return out
     }
 }
 

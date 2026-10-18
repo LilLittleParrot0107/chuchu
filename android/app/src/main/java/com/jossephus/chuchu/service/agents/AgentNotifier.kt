@@ -16,6 +16,7 @@ import androidx.core.content.pm.ShortcutManagerCompat
 import androidx.core.graphics.drawable.IconCompat
 import com.jossephus.chuchu.MainActivity
 import com.jossephus.chuchu.R
+import com.jossephus.chuchu.data.repository.SettingsRepository
 import com.jossephus.chuchu.ui.bubble.AgentBubbleActivity
 import java.util.concurrent.ConcurrentHashMap
 
@@ -154,6 +155,15 @@ object AgentNotifier {
             .setShowWhen(true)
             .setWhen(System.currentTimeMillis())
             .setContentIntent(contentPending)
+            .addAction(R.drawable.ic_notification, "OPEN", contentPending)
+            // hideScreenContents cũng phải che preview ở lockscreen, không chỉ FLAG_SECURE.
+            .setVisibility(
+                if (SettingsRepository.getInstance(context).hideScreenContents.value) {
+                    NotificationCompat.VISIBILITY_SECRET
+                } else {
+                    NotificationCompat.VISIBILITY_PRIVATE
+                },
+            )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             builder.setBubbleMetadata(
                 NotificationCompat.BubbleMetadata.Builder(
