@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -41,6 +42,7 @@ import com.jossephus.chuchu.data.model.dbtop.HealthRisk
 import com.jossephus.chuchu.data.model.dbtop.healthRisk
 import com.jossephus.chuchu.ui.components.DAYS_PER_MONTH
 import com.jossephus.chuchu.ui.components.chart.CashflowEngine
+import com.jossephus.chuchu.ui.components.LocalDashboardRefined
 import com.jossephus.chuchu.ui.components.KohiNoticeBand
 import com.jossephus.chuchu.ui.components.KohiSubTabs
 import com.jossephus.chuchu.ui.components.rememberTallSafeInsets
@@ -151,6 +153,7 @@ fun DbtopScreen(
         onPauseOrDispose { viewModel.stopPolling() }
     }
 
+    CompositionLocalProvider(LocalDashboardRefined provides true) {
     BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
@@ -393,6 +396,7 @@ fun DbtopScreen(
                 }
             }
         }
+    }
     }
 }
 

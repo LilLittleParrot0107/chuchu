@@ -30,7 +30,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import com.jossephus.chuchu.ui.components.KohiCompactAction
@@ -47,6 +49,7 @@ import com.jossephus.chuchu.data.model.dbtop.SpendingState
 import com.jossephus.chuchu.data.model.explorer.ExplorerState
 import com.jossephus.chuchu.ui.components.KohiBottomSheet
 import com.jossephus.chuchu.ui.components.ChuCard
+import com.jossephus.chuchu.ui.components.LocalDashboardRefined
 import com.jossephus.chuchu.ui.components.ChuText
 import com.jossephus.chuchu.ui.components.KohiSectionBand
 import com.jossephus.chuchu.ui.components.KohiSelectableRow
@@ -629,9 +632,21 @@ private fun SpendCell(
 ) {
     val colors = ChuColors.current
     val type = ChuTypography.current
+    val refined = LocalDashboardRefined.current
+    val bg: Brush = if (refined) {
+        Brush.verticalGradient(
+            listOf(
+                lerp(colors.surface, Color.White, 0.015f),
+                colors.surface,
+                lerp(colors.surface, Color.Black, 0.010f),
+            ),
+        )
+    } else {
+        Brush.verticalGradient(listOf(colors.surface, colors.surface))
+    }
     Column(
         modifier = modifier
-            .background(colors.surface)
+            .background(bg)
             .padding(horizontal = 8.dp, vertical = 6.dp),
     ) {
         ChuText(
