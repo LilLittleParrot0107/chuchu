@@ -123,10 +123,15 @@
         <service
             android:name="com.jossephus.chuchu.service.push.KohiFcmService"
             android:exported="false">
-            <intent-filter>
+            <intent-filter android:priority="999">
                 <action android:name="com.google.firebase.MESSAGING_EVENT" />
             </intent-filter>
         </service>
+        <!-- Firebase 24 also merges its base service; both would receive the
+             same data message (double alert). Keep only KohiFcmService. -->
+        <service
+            android:name="com.google.firebase.messaging.FirebaseMessagingService"
+            tools:node="remove" />
 
         <receiver
             android:name="com.jossephus.chuchu.service.agents.AgentBootReceiver"
