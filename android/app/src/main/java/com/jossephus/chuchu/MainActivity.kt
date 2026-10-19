@@ -18,6 +18,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
 import com.jossephus.chuchu.data.repository.SettingsRepository
+import com.jossephus.chuchu.service.push.KohiFcm
 import com.jossephus.chuchu.ui.ApplicationNavController
 import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTheme
@@ -131,6 +132,11 @@ class MainActivity : FragmentActivity() {
         captureDeepLink(intent)
         captureChatPaneIntent(intent)
         val settings = SettingsRepository.getInstance(this)
+        // Lấy FCM token ngay khi mở app, không đợi ON_STOP. Nếu chưa bật alert
+        // thì không đăng ký để tránh wakeup vô ích.
+        if (settings.agentAlertsEnabled.value) {
+            KohiFcm.ensureRegistered(this)
+        }
         lifecycleScope.launch {
             settings.hideScreenContents.collect { hideScreenContents ->
                 if (hideScreenContents) {
