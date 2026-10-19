@@ -34,8 +34,8 @@ import com.jossephus.chuchu.ui.theme.ChuColors
 import com.jossephus.chuchu.ui.theme.ChuTypography
 import com.jossephus.chuchu.ui.theme.rosterColor
 
-/** Bốn con agent qsrv biết mở (POST /launch) — thứ tự như roster. */
-private val LAUNCH_AGENTS = listOf("claude", "opencode", "agy", "codex")
+/** Năm con agent qsrv biết mở (POST /launch) — thứ tự như roster. */
+private val LAUNCH_AGENTS = listOf("claude", "opencode", "agy", "codex", "dsh")
 
 /**
  * Tấm NEW SESSION (user chốt 23/9: tấm trượt đáy, không mẫu lệnh): chọn agent (chip màu họ), thư mục

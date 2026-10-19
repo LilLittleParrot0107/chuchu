@@ -592,8 +592,11 @@ data class BlockedOption(
  * phiên — app chỉ HIỂN THỊ tên, nên cắt ở lớp hiển thị; màu session vẫn hash từ tên
  * gốc qua [AgentKind.sessionColor] nên không đổi màu khi cắt). 1B duyệt preview 16/10.
  */
-internal fun cleanSessionName(name: String): String =
-    if (name.startsWith("OC | ")) name.removePrefix("OC | ") else name
+internal fun cleanSessionName(name: String): String = when {
+    name.startsWith("OC | ") -> name.removePrefix("OC | ")
+    name.startsWith("DSH | ") -> name.removePrefix("DSH | ")
+    else -> name
+}
 
 /** "2026-09-16T05:04:31.123Z" → epoch giây; chuỗi lạ → null. */
 fun isoEpochSec(ts: String): Long? {

@@ -18,6 +18,8 @@ enum class AgentKind {
     AGY,
     /** Codex CLI (23/9): herdr báo agent = "codex". */
     CODEX,
+    /** DeepSeek Harness (19/10): qsrv exposes headless DSH sessions as `agent=dsh`. */
+    DSH,
     OTHER;
 
     companion object {
@@ -26,6 +28,7 @@ enum class AgentKind {
             "opencode" -> OPENCODE
             "agy", "antigravity" -> AGY
             "codex" -> CODEX
+            "dsh", "deepseek", "deepseek-harness" -> DSH
             else -> OTHER
         }
     }
@@ -42,8 +45,15 @@ fun AgentKind.rosterColor(): Color = when (this) {
     AgentKind.OPENCODE -> ChuColors.current.accentSecondary
     AgentKind.AGY -> ChuColors.current.success
     AgentKind.CODEX -> codexColor()
+    AgentKind.DSH -> dshColor()
     AgentKind.OTHER -> ChuColors.current.textPrimary
 }
+
+/**
+ * DeepSeek Harness brand blue (19/10). Kept fixed rather than derived from the
+ * theme so DSH is immediately recognizable next to Claude/opencode/agy/codex.
+ */
+fun dshColor(): Color = Color(0xFF4D6DFF)
 
 /**
  * Họ màu của Codex (23/9): palette theme chỉ có ba màu họ (warning / accentSecondary / success) đã
@@ -233,6 +243,15 @@ fun AgentKind.chatTone(): ChatTone = when (this) {
     AgentKind.CODEX -> ChatTone(
         code = Color(0xFFA6E3A1),
         meta = Color(0xFF9AA0A6),
+    )
+
+    AgentKind.DSH -> ChatTone(
+        bold = Color(0xFF7D9BFF),
+        code = Color(0xFF8BC7FF),
+        codeBg = Color(0xFF18244D),
+        link = Color(0xFF6FA8FF),
+        meta = Color(0xFF9AA4B2),
+        toolName = Color(0xFF6FA8FF),
     )
 
     AgentKind.OTHER -> ChatTone()
