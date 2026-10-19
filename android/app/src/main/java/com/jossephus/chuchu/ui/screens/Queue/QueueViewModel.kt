@@ -725,8 +725,9 @@ class QueueViewModel(
         val key = QueueOperationKey.chatSend(pane)
         if (key in _ui.value.busyOps) return
         val agent = _ui.value.state.agents.firstOrNull { it.pane == pane }
-        // DSH is a virtual headless session: qsrv has its own turn queue, and
-        // taskq/qd cannot deliver into a `dsh:` pane. Always use CHAT transport.
+        // DSH TUI/headless sessions use qsrv's CHAT transport, not taskq/qd:
+        // the TUI accepts typed follow-ups, and headless sessions have their own
+        // qsrv turn queue. `dsh:` is the optional headless fallback pane id.
         val dsh = pane.startsWith("dsh:") || AgentKind.of(agent?.agent) == AgentKind.DSH
         val dshQueued = dsh && agent?.state == AgentState.Working
         if (agent?.state == AgentState.Working && !dsh) {

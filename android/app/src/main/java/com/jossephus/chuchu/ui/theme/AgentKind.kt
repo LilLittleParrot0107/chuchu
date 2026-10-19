@@ -18,7 +18,7 @@ enum class AgentKind {
     AGY,
     /** Codex CLI (23/9): herdr báo agent = "codex". */
     CODEX,
-    /** DeepSeek Harness (19/10): qsrv exposes headless DSH sessions as `agent=dsh`. */
+    /** DeepSeek Harness (19/10): dsh-TUI reports `agent=dsh-tui`; headless fallback is `dsh`. */
     DSH,
     OTHER;
 
