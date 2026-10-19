@@ -728,6 +728,7 @@ class QueueViewModel(
         // DSH is a virtual headless session: qsrv has its own turn queue, and
         // taskq/qd cannot deliver into a `dsh:` pane. Always use CHAT transport.
         val dsh = pane.startsWith("dsh:")
+        val dshQueued = dsh && agent?.state == AgentState.Working
         if (agent?.state == AgentState.Working && !dsh) {
             addTask(text, pane, null)
             return
@@ -742,7 +743,12 @@ class QueueViewModel(
                 val name = agent?.name?.takeIf { it.isNotBlank() } ?: pane
                 when (r) {
                     is QueueClient.Act.Ok -> {
-                        postFeedback("", "Sent to $name", QueueFeedbackTone.Success)
+                        postFeedback(
+                            "",
+                            if (dshQueued) "Queued for $name · after current DSH turn"
+                            else "Sent to $name",
+                            QueueFeedbackTone.Success,
+                        )
                         // Đừng đợi long-poll 25s mới thấy tin mình vừa gửi. Đá
                         // một vòng chat ngay; long-poll cũ tự bỏ vì seq đã nhích.
                         if (_chat.value.pane == pane) {
