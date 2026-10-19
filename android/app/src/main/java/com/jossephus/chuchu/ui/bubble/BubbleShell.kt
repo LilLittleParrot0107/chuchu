@@ -378,8 +378,26 @@ private fun BubbleChatPane(
                     focusRequester = composerFocus,
                 )
             } else {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    ChuText("connecting…", style = ChuTypography.current.labelSmall, color = colors.textMuted)
+                // Chưa có pane nào để mở: state đang nạp, hoặc qsrv không tới được. Bản
+                // cũ chỉ có chữ "connecting…" mờ treo vĩnh viễn — bubble mở ra mà không
+                // có gì bấm được, đúng kiểu "hiện lên xong bấm không ra cái gì".
+                val failure = ui.error
+                Column(
+                    modifier = Modifier.fillMaxSize().padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    ChuText(
+                        text = failure ?: "connecting…",
+                        style = ChuTypography.current.labelSmall,
+                        color = if (failure != null) colors.textSecondary else colors.textMuted,
+                        maxLines = if (failure != null) 4 else 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (failure != null) {
+                        Spacer(Modifier.height(10.dp))
+                        KohiCompactAction("RETRY", onClick = { vm.refreshNow() })
+                    }
                 }
             }
         }

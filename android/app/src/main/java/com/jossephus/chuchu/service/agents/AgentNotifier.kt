@@ -39,7 +39,25 @@ object AgentNotifier {
     private const val CHANNEL_ALERTS = "agent_alerts"
     private const val ALERT_ID = 4101
 
+    /** Pane đang có alert SỐNG (NEEDS YOU / XONG chưa được xử lý). */
     private val alertedPanes = ConcurrentHashMap.newKeySet<String>()
+
+    /**
+     * Pane mà notification hiện chỉ còn là CÁI NEO của cửa sổ bubble, không còn
+     * là alert. Tách khỏi [alertedPanes] vì hai thứ này có vòng đời khác nhau:
+     * alert hết hiệu lực ngay khi agent rời Blocked/Done, còn cửa sổ bubble thì
+     * phải sống tiếp — user bấm vào bubble để trả lời chứ không phải để nó bụp tắt.
+     */
+    private val anchoredPanes = ConcurrentHashMap.newKeySet<String>()
+
+    /** Nội dung alert gần nhất của từng pane, để dựng lại notification ở dạng neo. */
+    private val lastAlerts = ConcurrentHashMap<String, AlertSnapshot>()
+
+    private data class AlertSnapshot(
+        val kind: AgentAlertKind,
+        val name: String,
+        val body: String,
+    )
 
     fun ensureChannels(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -94,8 +112,34 @@ object AgentNotifier {
         text: String,
     ) {
         if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return
+        val snapshot = AlertSnapshot(
+            kind = kind,
+            name = agentName.ifBlank { pane },
+            body = refineAlertText(text).ifBlank {
+                if (kind == AgentAlertKind.NeedsYou) "Waiting for your answer" else "Finished"
+            },
+        )
+        // Alert thật: nội dung mới thay hẳn nội dung cũ, notification trở lại là alert
+        // chứ không còn là cái neo im lặng nữa (bookkeeping nằm trong [show]).
+        lastAlerts[pane] = snapshot
+        show(context, pane, snapshot, anchored = false)
+    }
+
+    /**
+     * Dựng (lại) notification của [pane].
+     *
+     * [anchored] = notification chỉ còn để giữ cửa sổ bubble: không kêu, không rung,
+     * subText trung tính. Dùng khi alert vừa hết hiệu lực mà user vẫn đang mở bubble —
+     * xoá notification lúc đó là SystemUI dỡ luôn cửa sổ.
+     */
+    private fun show(
+        context: Context,
+        pane: String,
+        snapshot: AlertSnapshot,
+        anchored: Boolean,
+    ) {
         ensureChannels(context)
-        val name = agentName.ifBlank { pane }
+        val name = snapshot.name
         val shortcutId = shortcutIdFor(pane)
         val person = Person.Builder()
             .setName(name)
@@ -127,9 +171,7 @@ object AgentNotifier {
             )
         val contentPending = PendingIntent.getActivity(context, pane.hashCode() + 1, contentIntent, flags)
 
-        val body = refineAlertText(text).ifBlank {
-            if (kind == AgentAlertKind.NeedsYou) "Waiting for your answer" else "Finished"
-        }
+        val body = snapshot.body
         // 13/10 (user: "refine thông báo tin nhắn cuối cho thanh lịch hơn"): thay title
         // "✓ XONG · name" bằng notification HỘI THOẠI — tên agent là conversation title,
         // tin cuối là một message trong khung chat (MessagingStyle), trạng thái nằm ở
@@ -145,13 +187,20 @@ object AgentNotifier {
             .setShortcutId(shortcutId)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setSubText(
-                when (kind) {
-                    AgentAlertKind.NeedsYou -> "● NEEDS YOU"
-                    AgentAlertKind.Done -> "✓ XONG"
+                if (anchored) {
+                    "· ĐANG MỞ"
+                } else {
+                    when (snapshot.kind) {
+                        AgentAlertKind.NeedsYou -> "● NEEDS YOU"
+                        AgentAlertKind.Done -> "✓ XONG"
+                    }
                 },
             )
             .setAutoCancel(true)
-            .setOnlyAlertOnce(false)
+            // Left as-is for alerts (mỗi lần báo phải kêu). Neo thì im: nó chỉ giữ
+            // cửa sổ, kêu thêm là nhiễu — user đang ở trong đó.
+            .setOnlyAlertOnce(anchored)
+            .setSilent(anchored)
             .setShowWhen(true)
             .setWhen(System.currentTimeMillis())
             .setContentIntent(contentPending)
@@ -179,7 +228,15 @@ object AgentNotifier {
         }
         runCatching {
             NotificationManagerCompat.from(context).notify(pane, ALERT_ID, builder.build())
-            alertedPanes += pane
+            // Neo và alert loại trừ nhau: một pane hoặc đang báo, hoặc chỉ còn giữ cửa
+            // sổ bubble. Bookkeeping ở đây để hai tập không bao giờ chồng nhau.
+            if (anchored) {
+                alertedPanes -= pane
+                anchoredPanes += pane
+            } else {
+                anchoredPanes -= pane
+                alertedPanes += pane
+            }
         }.onFailure {
             // NMS từ chối (thiếu quyền, bubble sai luật…) — nuốt lỗi nhưng để lại
             // vết trong logcat, đừng câm như đã từng (mutable PendingIntent, 13/10).
@@ -187,25 +244,82 @@ object AgentNotifier {
         }
     }
 
+    /**
+     * Alert của [pane] hết hiệu lực (agent rời Blocked/Done, hoặc phiên biến mất).
+     *
+     * Cửa sổ bubble của pane đang mở thì KHÔNG được xoá notification: notification
+     * là cái neo của cửa sổ, xoá nó là SystemUI dỡ luôn bubble user đang trả lời.
+     * Đây đúng là lỗi "bubble biến mất sau khi chat phản hồi lại": Blocked→Working
+     * xảy ra ngay khi user vừa gửi câu trả lời, tracker bắn Cancel, notification
+     * biến mất kéo theo cả cửa sổ. Thay vào đó hạ notification xuống dạng NEO im
+     * lặng; cửa sổ đóng thì [onBubbleClosed] dọn nốt.
+     */
     fun cancel(context: Context, pane: String) {
         alertedPanes -= pane
+        val snapshot = lastAlerts[pane]
+        val bubbleOpen = BubblePresence.isOpen(pane)
+        val exit = when {
+            // Cửa sổ còn mở nhưng notification đã biến mất khỏi hệ thống (user vuốt
+            // đầu bubble đi — SystemUI dỡ bubble theo notification). Dựng lại lúc này
+            // là hồi sinh đúng thứ user vừa dọn.
+            bubbleOpen && !notificationLive(context, pane) -> AlertExit.Cancel
+            else -> alertExit(bubbleOpen = bubbleOpen, hasSnapshot = snapshot != null)
+        }
+        when (exit) {
+            // [AlertExit.Anchor] chỉ trả về khi có snapshot, nên đây là nhánh chắc chắn.
+            AlertExit.Anchor -> snapshot?.let { show(context, pane, it, anchored = true) }
+            // Neo sống tiếp nhưng không dựng lại được nội dung (process vừa restart):
+            // vẫn phải nhớ để [onBubbleClosed] dọn lúc cửa sổ đóng.
+            AlertExit.Leave -> anchoredPanes += pane
+            AlertExit.Cancel -> {
+                anchoredPanes -= pane
+                lastAlerts -= pane
+                runCatching { NotificationManagerCompat.from(context).cancel(pane, ALERT_ID) }
+            }
+        }
+    }
+
+    /** Notification của [pane] còn sống trong hệ thống không (đã bị user vuốt mất chưa). */
+    private fun notificationLive(context: Context, pane: String): Boolean = runCatching {
+        NotificationManagerCompat.from(context).activeNotifications
+            .any { it.tag == pane && it.id == ALERT_ID }
+        // Không đọc được thì mặc định là CÒN: giữ nguyên hành vi chống mất bubble,
+        // chỉ tệ hơn ở nhánh hiếm (user vuốt mất rồi mà ta vẫn dựng lại).
+    }.getOrDefault(true)
+
+    /**
+     * Cửa sổ bubble của [pane] vừa đóng hẳn (gọi từ `AgentBubbleActivity.onDestroy`).
+     * Notification chỉ còn là neo thì dọn luôn — hết lý do tồn tại. Còn alert thật
+     * (agent vẫn đang chờ / vừa xong) thì để nguyên cho user thấy.
+     */
+    fun onBubbleClosed(context: Context, pane: String) {
+        if (BubblePresence.isOpen(pane)) return
+        if (!anchoredPanes.remove(pane)) return
+        lastAlerts -= pane
         runCatching { NotificationManagerCompat.from(context).cancel(pane, ALERT_ID) }
     }
 
     /** Dọn mọi alert của agent (user về app — UI đầy đủ đã hiện trạng thái). */
     fun cancelAll(context: Context) {
         for (pane in alertedPanes.toList()) {
+            // Cửa sổ bubble đang HIỆN: user đang nhìn thẳng vào hội thoại, hạ cấp
+            // notification sau lưng họ là vô nghĩa (và làm đầu bubble đổi trạng thái
+            // ngay trước mắt). Cửa sổ chỉ còn là đầu bubble thì vẫn đi qua [cancel] —
+            // mất alert như luật 12/10, nhưng hạ xuống neo chứ không dỡ mất chỗ đang đọc.
+            if (BubblePresence.isVisible(pane)) continue
             cancel(context, pane)
         }
         // alertedPanes là bộ nhớ process. Process chết rồi mở lại thì set rỗng,
-        // các notification cũ vẫn nằm trong shade — quét active notifications
-        // để dọn, chỉ đụng channel agent_alerts.
+        // các notification cũ vẫn nằm trong shade — quét active notifications để dọn,
+        // chỉ đụng channel agent_alerts. Mọi pane đều đi qua đúng một cửa [cancel]
+        // để luật "cửa sổ còn mở thì giữ lại làm neo" không bị lách ở nhánh này.
         runCatching {
             val manager = context.getSystemService(NotificationManager::class.java) ?: return@runCatching
             for (status in manager.activeNotifications) {
-                if (status.notification.channelId == CHANNEL_ALERTS) {
-                    manager.cancel(status.tag, status.id)
-                }
+                if (status.notification.channelId != CHANNEL_ALERTS) continue
+                val tag = status.tag ?: continue
+                if (BubblePresence.isVisible(tag)) continue
+                cancel(context, tag)
             }
         }.onFailure { Log.w("AgentNotifier", "cancelAll active scan failed", it) }
     }

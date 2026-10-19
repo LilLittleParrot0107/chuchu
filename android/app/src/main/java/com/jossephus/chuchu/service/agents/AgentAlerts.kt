@@ -152,3 +152,33 @@ internal fun refineAlertText(raw: String, limit: Int = 140): String {
     }
     return t.trim()
 }
+
+/** Xử lý notification khi alert của một pane hết hiệu lực. */
+enum class AlertExit {
+    /** Không còn gì để giữ — xoá hẳn notification. */
+    Cancel,
+
+    /** Cửa sổ bubble đang mở: hạ notification xuống dạng NEO im lặng. */
+    Anchor,
+
+    /** Cửa sổ đang mở nhưng không dựng lại được nội dung — để nguyên, đóng cửa sổ sẽ dọn. */
+    Leave,
+}
+
+/**
+ * Alert hết hiệu lực (agent rời Blocked/Done, hoặc pane biến mất khỏi `/state`) thì
+ * làm gì với notification của pane?
+ *
+ * Notification gắn bubble CHÍNH LÀ cái neo của cửa sổ — xoá nó là SystemUI dỡ luôn
+ * bubble. Nên khi user đang mở cửa sổ, alert hết hiệu lực chỉ được phép HẠ CẤP chứ
+ * không được xoá. Đây đúng là lỗi "bubble biến mất sau khi chat phản hồi lại":
+ * Blocked → Working xảy ra ngay lúc user vừa gửi câu trả lời, tracker bắn Cancel,
+ * notification biến mất kéo theo cả cửa sổ.
+ *
+ * Hàm thuần để test được — luật này đã sai một lần nên cần khoá lại bằng test.
+ */
+internal fun alertExit(bubbleOpen: Boolean, hasSnapshot: Boolean): AlertExit = when {
+    !bubbleOpen -> AlertExit.Cancel
+    hasSnapshot -> AlertExit.Anchor
+    else -> AlertExit.Leave
+}

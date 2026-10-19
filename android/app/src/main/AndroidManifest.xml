@@ -90,11 +90,16 @@
              một bubble task riêng, không kéo theo task chính.
              18/10: bubble tự xử IME bằng Compose (safeDrawing ∪ ime). Để adjustResize
              thì cửa sổ bubble bị resize theo bàn phím, lúc hạ keyboard có một nhịp
-             nền xám trước khi nội dung giãn lại; adjustNothing giữ cửa sổ cố định. -->
+             nền xám trước khi nội dung giãn lại; adjustNothing giữ cửa sổ cố định.
+             19/10: allowEmbedded + resizeableActivity theo đúng mẫu activity-bubble
+             của Android — SystemUI nhúng nội dung bubble qua TaskView, thiếu hai cờ
+             này thì đầu bubble hiện ra mà bấm vào không nở được gì. -->
         <activity
             android:name="com.jossephus.chuchu.ui.bubble.AgentBubbleActivity"
             android:enabled="true"
             android:exported="false"
+            android:allowEmbedded="true"
+            android:resizeableActivity="true"
             android:launchMode="standard"
             android:documentLaunchMode="always"
             android:taskAffinity=""
