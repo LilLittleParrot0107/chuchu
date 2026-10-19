@@ -93,7 +93,12 @@
              nền xám trước khi nội dung giãn lại; adjustNothing giữ cửa sổ cố định.
              19/10: allowEmbedded + resizeableActivity theo đúng mẫu activity-bubble
              của Android — SystemUI nhúng nội dung bubble qua TaskView, thiếu hai cờ
-             này thì đầu bubble hiện ra mà bấm vào không nở được gì. -->
+             này thì đầu bubble hiện ra mà bấm vào không nở được gì.
+             19/10 (rà soát): khai configChanges. Bubble LÀ cửa sổ multi-window, nên
+             kéo resize là screenSize đổi → activity bị huỷ/tạo lại giữa lúc đang chat:
+             mất trạng thái đã mở khoá (hỏi vân tay lại) và để hở một khe mà vòng poll
+             nền có thể xoá mất notification neo. Compose tự vẽ lại theo configuration
+             mới nên không cần dựng lại activity. -->
         <activity
             android:name="com.jossephus.chuchu.ui.bubble.AgentBubbleActivity"
             android:enabled="true"
@@ -105,6 +110,7 @@
             android:taskAffinity=""
             android:excludeFromRecents="true"
             android:windowSoftInputMode="adjustNothing"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|uiMode|density|fontScale|layoutDirection"
             android:theme="@style/Theme.Chuchu" />
 
         <service

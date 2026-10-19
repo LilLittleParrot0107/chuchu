@@ -175,10 +175,20 @@ enum class AlertExit {
  * Blocked → Working xảy ra ngay lúc user vừa gửi câu trả lời, tracker bắn Cancel,
  * notification biến mất kéo theo cả cửa sổ.
  *
+ * [notificationLive] = notification còn thật sự nằm trong shade không. Cửa sổ còn mở
+ * mà notification đã biến mất nghĩa là user vừa vuốt đầu bubble đi (SystemUI dỡ
+ * notification là dỡ luôn cửa sổ) — lúc đó dựng lại neo là HỒI SINH đúng thứ user
+ * vừa dọn, nên phải [AlertExit.Cancel].
+ *
  * Hàm thuần để test được — luật này đã sai một lần nên cần khoá lại bằng test.
  */
-internal fun alertExit(bubbleOpen: Boolean, hasSnapshot: Boolean): AlertExit = when {
+internal fun alertExit(
+    bubbleOpen: Boolean,
+    notificationLive: Boolean,
+    hasSnapshot: Boolean,
+): AlertExit = when {
     !bubbleOpen -> AlertExit.Cancel
+    !notificationLive -> AlertExit.Cancel
     hasSnapshot -> AlertExit.Anchor
     else -> AlertExit.Leave
 }
