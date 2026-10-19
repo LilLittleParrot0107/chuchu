@@ -917,7 +917,9 @@ private fun ChatMetaRow(
 ) {
     val colors = ChuColors.current
     val type = ChuTypography.current
+    val kind = AgentKind.of(chatAgent?.agent)
     val meta = buildString {
+        if (kind == AgentKind.DSH) append("DSH · ")
         append(chatAgent?.label?.lowercase() ?: "…")
         chatAge(chat.updatedAt, now).takeIf { it.isNotEmpty() }?.let { append(" · $it") }
         if (chat.cwd.isNotBlank()) {

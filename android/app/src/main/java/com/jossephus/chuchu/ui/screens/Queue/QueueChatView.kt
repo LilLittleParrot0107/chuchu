@@ -158,7 +158,10 @@ internal fun QueueChatView(
                 Spacer(Modifier.height(10.dp))
                 KohiCompactAction(label = "RETRY", onClick = onRetry)
             }
-            messages.isEmpty() && blocked == null -> Center("no messages yet")
+            messages.isEmpty() && blocked == null -> Center(
+                if (kind == AgentKind.DSH) "DSH session ready — send the first message"
+                else "no messages yet"
+            )
             else -> SelectionContainer {
                 LazyColumn(
                     state = listState,
