@@ -6,7 +6,7 @@ import android.content.Intent
 import android.util.Log
 import androidx.core.app.NotificationManagerCompat
 import com.jossephus.chuchu.data.repository.SettingsRepository
-import com.jossephus.chuchu.service.push.KohiPush
+import com.jossephus.chuchu.service.push.KohiFcm
 import com.jossephus.chuchu.ui.screens.Queue.QueueClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -71,9 +71,9 @@ object AgentWatch {
         generation++
         // Dọn channel "agent_watch" cũ (thời FGS) ngay khi vào phiên — khỏi đợi alert đầu.
         AgentNotifier.ensureChannels(app)
-        // Đăng ký lại UnifiedPush mỗi lần watch bật; no-op nếu chưa cài ntfy.
-        runCatching { KohiPush.ensureRegistered(app) }
-            .onFailure { Log.w(TAG, "push register failed", it) }
+        // FCM token có thể đổi; đăng ký lại qsrv mỗi lần watch bật.
+        runCatching { KohiFcm.ensureRegistered(app) }
+            .onFailure { Log.w(TAG, "FCM register failed", it) }
         // Guard long-poll bắt đầu ngay; alarm đầu chỉ để bắt trường hợp process chết yểu.
         AgentWatchScheduler.schedule(app, WATCH_FIRST_ALARM_MS)
         startGuard(app)
@@ -90,13 +90,37 @@ object AgentWatch {
     }
 
     /**
-     * Wakeup từ UnifiedPush. Process có thể vừa được dựng lại: resume chuỗi
-     * alarm/guard rồi chạy đúng một nhịp poll để tracker so trạng thái và post.
+     * Wakeup từ FCM. Process có thể vừa được dựng lại: resume chuỗi alarm/guard,
+     * chạy một nhịp /state để tracker post transition. Nếu tracker không post
+     * (state đã được seed trước đó) thì dùng payload để post đúng alert, tránh
+     * mất notification chỉ vì snapshot cũ.
      */
-    fun onPush(context: Context) {
+    fun onPush(
+        context: Context,
+        pane: String,
+        kind: AgentAlertKind,
+        agentName: String,
+        text: String,
+    ) {
         val app = context.applicationContext
+        val settings = SettingsRepository.getInstance(app)
+        if (!settings.agentAlertsEnabled.value ||
+            !NotificationManagerCompat.from(app).areNotificationsEnabled()
+        ) {
+            return
+        }
         resume(app)
-        poll(app)
+        val result = tick(app, waitSec = 0)
+        val posted = result is Tick.Fresh && result.actions > 0
+        if (!posted) {
+            AgentNotifier.postAlert(
+                app, kind, pane, agentName.ifBlank { pane }, text,
+            )
+        }
+        val store = AgentWatchStore(app)
+        val snaps = store.savedSnaps()
+        if (snaps.isNotEmpty()) scheduleNext(app, snaps)
+        else AgentWatchScheduler.schedule(app, WATCH_FIRST_ALARM_MS)
     }
 
     /** Một nhịp: poll → báo → hẹn nhịp kế. Chạy trên thread nền của receiver. */

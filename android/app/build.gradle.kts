@@ -16,6 +16,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     id("kotlin-kapt")
+    id("com.google.gms.google-services")
 }
 
 android {
@@ -156,8 +157,8 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.4")
     implementation("androidx.biometric:biometric:1.2.0-alpha05")
     implementation("androidx.fragment:fragment-ktx:1.8.2")
-    // UnifiedPush: nhận wakeup khi process chết; ntfy app là distributor.
-    implementation("com.github.UnifiedPush:android-connector:3.0.10")
+    // FCM: wakeup khi process chết; notification/bubble vẫn do kohi dựng.
+    implementation("com.google.firebase:firebase-messaging:24.1.2")
     testImplementation(libs.junit)
     // org.json cua Android chi la stub trong unit test (moi ham nem
     // "not mocked"). Them ban that de test parser hang doi chay duoc tren JVM.

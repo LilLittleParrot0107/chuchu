@@ -1,7 +1,6 @@
 package com.jossephus.chuchu.ui.screens.Settings
 
 import android.Manifest
-import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -47,7 +46,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.jossephus.chuchu.service.agents.AgentNotifier
-import com.jossephus.chuchu.service.push.KohiPush
+import com.jossephus.chuchu.service.push.KohiFcm
 import com.jossephus.chuchu.ui.components.ChuButton
 import com.jossephus.chuchu.ui.components.ChuButtonVariant
 import com.jossephus.chuchu.ui.components.ChuSwitch
@@ -305,8 +304,7 @@ private fun GeneralSettings(
     var batteryExempt by remember { mutableStateOf(isIgnoringBatteryOptimizations(context)) }
     var alarmsOk by remember { mutableStateOf(canScheduleExactAlarms(context)) }
     var bubblesOn by remember { mutableStateOf(AgentNotifier.bubblesAllowed(context)) }
-    var pushDistributor by remember { mutableStateOf(KohiPush.distributor(context)) }
-    var pushEndpoint by remember { mutableStateOf(KohiPush.endpoint(context)) }
+    var pushToken by remember { mutableStateOf(KohiFcm.token(context)) }
     // Android 13+: bật watch mà chưa cấp POST_NOTIFICATIONS thì AgentWatch.start()
     // return im lặng. Xin quyền ngay tại công tắc, và chỉ bật khi được cấp.
     val notifPermission = rememberLauncherForActivityResult(
@@ -326,8 +324,7 @@ private fun GeneralSettings(
         batteryExempt = isIgnoringBatteryOptimizations(context)
         alarmsOk = canScheduleExactAlarms(context)
         bubblesOn = AgentNotifier.bubblesAllowed(context)
-        pushDistributor = KohiPush.distributor(context)
-        pushEndpoint = KohiPush.endpoint(context)
+        pushToken = KohiFcm.token(context)
         onPauseOrDispose {}
     }
     ThemeSelectorSection(
@@ -433,48 +430,15 @@ private fun GeneralSettings(
             modifier = Modifier.clickable { openNotificationSettings(context) },
         )
     }
-    // Push wakeup: ntfy app làm UnifiedPush distributor. Không cần FCM/Google.
+    // FCM wakeup: notification/bubble vẫn do kohi tự dựng.
     if (agentAlertsEnabled) {
         Spacer(modifier = Modifier.height(8.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f)) {
-                ChuText("push wakeup", style = typography.label)
-                ChuText(
-                    when {
-                        pushEndpoint != null -> "ntfy · registered"
-                        pushDistributor != null -> "ntfy · waiting for endpoint"
-                        else -> "not set up · install ntfy"
-                    },
-                    style = typography.bodySmall,
-                    color = if (pushEndpoint != null) colors.success else colors.textMuted,
-                )
-            }
-            ChuButton(
-                onClick = {
-                    val activity = context as? Activity
-                    if (activity != null) {
-                        KohiPush.pickDistributor(activity) { ok ->
-                            pushDistributor = KohiPush.distributor(context)
-                            pushEndpoint = KohiPush.endpoint(context)
-                            if (ok) KohiPush.ensureRegistered(context)
-                        }
-                    }
-                },
-                variant = ChuButtonVariant.Outlined,
-                bracketed = true,
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 7.dp),
-            ) {
-                ChuText(if (pushDistributor == null) "SET UP" else "RE-REGISTER", style = typography.label)
-            }
-        }
+        ChuText("push · FCM", style = typography.label)
         ChuText(
-            "uses the ntfy app as UnifiedPush distributor; payload only wakes the app, no transcript text",
+            if (pushToken != null) "registered via Google Play Services"
+            else "waiting for FCM token",
             style = typography.bodySmall,
-            color = colors.textMuted,
+            color = if (pushToken != null) colors.success else colors.textMuted,
         )
     }
     // 13/10 (user: "thông báo đã xong chỉ đến khi vào app"): OriginOS/doze bóp mạng nền khi

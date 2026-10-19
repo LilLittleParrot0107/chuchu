@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "588353132365",
+    "project_id": "kohi-push-2026",
+    "storage_bucket": "kohi-push-2026.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:588353132365:android:64a209d46b31fd9767c904",
+        "android_client_info": {
+          "package_name": "com.jossephus.chuchu"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCsg4-eUEBVBc6jaa1BE9F6CVpyybFLIjE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

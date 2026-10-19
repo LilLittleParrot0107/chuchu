@@ -16,8 +16,6 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        // UnifiedPush android-connector (ntfy distributor) — JitPack only.
-        maven { url = uri("https://jitpack.io") }
     }
 }
 
