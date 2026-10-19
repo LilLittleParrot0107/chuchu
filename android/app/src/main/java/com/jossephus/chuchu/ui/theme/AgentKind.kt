@@ -28,7 +28,7 @@ enum class AgentKind {
             "opencode" -> OPENCODE
             "agy", "antigravity" -> AGY
             "codex" -> CODEX
-            "dsh", "deepseek", "deepseek-harness" -> DSH
+            "dsh", "dsh-tui", "deepseek", "deepseek-harness", "deepseek-harness-tui" -> DSH
             else -> OTHER
         }
     }
